@@ -17,7 +17,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-EXCEL_FILE = "../daily_report_template.xlsm"
+EXCEL_DIR = "../"
+DEFAULT_EXCEL_FILE = "daily_report_template.xlsm"
 
 class ReportInput(BaseModel):
     日付: str
@@ -35,17 +36,43 @@ class ReportInput(BaseModel):
 def read_root():
     return {"message": "Daily Report API is running"}
 
+@app.get("/files")
+def list_excel_files():
+    """List all Excel files in the directory"""
+    try:
+        files = []
+        for file in os.listdir(EXCEL_DIR):
+            if file.endswith(('.xlsx', '.xlsm')):
+                file_path = os.path.join(EXCEL_DIR, file)
+                file_size = os.path.getsize(file_path)
+                file_mtime = os.path.getmtime(file_path)
+                files.append({
+                    "name": file,
+                    "size": file_size,
+                    "modified": datetime.fromtimestamp(file_mtime).isoformat()
+                })
+        return {"files": files, "default": DEFAULT_EXCEL_FILE}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/reports")
-def get_reports():
-    if not os.path.exists(EXCEL_FILE):
-        raise HTTPException(status_code=404, detail="Excel file not found")
+def get_reports(filename: str = DEFAULT_EXCEL_FILE):
+    excel_file = os.path.join(EXCEL_DIR, filename)
+    if not os.path.exists(excel_file):
+        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
     
     try:
         # Read the '営業日報' sheet
-        df = pd.read_excel(EXCEL_FILE, sheet_name='営業日報', header=0)
+        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
         
         # Clean up column names (remove newlines)
         df.columns = [str(col).replace('\n', '') for col in df.columns]
+        
+        # Rename specific columns to match frontend expectations
+        df = df.rename(columns={
+            '得意先CD.': '得意先CD',
+            '訪問先名得意先名': '訪問先名'
+        })
         
         # Replace all NaN, infinity, and null values with None
         # Use fillna to replace NaN with None
@@ -80,13 +107,14 @@ def get_reports():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/reports")
-def add_report(report: ReportInput):
-    if not os.path.exists(EXCEL_FILE):
-        raise HTTPException(status_code=404, detail="Excel file not found")
+def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
+    excel_file = os.path.join(EXCEL_DIR, filename)
+    if not os.path.exists(excel_file):
+        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
     
     try:
         # Load workbook with openpyxl to preserve formulas and macros
-        wb = openpyxl.load_workbook(EXCEL_FILE, keep_vba=True)
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
         ws = wb['営業日報']
         
         # Find the next empty row
@@ -97,21 +125,21 @@ def add_report(report: ReportInput):
         new_mgmt_num = (last_mgmt_num + 1) if isinstance(last_mgmt_num, int) else next_row - 1
         
         # Prepare the data to write
-        # Adjust column indices based on actual Excel structure
+        # Adjust column indices based on actual Excel structure (251113_2026-_-_008.xlsm)
         ws.cell(row=next_row, column=1, value=new_mgmt_num)  # 管理番号
         ws.cell(row=next_row, column=2, value=report.日付)  # 日付
         ws.cell(row=next_row, column=3, value=report.行動内容)  # 行動内容
         ws.cell(row=next_row, column=4, value=report.エリア)  # エリア
-        ws.cell(row=next_row, column=5, value=report.得意先CD)  # 得意先CD
-        ws.cell(row=next_row, column=7, value=report.訪問先名)  # 訪問先名
+        ws.cell(row=next_row, column=5, value=report.得意先CD)  # 得意先CD.
+        ws.cell(row=next_row, column=7, value=report.訪問先名)  # 訪問先名\n得意先名
         ws.cell(row=next_row, column=12, value=report.面談者)  # 面談者
-        ws.cell(row=next_row, column=13, value=report.滞在時間)  # 滞在時間
-        ws.cell(row=next_row, column=15, value=report.商談内容)  # 商談内容
-        ws.cell(row=next_row, column=16, value=report.提案物)  # 提案物
-        ws.cell(row=next_row, column=17, value=report.次回プラン)  # 次回プラン
+        ws.cell(row=next_row, column=13, value=report.滞在時間)  # 滞在\n時間
+        ws.cell(row=next_row, column=19, value=report.商談内容)  # 商談内容 (Index 19)
+        ws.cell(row=next_row, column=20, value=report.提案物)  # 提案物 (Index 20)
+        ws.cell(row=next_row, column=21, value=report.次回プラン)  # 次回プラン (Index 21)
         
         # Save the workbook
-        wb.save(EXCEL_FILE)
+        wb.save(excel_file)
         wb.close()
         
         return {"message": "Report added successfully", "management_number": new_mgmt_num}

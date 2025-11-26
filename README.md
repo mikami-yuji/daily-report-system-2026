@@ -9,6 +9,14 @@
 - 📝 **簡単入力**: 直感的な入力フォーム
 - 📱 **レスポンシブ**: PC・タブレット・スマホ対応
 
+## 📸 スクリーンショット
+
+### 日報一覧画面
+![Dashboard](./screenshots/dashboard.png)
+
+### 日報入力画面
+![Input Form](./screenshots/input_form.png)
+
 ## 🚀 クイックスタート
 
 ### 1. バックエンドを起動
@@ -29,7 +37,7 @@ npm run dev
 ## 📁 プロジェクト構成
 
 ```
-cobalt-exoplanet/
+daily-report-system/
 ├── backend/              # Python FastAPI バックエンド
 │   ├── main.py          # メインAPIファイル
 │   └── requirements.txt # Python依存関係
@@ -39,6 +47,7 @@ cobalt-exoplanet/
 │   │   └── input/
 │   │       └── page.tsx # 日報入力ページ
 │   └── package.json
+├── screenshots/         # UIスクリーンショット
 ├── daily_report_template.xlsm  # エクセルデータファイル
 └── 使い方ガイド.md              # 詳細な使い方
 ```
@@ -81,4 +90,4 @@ cobalt-exoplanet/
 
 ## 📝 ライセンス
 
-このプロジェクトは個人利用を目的としています。
+MIT License - 詳細は [LICENSE](./LICENSE) をご覧ください。

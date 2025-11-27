@@ -117,8 +117,30 @@ export default function DesignSearchPage() {
         return Array.from(types).sort();
     }, [designRequests, selectedCustomer]);
 
-    // 進捗状況のリスト
-    const progressOptions = ['完了', '進行中', '保留', '未着手'];
+    // フィルターされた状態での進捗状況リスト
+    const availableProgress = useMemo(() => {
+        let requestsToCheck = designRequests;
+
+        // 得意先でフィルター
+        if (selectedCustomer) {
+            requestsToCheck = requestsToCheck.filter(req => req.customerCode === selectedCustomer);
+        }
+
+        // 種別でフィルター
+        if (selectedType) {
+            requestsToCheck = requestsToCheck.filter(req => req.designType === selectedType);
+        }
+
+        // 進捗状況を抽出
+        const progressList = new Set<string>();
+        requestsToCheck.forEach(req => {
+            if (req.designProgress) {
+                progressList.add(req.designProgress);
+            }
+        });
+
+        return Array.from(progressList).sort();
+    }, [designRequests, selectedCustomer, selectedType]);
 
     useEffect(() => {
         let filtered = designRequests;
@@ -249,7 +271,7 @@ export default function DesignSearchPage() {
                             className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
                         >
                             <option value="">すべての進捗状況</option>
-                            {progressOptions.map(progress => (
+                            {availableProgress.map(progress => (
                                 <option key={progress} value={progress}>
                                     {progress}
                                 </option>
@@ -442,6 +464,6 @@ export default function DesignSearchPage() {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }

@@ -36,6 +36,7 @@ export default function CustomerDetailPage() {
     const [customerName, setCustomerName] = useState('');
     const [activeTab, setActiveTab] = useState<'timeline' | 'designs'>('timeline');
     const [designRequests, setDesignRequests] = useState<DesignRequest[]>([]);
+    const [selectedInterviewer, setSelectedInterviewer] = useState<string>('');
 
     useEffect(() => {
         if (customerCode) {
@@ -121,6 +122,28 @@ export default function CustomerDetailPage() {
         if (action.includes('訪問')) return <User size={16} className="text-green-500" />;
         return <FileText size={16} className="text-gray-500" />;
     };
+
+    // 面談者のリストを抽出
+    const interviewers = Array.from(new Set(reports.map(r => r.面談者).filter(Boolean))).sort();
+
+    const filteredReports = selectedInterviewer
+        ? reports.filter(r => r.面談者 === selectedInterviewer)
+        : reports;
+
+    const [selectedDesignType, setSelectedDesignType] = useState<string>('');
+    const [selectedDesignProgress, setSelectedDesignProgress] = useState<string>('');
+
+    // デザイン種別のリストを抽出
+    const designTypes = Array.from(new Set(designRequests.map(req => req.designType).filter(Boolean))).sort();
+
+    // 進捗状況のリストを抽出
+    const progressOptions = Array.from(new Set(designRequests.map(req => req.designProgress).filter(Boolean))).sort();
+
+    const filteredDesignRequests = designRequests.filter(req => {
+        const matchType = !selectedDesignType || req.designType === selectedDesignType;
+        const matchProgress = !selectedDesignProgress || req.designProgress === selectedDesignProgress;
+        return matchType && matchProgress;
+    });
 
     if (loading) {
         return <div className="p-8 text-center text-sf-text-weak">読み込み中...</div>;
@@ -258,125 +281,180 @@ export default function CustomerDetailPage() {
             <div className="min-h-[400px]">
                 {activeTab === 'timeline' && (
                     <div className="space-y-4">
-                        {reports.map((report, idx) => (
-                            <div key={idx} className="bg-white p-4 rounded border border-sf-border shadow-sm hover:shadow-md transition-shadow relative pl-12">
-                                <div className="absolute left-4 top-4 flex flex-col items-center h-full">
-                                    <div className="bg-gray-100 p-1.5 rounded-full border border-sf-border z-10">
-                                        {getActionIcon(report.行動内容)}
-                                    </div>
-                                    {idx !== reports.length - 1 && (
-                                        <div className="w-px bg-gray-200 h-full absolute top-8"></div>
-                                    )}
-                                </div>
+                        {/* フィルターエリア */}
+                        <div className="flex justify-end mb-4">
+                            <div className="relative w-64">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                <select
+                                    value={selectedInterviewer}
+                                    onChange={(e) => setSelectedInterviewer(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 text-sm border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                                >
+                                    <option value="">すべての面談者</option>
+                                    {interviewers.map(interviewer => (
+                                        <option key={interviewer} value={interviewer}>{interviewer}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
 
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <span className="font-semibold text-sf-text mr-2">{report.日付}</span>
-                                        <span className="text-sm text-sf-text-weak bg-gray-100 px-2 py-0.5 rounded">
-                                            {report.行動内容}
-                                        </span>
+                        {filteredReports.length === 0 ? (
+                            <div className="text-center py-12 text-sf-text-weak bg-white rounded border border-sf-border">
+                                {selectedInterviewer ? '該当する面談者の活動履歴はありません' : '活動履歴はありません'}
+                            </div>
+                        ) : (
+                            filteredReports.map((report, idx) => (
+                                <div key={idx} className="bg-white p-4 rounded border border-sf-border shadow-sm hover:shadow-md transition-shadow relative pl-12">
+                                    <div className="absolute left-4 top-4 flex flex-col items-center h-full">
+                                        <div className="bg-gray-100 p-1.5 rounded-full border border-sf-border z-10">
+                                            {getActionIcon(report.行動内容)}
+                                        </div>
+                                        {idx !== filteredReports.length - 1 && (
+                                            <div className="w-px bg-gray-200 h-full absolute top-8"></div>
+                                        )}
                                     </div>
-                                    {report.面談者 && (
-                                        <div className="flex items-center text-sm text-sf-text-weak">
-                                            <User size={14} className="mr-1" />
-                                            {report.面談者}
+
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <span className="font-semibold text-sf-text mr-2">{report.日付}</span>
+                                            <span className="text-sm text-sf-text-weak bg-gray-100 px-2 py-0.5 rounded">
+                                                {report.行動内容}
+                                            </span>
+                                        </div>
+                                        {report.面談者 && (
+                                            <div className="flex items-center text-sm text-sf-text-weak">
+                                                <User size={14} className="mr-1" />
+                                                {report.面談者}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="text-sf-text text-sm leading-relaxed whitespace-pre-wrap">
+                                        {report.商談内容 || <span className="text-gray-400 italic">商談内容の記録なし</span>}
+                                    </div>
+
+                                    {(report.提案物 || report.次回プラン) && (
+                                        <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {report.提案物 && (
+                                                <div className="text-xs">
+                                                    <span className="font-medium text-sf-text-weak block mb-1">提案物</span>
+                                                    <span className="text-sf-text">{report.提案物}</span>
+                                                </div>
+                                            )}
+                                            {report.次回プラン && (
+                                                <div className="text-xs">
+                                                    <span className="font-medium text-sf-text-weak block mb-1">次回プラン</span>
+                                                    <span className="text-sf-text">{report.次回プラン}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {report['システム確認用デザインNo.'] && (
+                                        <div className="mt-3">
+                                            <span className="inline-flex items-center gap-1 text-xs font-medium text-sf-light-blue bg-blue-50 px-2 py-1 rounded border border-blue-100">
+                                                <Package size={12} />
+                                                デザインNo. {report['システム確認用デザインNo.']}
+                                            </span>
                                         </div>
                                     )}
                                 </div>
-
-                                <div className="text-sf-text text-sm leading-relaxed whitespace-pre-wrap">
-                                    {report.商談内容 || <span className="text-gray-400 italic">商談内容の記録なし</span>}
-                                </div>
-
-                                {(report.提案物 || report.次回プラン) && (
-                                    <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {report.提案物 && (
-                                            <div className="text-xs">
-                                                <span className="font-medium text-sf-text-weak block mb-1">提案物</span>
-                                                <span className="text-sf-text">{report.提案物}</span>
-                                            </div>
-                                        )}
-                                        {report.次回プラン && (
-                                            <div className="text-xs">
-                                                <span className="font-medium text-sf-text-weak block mb-1">次回プラン</span>
-                                                <span className="text-sf-text">{report.次回プラン}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {report['システム確認用デザインNo.'] && (
-                                    <div className="mt-3">
-                                        <span className="inline-flex items-center gap-1 text-xs font-medium text-sf-light-blue bg-blue-50 px-2 py-1 rounded border border-blue-100">
-                                            <Package size={12} />
-                                            デザインNo. {report['システム確認用デザインNo.']}
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 )}
 
                 {activeTab === 'designs' && (
-                    <div className="grid grid-cols-1 gap-6">
-                        {designRequests.length === 0 ? (
+                    <div className="space-y-4">
+                        {/* フィルターエリア */}
+                        <div className="flex justify-end gap-4 mb-4">
+                            <div className="relative w-48">
+                                <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                <select
+                                    value={selectedDesignType}
+                                    onChange={(e) => setSelectedDesignType(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 text-sm border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                                >
+                                    <option value="">すべての種別</option>
+                                    {designTypes.map(type => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="relative w-48">
+                                <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                <select
+                                    value={selectedDesignProgress}
+                                    onChange={(e) => setSelectedDesignProgress(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 text-sm border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                                >
+                                    <option value="">すべての進捗</option>
+                                    {progressOptions.map(progress => (
+                                        <option key={progress} value={progress}>{progress}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {filteredDesignRequests.length === 0 ? (
                             <div className="text-center py-12 text-sf-text-weak bg-white rounded border border-sf-border">
-                                デザイン案件はありません
+                                {selectedDesignType || selectedDesignProgress ? '該当するデザイン案件はありません' : 'デザイン案件はありません'}
                             </div>
                         ) : (
-                            designRequests.map((req) => (
-                                <div key={req.designNo} className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
-                                    <div className="p-4 border-b border-sf-border bg-gray-50 flex justify-between items-center">
-                                        <div className="flex items-center gap-3">
-                                            <span className="font-bold text-lg text-sf-light-blue">#{req.designNo}</span>
-                                            <h3 className="font-semibold text-sf-text">{req.designName || '名称未設定'}</h3>
-                                        </div>
-                                        {getProgressBadge(req.designProgress)}
-                                    </div>
-
-                                    <div className="p-4">
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                            <div className="flex items-start gap-2">
-                                                <Layers size={16} className="text-purple-600 mt-0.5" />
-                                                <div>
-                                                    <p className="text-xs text-sf-text-weak">種別</p>
-                                                    <p className="text-sm font-medium text-sf-text">{req.designType || '-'}</p>
-                                                </div>
+                            <div className="grid grid-cols-1 gap-6">
+                                {filteredDesignRequests.map((req) => (
+                                    <div key={req.designNo} className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
+                                        <div className="p-4 border-b border-sf-border bg-gray-50 flex justify-between items-center">
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-bold text-lg text-sf-light-blue">#{req.designNo}</span>
+                                                <h3 className="font-semibold text-sf-text">{req.designName || '名称未設定'}</h3>
                                             </div>
-                                            <div className="flex items-start gap-2">
-                                                <TrendingUp size={16} className="text-green-600 mt-0.5" />
-                                                <div>
-                                                    <p className="text-xs text-sf-text-weak">提案有無</p>
-                                                    <p className="text-sm font-medium text-sf-text">{req.designProposal || '-'}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-start gap-2">
-                                                <Calendar size={16} className="text-orange-500 mt-0.5" />
-                                                <div>
-                                                    <p className="text-xs text-sf-text-weak">最終更新</p>
-                                                    <p className="text-sm font-medium text-sf-text">{req.lastUpdate}</p>
-                                                </div>
-                                            </div>
+                                            {getProgressBadge(req.designProgress)}
                                         </div>
 
-                                        <div className="space-y-3">
-                                            <h4 className="text-xs font-semibold text-sf-text-weak uppercase tracking-wider border-b border-gray-100 pb-1">
-                                                関連する活動履歴 ({req.requests.length}件)
-                                            </h4>
-                                            {req.requests.map((report, idx) => (
-                                                <div key={idx} className="text-sm border-l-2 border-gray-200 pl-3 py-1 hover:border-sf-light-blue transition-colors">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <span className="text-xs font-medium text-sf-text">{report.日付}</span>
-                                                        <span className="text-xs text-sf-text-weak bg-gray-100 px-1.5 rounded">{report.行動内容}</span>
+                                        <div className="p-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                                <div className="flex items-start gap-2">
+                                                    <Layers size={16} className="text-purple-600 mt-0.5" />
+                                                    <div>
+                                                        <p className="text-xs text-sf-text-weak">種別</p>
+                                                        <p className="text-sm font-medium text-sf-text">{req.designType || '-'}</p>
                                                     </div>
-                                                    <p className="text-sf-text line-clamp-2">{report.商談内容}</p>
                                                 </div>
-                                            ))}
+                                                <div className="flex items-start gap-2">
+                                                    <TrendingUp size={16} className="text-green-600 mt-0.5" />
+                                                    <div>
+                                                        <p className="text-xs text-sf-text-weak">提案有無</p>
+                                                        <p className="text-sm font-medium text-sf-text">{req.designProposal || '-'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-start gap-2">
+                                                    <Calendar size={16} className="text-orange-500 mt-0.5" />
+                                                    <div>
+                                                        <p className="text-xs text-sf-text-weak">最終更新</p>
+                                                        <p className="text-sm font-medium text-sf-text">{req.lastUpdate}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <h4 className="text-xs font-semibold text-sf-text-weak uppercase tracking-wider border-b border-gray-100 pb-1">
+                                                    関連する活動履歴 ({req.requests.length}件)
+                                                </h4>
+                                                {req.requests.map((report, idx) => (
+                                                    <div key={idx} className="text-sm border-l-2 border-gray-200 pl-3 py-1 hover:border-sf-light-blue transition-colors">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-xs font-medium text-sf-text">{report.日付}</span>
+                                                            <span className="text-xs text-sf-text-weak bg-gray-100 px-1.5 rounded">{report.行動内容}</span>
+                                                        </div>
+                                                        <p className="text-sf-text line-clamp-2">{report.商談内容}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))
+                                ))}
+                            </div>
                         )}
                     </div>
                 )}

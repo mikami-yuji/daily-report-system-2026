@@ -10,6 +10,7 @@ export default function ReportsPage() {
     const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
     const [files, setFiles] = useState<ExcelFile[]>([]);
     const [selectedFile, setSelectedFile] = useState<string>('');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     useEffect(() => {
         // Load available files
@@ -30,12 +31,34 @@ export default function ReportsPage() {
     const fetchData = () => {
         setLoading(true);
         getReports(selectedFile).then(data => {
-            setReports(data);
+            // Filter out reports with no date
+            const validData = data.filter(report => report.日付 && report.日付.trim() !== '');
+            // Sort data initially based on current sortOrder
+            const sortedData = sortReports(validData, sortOrder);
+            setReports(sortedData);
             setLoading(false);
         }).catch(err => {
             console.error(err);
             setLoading(false);
         });
+    };
+
+    const sortReports = (data: Report[], order: 'asc' | 'desc') => {
+        return [...data].sort((a, b) => {
+            const dateA = String(a.日付 || '');
+            const dateB = String(b.日付 || '');
+            if (order === 'asc') {
+                return dateA.localeCompare(dateB);
+            } else {
+                return dateB.localeCompare(dateA);
+            }
+        });
+    };
+
+    const toggleSortOrder = () => {
+        const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+        setSortOrder(newOrder);
+        setReports(prev => sortReports(prev, newOrder));
     };
 
     const toggleRow = (index: number) => {
@@ -75,11 +98,18 @@ export default function ReportsPage() {
                         </select>
                     </div>
 
+                    <button
+                        onClick={toggleSortOrder}
+                        className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors flex items-center gap-2"
+                        title={sortOrder === 'asc' ? "古い順" : "新しい順"}
+                    >
+                        <Filter size={16} />
+                        <span className="text-sm hidden md:inline">
+                            {sortOrder === 'asc' ? '昇順' : '降順'}
+                        </span>
+                    </button>
                     <button onClick={fetchData} className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors">
                         <RefreshCw size={16} />
-                    </button>
-                    <button className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors">
-                        <Filter size={16} />
                     </button>
                     <button className="bg-sf-light-blue text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 shadow-sm flex items-center gap-1 transition-colors">
                         <Plus size={16} />
@@ -198,8 +228,9 @@ export default function ReportsPage() {
                 )}
             </div>
 
-            <div className="p-2 bg-white border border-sf-border rounded text-xs text-sf-text-weak">
-                {reports.length} 件 • 日付順 • {selectedFile}
+            <div className="p-2 bg-white border border-sf-border rounded text-xs text-sf-text-weak flex justify-between items-center">
+                <span>{reports.length} 件 • {selectedFile}</span>
+                <span>並び順: {sortOrder === 'desc' ? '新しい順' : '古い順'}</span>
             </div>
         </div>
     );

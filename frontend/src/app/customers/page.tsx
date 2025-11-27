@@ -8,6 +8,7 @@ import Link from 'next/link';
 interface CustomerSummary {
     code: string;
     name: string;
+    area: string;
     totalActivities: number;
     visits: number;
     calls: number;
@@ -22,6 +23,9 @@ export default function CustomersPage() {
     const [filteredCustomers, setFilteredCustomers] = useState<CustomerSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedArea, setSelectedArea] = useState('');
+    const [selectedRank, setSelectedRank] = useState('');
+    const [isPriorityOnly, setIsPriorityOnly] = useState(false);
 
     useEffect(() => {
         getReports().then(data => {
@@ -46,6 +50,7 @@ export default function CustomersPage() {
                 customerMap.set(code, {
                     code,
                     name,
+                    area: String(report.エリア || ''),
                     totalActivities: 0,
                     visits: 0,
                     calls: 0,
@@ -83,18 +88,34 @@ export default function CustomersPage() {
     };
 
     useEffect(() => {
-        if (!searchTerm.trim()) {
-            setFilteredCustomers(customers);
-            return;
+        let filtered = customers;
+
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(c =>
+                c.code.toLowerCase().includes(term) ||
+                c.name.toLowerCase().includes(term)
+            );
         }
 
-        const term = searchTerm.toLowerCase();
-        const filtered = customers.filter(c =>
-            c.code.toLowerCase().includes(term) ||
-            c.name.toLowerCase().includes(term)
-        );
+        if (selectedArea) {
+            filtered = filtered.filter(c => c.area === selectedArea);
+        }
+
+        if (selectedRank) {
+            filtered = filtered.filter(c => c.rank === selectedRank);
+        }
+
+        if (isPriorityOnly) {
+            filtered = filtered.filter(c => c.isPriority);
+        }
+
         setFilteredCustomers(filtered);
-    }, [searchTerm, customers]);
+    }, [searchTerm, selectedArea, selectedRank, isPriorityOnly, customers]);
+
+    // ユニークなエリアとランクのリストを作成
+    const areas = Array.from(new Set(customers.map(c => c.area).filter(Boolean))).sort();
+    const ranks = Array.from(new Set(customers.map(c => c.rank).filter(Boolean))).sort();
 
     return (
         <div className="space-y-6">
@@ -102,17 +123,59 @@ export default function CustomersPage() {
                 <h1 className="text-2xl font-semibold text-sf-text">得意先一覧</h1>
             </div>
 
-            {/* 検索バー */}
+            {/* 検索・フィルターバー */}
             <div className="bg-white rounded border border-sf-border shadow-sm p-4">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                    <input
-                        type="text"
-                        placeholder="得意先CD、得意先名で検索..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="得意先CD、得意先名..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                        />
+                    </div>
+
+                    <div className="relative">
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <select
+                            value={selectedArea}
+                            onChange={(e) => setSelectedArea(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                        >
+                            <option value="">すべてのエリア</option>
+                            {areas.map(area => (
+                                <option key={area} value={area}>{area}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="relative">
+                        <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <select
+                            value={selectedRank}
+                            onChange={(e) => setSelectedRank(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                        >
+                            <option value="">すべてのランク</option>
+                            {ranks.map(rank => (
+                                <option key={rank} value={rank}>{rank}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="flex items-center">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={isPriorityOnly}
+                                onChange={(e) => setIsPriorityOnly(e.target.checked)}
+                                className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue"
+                            />
+                            <span className="text-sm text-sf-text">重点顧客のみ表示</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -150,7 +213,7 @@ export default function CustomersPage() {
                     <div className="p-8 text-center text-sf-text-weak">読み込み中...</div>
                 ) : filteredCustomers.length === 0 ? (
                     <div className="p-8 text-center text-sf-text-weak">
-                        {searchTerm ? '検索結果が見つかりません' : '得意先が見つかりません'}
+                        {searchTerm || selectedArea || selectedRank || isPriorityOnly ? '検索結果が見つかりません' : '得意先が見つかりません'}
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -159,6 +222,7 @@ export default function CustomersPage() {
                                 <tr>
                                     <th className="px-4 py-3 text-left font-medium">得意先CD</th>
                                     <th className="px-4 py-3 text-left font-medium">得意先名</th>
+                                    <th className="px-4 py-3 text-left font-medium">エリア</th>
                                     <th className="px-4 py-3 text-center font-medium">ランク</th>
                                     <th className="px-4 py-3 text-center font-medium">重点</th>
                                     <th className="px-4 py-3 text-center font-medium">総活動数</th>
@@ -183,6 +247,7 @@ export default function CustomersPage() {
                                                 {customer.name}
                                             </Link>
                                         </td>
+                                        <td className="px-4 py-3 text-sf-text">{customer.area || '-'}</td>
                                         <td className="px-4 py-3 text-center">
                                             {customer.rank && (
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">

@@ -73,9 +73,16 @@ export default function Home() {
   const calls = reports.filter(r => r.行動内容 && r.行動内容.includes('電話')).length;
 
   // 重点顧客の集計
-  const priorityCustomers = reports.filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '');
-  const priorityVisits = priorityCustomers.filter(r => r.行動内容 && r.行動内容.includes('訪問')).length;
-  const priorityCalls = priorityCustomers.filter(r => r.行動内容 && r.行動内容.includes('電話')).length;
+  const priorityCustomerActivities = reports.filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '');
+  const priorityVisits = priorityCustomerActivities.filter(r => r.行動内容 && r.行動内容.includes('訪問')).length;
+  const priorityCalls = priorityCustomerActivities.filter(r => r.行動内容 && r.行動内容.includes('電話')).length;
+
+  // ユニークな重点顧客数を計算
+  const uniquePriorityCustomers = new Set(
+    priorityCustomerActivities
+      .filter(r => r.得意先CD)
+      .map(r => r.得意先CD)
+  ).size;
 
   // 月別統計
   const monthlyStats: MonthlyStats[] = [];
@@ -221,7 +228,7 @@ export default function Home() {
           <div className="space-y-4">
             <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
               <span className="text-sm text-sf-text-weak">対象顧客数</span>
-              <span className="text-xl font-bold text-sf-text">{priorityCustomers.length}</span>
+              <span className="text-xl font-bold text-sf-text">{uniquePriorityCustomers}</span>
             </div>
             <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
               <span className="text-sm text-sf-text-weak">訪問件数</span>
@@ -234,12 +241,12 @@ export default function Home() {
             <div className="pt-2 border-t border-sf-border">
               <div className="flex justify-between text-xs text-sf-text-weak mb-1">
                 <span>活動カバー率</span>
-                <span>{Math.round((priorityVisits + priorityCalls) / (visits + calls) * 100)}%</span>
+                <span>{(visits + calls) > 0 ? Math.round((priorityVisits + priorityCalls) / (visits + calls) * 100) : 0}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-yellow-500 h-2 rounded-full"
-                  style={{ width: `${Math.min(100, (priorityVisits + priorityCalls) / (visits + calls) * 100)}%` }}
+                  style={{ width: `${(visits + calls) > 0 ? Math.min(100, (priorityVisits + priorityCalls) / (visits + calls) * 100) : 0}%` }}
                 ></div>
               </div>
             </div>

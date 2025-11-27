@@ -8,7 +8,8 @@ import {
     ChevronLeft,
     Menu,
     Users,
-    Package
+    Package,
+    AlertCircle
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -23,6 +24,7 @@ export default function Sidebar() {
         { name: '日報一覧', href: '/reports', icon: FileText },
         { name: '得意先一覧', href: '/customers', icon: Users },
         { name: 'デザイン検索', href: '/design-search', icon: Package },
+        { name: '競合他社情報', href: '/competitor-info', icon: AlertCircle },
         { name: '分析・レポート', href: '/analytics', icon: BarChart2 },
         { name: '設定', href: '/settings', icon: Settings },
     ];

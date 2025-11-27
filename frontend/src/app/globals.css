@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  --sf-blue: #014486;
+  --sf-light-blue: #0176D3;
+  --sf-bg: #F3F3F3;
+  --sf-border: #DDDBDA;
+  --sf-text: #080707;
+  --sf-text-weak: #3E3E3C;
+  --sf-header-bg: #014486;
+  --sf-card-bg: #FFFFFF;
+}
+
+@theme inline {
+  --color-sf-blue: var(--sf-blue);
+  --color-sf-light-blue: var(--sf-light-blue);
+  --color-sf-bg: var(--sf-bg);
+  --color-sf-border: var(--sf-border);
+  --color-sf-text: var(--sf-text);
+  --color-sf-text-weak: var(--sf-text-weak);
+  --color-sf-header-bg: var(--sf-header-bg);
+  --color-sf-card-bg: var(--sf-card-bg);
+}
+
+body {
+  background-color: var(--sf-bg);
+  color: var(--sf-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}

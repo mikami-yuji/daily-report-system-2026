@@ -91,3 +91,9 @@ export const getCustomers = async (filename?: string): Promise<Customer[]> => {
     return response.data;
 };
 
+export const getInterviewers = async (customerCd: string, filename?: string): Promise<string[]> => {
+    const params = filename ? { filename } : {};
+    const response = await axios.get(`${API_URL}/interviewers/${customerCd}`, { params });
+    return response.data.interviewers;
+};
+

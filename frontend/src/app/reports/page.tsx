@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, Report, getCustomers, Customer, updateReport } from '@/lib/api';
+import { getReports, Report, getCustomers, Customer, updateReport, getInterviewers } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table, Edit } from 'lucide-react';
 
@@ -439,6 +439,7 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [interviewers, setInterviewers] = useState<string[]>([]);
 
     useEffect(() => {
         // Fetch customer list
@@ -505,6 +506,16 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
             ランク: customer.ランク || ''
         }));
         setShowSuggestions(false);
+
+        // Fetch interviewers for this customer
+        if (customer.得意先CD) {
+            getInterviewers(customer.得意先CD, selectedFile).then(data => {
+                setInterviewers(data);
+            }).catch(err => {
+                console.error('Failed to fetch interviewers:', err);
+                setInterviewers([]);
+            });
+        }
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -618,8 +629,20 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                 name="面談者"
                                 value={formData.面談者}
                                 onChange={handleChange}
+                                list="interviewers-list"
+                                placeholder={interviewers.length > 0 ? "候補から選択または新規入力" : "面談者名を入力"}
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />
+                            <datalist id="interviewers-list">
+                                {interviewers.map((interviewer, idx) => (
+                                    <option key={idx} value={interviewer} />
+                                ))}
+                            </datalist>
+                            {interviewers.length > 0 && (
+                                <p className="mt-1 text-xs text-sf-text-weak">
+                                    過去の面談者: {interviewers.join(', ')}
+                                </p>
+                            )}
                         </div>
 
                         <div>

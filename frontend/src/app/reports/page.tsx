@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getReports, Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
-import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react';
+import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table } from 'lucide-react';
 
 export default function ReportsPage() {
     const { files, selectedFile, setSelectedFile } = useFile();
@@ -11,6 +11,7 @@ export default function ReportsPage() {
     const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table');
 
     useEffect(() => {
         if (selectedFile) {
@@ -88,6 +89,23 @@ export default function ReportsPage() {
                         </select>
                     </div>
 
+                    <div className="flex bg-gray-100 p-1 rounded border border-sf-border">
+                        <button
+                            onClick={() => setViewMode('table')}
+                            className={`p-1.5 rounded ${viewMode === 'table' ? 'bg-white shadow-sm text-sf-light-blue' : 'text-gray-400 hover:text-gray-600'}`}
+                            title="テーブル表示"
+                        >
+                            <Table size={16} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('timeline')}
+                            className={`p-1.5 rounded ${viewMode === 'timeline' ? 'bg-white shadow-sm text-sf-light-blue' : 'text-gray-400 hover:text-gray-600'}`}
+                            title="タイムライン表示"
+                        >
+                            <LayoutList size={16} />
+                        </button>
+                    </div>
+
                     <button
                         onClick={toggleSortOrder}
                         className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors flex items-center gap-2"
@@ -113,7 +131,7 @@ export default function ReportsPage() {
                     <div className="p-10 text-center text-sf-text-weak">読み込み中...</div>
                 ) : reports.length === 0 ? (
                     <div className="p-10 text-center text-sf-text-weak">日報が見つかりません</div>
-                ) : (
+                ) : viewMode === 'table' ? (
                     <div className="divide-y divide-sf-border">
                         {reports.map((report, i) => {
                             const isExpanded = expandedRows.has(i);
@@ -214,6 +232,57 @@ export default function ReportsPage() {
                                 </div>
                             );
                         })}
+                    </div>
+                ) : (
+                    <div className="p-4 space-y-4">
+                        {reports.map((report, i) => (
+                            <div key={i} className="bg-white p-4 rounded border border-sf-border shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-bold text-sf-text">{report.日付}</span>
+                                        <span className="text-sm px-2 py-0.5 rounded bg-gray-100 text-sf-text-weak">{report.行動内容}</span>
+                                        <span className="text-sm font-medium text-sf-light-blue">{report.訪問先名}</span>
+                                    </div>
+                                    <div className="text-sm text-sf-text-weak">
+                                        面談者: {report.面談者 || '-'}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* 左カラム: 商談内容、次回プラン */}
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h4 className="text-xs font-semibold text-sf-text-weak mb-1">商談内容</h4>
+                                            <p className="text-sm text-sf-text whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-100 min-h-[80px]">
+                                                {report.商談内容 || 'なし'}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-semibold text-sf-text-weak mb-1">次回プラン</h4>
+                                            <p className="text-sm text-sf-text whitespace-pre-wrap bg-gray-50 p-3 rounded border border-gray-100">
+                                                {report.次回プラン || 'なし'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* 右カラム: 上長コメント、コメント返信欄 */}
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h4 className="text-xs font-semibold text-sf-text-weak mb-1">上長コメント</h4>
+                                            <p className="text-sm text-sf-text whitespace-pre-wrap bg-blue-50 p-3 rounded border border-blue-100 min-h-[80px]">
+                                                {report.上長コメント || 'なし'}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-semibold text-sf-text-weak mb-1">コメント返信欄</h4>
+                                            <p className="text-sm text-sf-text whitespace-pre-wrap bg-green-50 p-3 rounded border border-green-100">
+                                                {report.コメント返信欄 || 'なし'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>

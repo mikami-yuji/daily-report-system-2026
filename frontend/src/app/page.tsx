@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, getFiles, uploadFile, Report, ExcelFile } from '@/lib/api';
+import { getReports, uploadFile, Report } from '@/lib/api';
+import { useFile } from '@/context/FileContext';
 import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Upload } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -24,20 +25,10 @@ interface MonthlyStats {
 }
 
 export default function Home() {
+  const { files, selectedFile, setSelectedFile, refreshFiles } = useFile();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
-  const [files, setFiles] = useState<ExcelFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string>('');
   const [uploading, setUploading] = useState(false);
-
-  useEffect(() => {
-    getFiles().then(data => {
-      setFiles(data.files);
-      setSelectedFile(data.default);
-    }).catch(err => {
-      console.error('Failed to load files:', err);
-    });
-  }, []);
 
   useEffect(() => {
     if (selectedFile) {
@@ -141,8 +132,7 @@ export default function Home() {
     try {
       await uploadFile(file);
       // ファイルリストを再読み込み
-      const data = await getFiles();
-      setFiles(data.files);
+      await refreshFiles();
       setSelectedFile(file.name);
       alert(`ファイル「${file.name}」をアップロードしました`);
     } catch (error) {

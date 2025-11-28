@@ -1,26 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, getFiles, Report, ExcelFile } from '@/lib/api';
+import { getReports, Report } from '@/lib/api';
+import { useFile } from '@/context/FileContext';
 import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen } from 'lucide-react';
 
 export default function ReportsPage() {
+    const { files, selectedFile, setSelectedFile } = useFile();
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-    const [files, setFiles] = useState<ExcelFile[]>([]);
-    const [selectedFile, setSelectedFile] = useState<string>('');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-
-    useEffect(() => {
-        // Load available files
-        getFiles().then(data => {
-            setFiles(data.files);
-            setSelectedFile(data.default);
-        }).catch(err => {
-            console.error('Failed to load files:', err);
-        });
-    }, []);
 
     useEffect(() => {
         if (selectedFile) {

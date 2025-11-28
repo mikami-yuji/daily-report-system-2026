@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { getReports, Report } from '@/lib/api';
+import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter } from 'lucide-react';
 import Link from 'next/link';
 
@@ -17,6 +18,7 @@ interface DesignRequest {
 }
 
 export default function DesignSearchPage() {
+    const { selectedFile } = useFile();
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -29,7 +31,10 @@ export default function DesignSearchPage() {
     const [customers, setCustomers] = useState<Array<{ code: string, name: string }>>([]);
 
     useEffect(() => {
-        getReports().then(data => {
+        if (!selectedFile) return;
+
+        setLoading(true);
+        getReports(selectedFile).then(data => {
             setReports(data);
             const requests = processDesignRequests(data);
 
@@ -51,7 +56,7 @@ export default function DesignSearchPage() {
             console.error(err);
             setLoading(false);
         });
-    }, []);
+    }, [selectedFile]);
 
     const processDesignRequests = (data: Report[]): DesignRequest[] => {
         const designMap = new Map<number, DesignRequest>();
@@ -333,7 +338,7 @@ export default function DesignSearchPage() {
                                     const lastActivity = req.requests[req.requests.length - 1];
 
                                     return (
-                                        <>
+                                        <React.Fragment key={req.designNo}>
                                             <tr
                                                 key={req.designNo}
                                                 className="border-b border-sf-border hover:bg-gray-50 transition-colors cursor-pointer"
@@ -456,7 +461,7 @@ export default function DesignSearchPage() {
                                                     </td>
                                                 </tr>
                                             )}
-                                        </>
+                                        </React.Fragment>
                                     );
                                 })}
                             </tbody>

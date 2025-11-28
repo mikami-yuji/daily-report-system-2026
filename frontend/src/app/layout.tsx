@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AppLayout from "@/components/AppLayout";
+import { FileProvider } from "@/context/FileContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,9 +27,11 @@ export default function RootLayout({
   return (
     <html lang="ja" suppressHydrationWarning>
       <body className="antialiased bg-sf-bg text-sf-text h-screen overflow-hidden">
-        <AppLayout>
-          {children}
-        </AppLayout>
+        <FileProvider>
+          <AppLayout>
+            {children}
+          </AppLayout>
+        </FileProvider>
       </body>
     </html>
   );

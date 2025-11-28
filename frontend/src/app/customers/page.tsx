@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getReports, Report } from '@/lib/api';
+import { useFile } from '@/context/FileContext';
 import { Search, Users, TrendingUp, Phone, MapPin } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,6 +20,7 @@ interface CustomerSummary {
 }
 
 export default function CustomersPage() {
+    const { selectedFile } = useFile();
     const [customers, setCustomers] = useState<CustomerSummary[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<CustomerSummary[]>([]);
     const [loading, setLoading] = useState(true);
@@ -28,14 +30,17 @@ export default function CustomersPage() {
     const [isPriorityOnly, setIsPriorityOnly] = useState(false);
 
     useEffect(() => {
-        getReports().then(data => {
+        if (!selectedFile) return;
+
+        setLoading(true);
+        getReports(selectedFile).then(data => {
             processCustomers(data);
             setLoading(false);
         }).catch(err => {
             console.error(err);
             setLoading(false);
         });
-    }, []);
+    }, [selectedFile]);
 
     const processCustomers = (data: Report[]) => {
         const customerMap = new Map<string, CustomerSummary>();

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getReports, Report } from '@/lib/api';
+import { useFile } from '@/context/FileContext';
 import {
     User,
     MapPin,
@@ -29,6 +30,7 @@ interface DesignRequest {
 }
 
 export default function CustomerDetailPage() {
+    const { selectedFile } = useFile();
     const params = useParams();
     const customerCode = params.code as string;
 
@@ -40,8 +42,8 @@ export default function CustomerDetailPage() {
     const [selectedInterviewer, setSelectedInterviewer] = useState<string>('');
 
     useEffect(() => {
-        if (customerCode) {
-            getReports().then(data => {
+        if (customerCode && selectedFile) {
+            getReports(selectedFile).then(data => {
                 const customerReports = data.filter(r => String(r.得意先CD) === customerCode);
 
                 customerReports.sort((a, b) => {
@@ -63,7 +65,7 @@ export default function CustomerDetailPage() {
                 setLoading(false);
             });
         }
-    }, [customerCode]);
+    }, [customerCode, selectedFile]);
 
     const processDesignRequests = (data: Report[]) => {
         const designMap = new Map<number, DesignRequest>();
@@ -239,7 +241,7 @@ export default function CustomerDetailPage() {
                     <div className="text-center px-4 py-3 bg-orange-50 rounded border border-orange-200">
                         <p className="text-xs text-orange-700 mb-1">提案物</p>
                         <p className="text-2xl font-semibold text-orange-600">
-                            {reports.filter(r => r.提案物 && r.提案物.trim() !== '').length}
+                            {reports.filter(r => r.提案物 && typeof r.提案物 === 'string' && r.提案物.trim() !== '').length}
                         </p>
                     </div>
                     <div className="text-center px-4 py-3 bg-gray-50 rounded border border-sf-border">

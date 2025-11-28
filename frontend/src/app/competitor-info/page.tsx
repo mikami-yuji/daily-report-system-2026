@@ -2,17 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { getReports, Report } from '@/lib/api';
+import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, Building2, AlertCircle, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
 
 export default function CompetitorInfoPage() {
+    const { selectedFile } = useFile();
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filteredReports, setFilteredReports] = useState<Report[]>([]);
 
     useEffect(() => {
-        getReports().then(data => {
+        if (!selectedFile) return;
+
+        setLoading(true);
+        getReports(selectedFile).then(data => {
             // 競合他社情報があるレポートのみを抽出
             const competitorReports = data.filter(r =>
                 r.競合他社情報 &&
@@ -34,7 +39,7 @@ export default function CompetitorInfoPage() {
             console.error(err);
             setLoading(false);
         });
-    }, []);
+    }, [selectedFile]);
 
     useEffect(() => {
         if (searchTerm.trim() === '') {

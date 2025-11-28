@@ -56,6 +56,53 @@ def list_excel_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/customers")
+def get_customers(filename: str = DEFAULT_EXCEL_FILE):
+    """Get customer list from the Excel file"""
+    excel_file = os.path.join(EXCEL_DIR, filename)
+    if not os.path.exists(excel_file):
+        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
+    
+    try:
+        # Read the '得意先_List' sheet
+        df = pd.read_excel(excel_file, sheet_name='得意先_List', header=0)
+        
+        # Clean up column names
+        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        
+        # Fill NaN values with empty strings
+        df = df.fillna(value='')
+        
+        # Convert to dict
+        records = df.to_dict(orient="records")
+        
+        # Clean the records
+        import math
+        cleaned_records = []
+        for record in records:
+            cleaned_record = {}
+            for key, value in record.items():
+                if isinstance(value, float):
+                    if math.isnan(value) or math.isinf(value):
+                        cleaned_record[key] = None
+                    else:
+                        cleaned_record[key] = value
+                elif value == '':
+                    cleaned_record[key] = None
+                elif isinstance(value, str):
+                    import re
+                    cleaned_value = re.sub(r'_x000D_', '\n', value)
+                    cleaned_value = cleaned_value.replace('\r', '')
+                    cleaned_record[key] = cleaned_value
+                else:
+                    cleaned_record[key] = value
+            cleaned_records.append(cleaned_record)
+
+        return cleaned_records
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     excel_file = os.path.join(EXCEL_DIR, filename)

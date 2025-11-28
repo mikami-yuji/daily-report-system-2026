@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, Report } from '@/lib/api';
+import { getReports, Report, getCustomers, Customer } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table } from 'lucide-react';
 
@@ -401,9 +401,23 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         滞在時間: '',
         商談内容: '',
         提案物: '',
-        次回プラン: ''
+        次回プラン: '',
+        重点顧客: '',
+        ランク: ''
     });
     const [submitting, setSubmitting] = useState(false);
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+
+    useEffect(() => {
+        // Fetch customer list
+        getCustomers(selectedFile).then(data => {
+            setCustomers(data);
+        }).catch(err => {
+            console.error('Failed to fetch customers:', err);
+        });
+    }, [selectedFile]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -429,6 +443,38 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         } finally {
             setSubmitting(false);
         }
+    };
+
+    const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setFormData(prev => ({
+            ...prev,
+            訪問先名: value
+        }));
+
+        // Filter customers based on input
+        if (value.trim()) {
+            const filtered = customers.filter(c =>
+                c.得意先名 && c.得意先名.includes(value)
+            );
+            setFilteredCustomers(filtered);
+            setShowSuggestions(filtered.length > 0);
+        } else {
+            setFilteredCustomers([]);
+            setShowSuggestions(false);
+        }
+    };
+
+    const selectCustomer = (customer: Customer) => {
+        setFormData(prev => ({
+            ...prev,
+            訪問先名: customer.得意先名 || '',
+            得意先CD: customer.得意先CD || '',
+            エリア: customer.エリア || '',
+            重点顧客: customer.重点顧客 || '',
+            ランク: customer.ランク || ''
+        }));
+        setShowSuggestions(false);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -506,16 +552,38 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             />
                         </div>
 
-                        <div>
+                        <div className="relative">
                             <label className="block text-sm font-medium text-sf-text mb-1">訪問先名 *</label>
                             <input
                                 type="text"
                                 name="訪問先名"
                                 value={formData.訪問先名}
-                                onChange={handleChange}
+                                onChange={handleCustomerNameChange}
+                                onFocus={() => {
+                                    if (formData.訪問先名 && filteredCustomers.length > 0) {
+                                        setShowSuggestions(true);
+                                    }
+                                }}
                                 required
+                                autoComplete="off"
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />
+                            {showSuggestions && filteredCustomers.length > 0 && (
+                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-60 overflow-y-auto">
+                                    {filteredCustomers.map((customer, idx) => (
+                                        <div
+                                            key={idx}
+                                            onClick={() => selectCustomer(customer)}
+                                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
+                                        >
+                                            <div className="font-medium">{customer.得意先名}</div>
+                                            <div className="text-xs text-sf-text-weak">
+                                                CD: {customer.得意先CD} | エリア: {customer.エリア || '-'} | ランク: {customer.ランク || '-'}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         <div>

@@ -419,6 +419,35 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         });
     }, [selectedFile]);
 
+    // Handle customer name change with keyword search across all fields
+    const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setFormData(prev => ({
+            ...prev,
+            訪問先名: value,
+        }));
+
+        if (value.trim()) {
+            const searchTerm = value.toLowerCase();
+            const filtered = customers.filter(c => {
+                return Object.values(c).some(val => {
+                    if (typeof val === 'string') {
+                        return val.toLowerCase().includes(searchTerm);
+                    }
+                    if (typeof val === 'number') {
+                        return String(val).includes(searchTerm);
+                    }
+                    return false;
+                });
+            }).slice(0, 20);
+            setFilteredCustomers(filtered);
+            setShowSuggestions(filtered.length > 0);
+        } else {
+            setFilteredCustomers([]);
+            setShowSuggestions(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
@@ -445,25 +474,6 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         }
     };
 
-    const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        setFormData(prev => ({
-            ...prev,
-            訪問先名: value
-        }));
-
-        // Filter customers based on input
-        if (value.trim()) {
-            const filtered = customers.filter(c =>
-                c.得意先名 && c.得意先名.includes(value)
-            );
-            setFilteredCustomers(filtered);
-            setShowSuggestions(filtered.length > 0);
-        } else {
-            setFilteredCustomers([]);
-            setShowSuggestions(false);
-        }
-    };
 
     const selectCustomer = (customer: Customer) => {
         setFormData(prev => ({
@@ -522,10 +532,17 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             >
                                 <option value="">選択してください</option>
-                                <option value="訪問">訪問</option>
+                                <option value="訪問（アポあり）">訪問（アポあり）</option>
+                                <option value="訪問（アポなし）">訪問（アポなし）</option>
+                                <option value="訪問（新規）">訪問（新規）</option>
                                 <option value="訪問（クレーム）">訪問（クレーム）</option>
-                                <option value="電話">電話</option>
-                                <option value="メール">メール</option>
+                                <option value="電話商談">電話商談</option>
+                                <option value="電話アポ取り">電話アポ取り</option>
+                                <option value="メール商談">メール商談</option>
+                                <option value="量販店調査">量販店調査</option>
+                                <option value="社内（半日）">社内（半日）</option>
+                                <option value="社内（１日）">社内（１日）</option>
+                                <option value="外出時間">外出時間</option>
                                 <option value="その他">その他</option>
                             </select>
                         </div>
@@ -561,6 +578,11 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                             </div>
                                         </div>
                                     ))}
+                                    {filteredCustomers.length === 20 && (
+                                        <div className="px-3 py-2 text-xs text-center text-sf-text-weak bg-gray-50 border-t border-sf-border">
+                                            検索結果が多いため、上位20件のみ表示しています
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             {formData.得意先CD && (
@@ -586,14 +608,18 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
 
                         <div>
                             <label className="block text-sm font-medium text-sf-text mb-1">滞在時間</label>
-                            <input
-                                type="text"
+                            <select
                                 name="滞在時間"
                                 value={formData.滞在時間}
                                 onChange={handleChange}
-                                placeholder="例: 1時間"
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                            />
+                            >
+                                <option value="">選択してください</option>
+                                <option value="10分未満">10分未満</option>
+                                <option value="30分未満">30分未満</option>
+                                <option value="60分未満">60分未満</option>
+                                <option value="60分以上">60分以上</option>
+                            </select>
                         </div>
                     </div>
 

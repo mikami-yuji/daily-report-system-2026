@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { getReports, Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter } from 'lucide-react';
@@ -338,7 +338,7 @@ export default function DesignSearchPage() {
                                     const lastActivity = req.requests[req.requests.length - 1];
 
                                     return (
-                                        <>
+                                        <React.Fragment key={req.designNo}>
                                             <tr
                                                 key={req.designNo}
                                                 className="border-b border-sf-border hover:bg-gray-50 transition-colors cursor-pointer"
@@ -461,7 +461,7 @@ export default function DesignSearchPage() {
                                                     </td>
                                                 </tr>
                                             )}
-                                        </>
+                                        </React.Fragment>
                                     );
                                 })}
                             </tbody>

@@ -234,7 +234,7 @@ export default function CustomerDetailPage() {
                     <div className="text-center px-4 py-3 bg-orange-50 rounded border border-orange-200">
                         <p className="text-xs text-orange-700 mb-1">提案物</p>
                         <p className="text-2xl font-semibold text-orange-600">
-                            {reports.filter(r => r.提案物 && r.提案物.trim() !== '').length}
+                            {reports.filter(r => r.提案物 && typeof r.提案物 === 'string' && r.提案物.trim() !== '').length}
                         </p>
                     </div>
                     <div className="text-center px-4 py-3 bg-gray-50 rounded border border-sf-border">

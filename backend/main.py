@@ -58,19 +58,49 @@ def list_excel_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/customers")
-def get_customers(filename: str = DEFAULT_EXCEL_FILE):
-    """Get customer list from the Excel file"""
+
+# Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
+CACHE = {}
+
+def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
+    """
+    Get dataframe from cache or read from Excel file if modified or not in cache.
+    """
     excel_file = os.path.join(EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
     
+    current_mtime = os.path.getmtime(excel_file)
+    cache_key = (filename, sheet_name)
+    
+    if cache_key in CACHE:
+        cached_data = CACHE[cache_key]
+        if cached_data['mtime'] == current_mtime:
+            return cached_data['df'].copy() # Return copy to prevent mutation of cached data
+            
+    # Read from file
     try:
-        # Read the '得意先_List' sheet
-        df = pd.read_excel(excel_file, sheet_name='得意先_List', header=0)
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
+        CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
+        return df.copy()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
+
+@app.get("/customers")
+def get_customers(filename: str = DEFAULT_EXCEL_FILE):
+    """Get customer list from the Excel file"""
+    try:
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '得意先_List')
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        
+        # Rename specific columns
+        df = df.rename(columns={
+            '得意先CD.': '得意先CD',
+            '直送先CD.': '直送先CD',
+        })
         
         # Fill NaN values with empty strings
         df = df.fillna(value='')
@@ -103,7 +133,7 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         return cleaned_records
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+        
 
 @app.get("/interviewers")
 def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
@@ -138,13 +168,9 @@ def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
 
 @app.get("/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
     try:
-        # Read the '営業日報' sheet
-        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
         
         # Clean up column names (remove newlines)
         df.columns = [str(col).replace('\n', '') for col in df.columns]
@@ -196,13 +222,9 @@ def get_reports(filename: str = DEFAULT_EXCEL_FILE):
 @app.get("/interviewers/{customer_cd}")
 def get_interviewers(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of interviewers for a specific customer"""
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
     try:
-        # Read the '営業日報' sheet
-        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '') for col in df.columns]
@@ -212,8 +234,15 @@ def get_interviewers(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
             '得意先CD.': '得意先CD',
         })
         
+        # Convert customer_cd to float for matching (Excel stores as float)
+        try:
+            customer_cd_float = float(customer_cd)
+        except ValueError:
+            # If conversion fails, try string matching
+            customer_cd_float = customer_cd
+        
         # Filter by customer code and get unique interviewers
-        customer_reports = df[df['得意先CD'] == customer_cd]
+        customer_reports = df[df['得意先CD'] == customer_cd_float]
         interviewers = customer_reports['面談者'].dropna().unique().tolist()
         
         # Remove empty strings and sort
@@ -221,6 +250,65 @@ def get_interviewers(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         interviewers = sorted(set(interviewers))
         
         return {"customer_cd": customer_cd, "interviewers": interviewers}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/designs/{customer_cd}")
+def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
+    """Get list of design requests for a specific customer"""
+    try:
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
+        
+        # Clean up column names
+        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        
+        # Rename specific columns
+        df = df.rename(columns={
+            '得意先CD.': '得意先CD',
+        })
+        
+        # Convert customer_cd to float for matching
+        try:
+            customer_cd_float = float(customer_cd)
+        except ValueError:
+            customer_cd_float = customer_cd
+        
+        # Filter by customer code
+        customer_reports = df[df['得意先CD'] == customer_cd_float].copy()
+        
+        # Filter for records with design request number
+        design_reports = customer_reports[customer_reports['デザイン依頼No.'].notna()]
+        
+        # Get unique design request numbers
+        unique_design_nos = design_reports['デザイン依頼No.'].unique()
+        
+        designs = []
+        for design_no in unique_design_nos:
+            # Get all records for this design number
+            design_records = design_reports[design_reports['デザイン依頼No.'] == design_no]
+            
+            # Get the latest record (assuming lower down in Excel is newer, or we could sort by date if available)
+            # Here we just take the last one in the dataframe which corresponds to the last row in Excel
+            latest_record = design_records.iloc[-1]
+            
+            # Get the status
+            status = str(latest_record['デザイン進捗状況']) if pd.notna(latest_record['デザイン進捗状況']) else ""
+            
+            # Skip designs with completed/rejected statuses: 出稿, 不採用(コンペ負け), 不採用(企画倒れ)
+            if '出稿' in status or 'コンペ負け' in status or '企画倒れ' in status:
+                continue
+            
+            design_info = {
+                "デザイン依頼No": design_no,
+                "デザイン名": str(latest_record['デザイン名']) if pd.notna(latest_record['デザイン名']) else "",
+                "デザイン種別": str(latest_record['デザイン種別']) if pd.notna(latest_record['デザイン種別']) else "",
+                "デザイン進捗状況": status,
+                "デザイン提案有無": str(latest_record['デザイン提案有無']) if pd.notna(latest_record['デザイン提案有無']) else ""
+            }
+            designs.append(design_info)
+            
+        return {"customer_cd": customer_cd, "designs": designs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

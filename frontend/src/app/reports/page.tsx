@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, Report, getCustomers, Customer, updateReport, getInterviewers } from '@/lib/api';
+import { getReports, Report, getCustomers, Customer, updateReport, getInterviewers, getDesigns, Design } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table, Edit } from 'lucide-react';
 
@@ -405,15 +405,12 @@ function InfoRow({ label, value }: { label: string; value: any }) {
 
 function LongTextRow({ label, value }: { label: string; value: any }) {
     return (
-        <div className="space-y-1">
-            <span className="text-xs text-sf-text-weak font-medium">{label}</span>
-            <p className="text-sm text-sf-text bg-white p-3 rounded border border-sf-border min-h-[60px] whitespace-pre-wrap">
-                {cleanText(value) || '-'}
-            </p>
+        <div className="flex flex-col gap-1">
+            <span className="text-xs text-sf-text-weak">{label}:</span>
+            <span className="text-sm text-sf-text whitespace-pre-wrap">{cleanText(value) || '-'}</span>
         </div>
     );
 }
-
 interface NewReportModalProps {
     onClose: () => void;
     onSuccess: () => void;
@@ -433,13 +430,20 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         提案物: '',
         次回プラン: '',
         重点顧客: '',
-        ランク: ''
+        ランク: '',
+        デザイン提案有無: '',
+        デザイン種別: '',
+        デザイン名: '',
+        デザイン進捗状況: '',
+        'デザイン依頼No.': '',
     });
     const [submitting, setSubmitting] = useState(false);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [interviewers, setInterviewers] = useState<string[]>([]);
+    const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>('none');
+    const [designs, setDesigns] = useState<Design[]>([]);
 
     useEffect(() => {
         // Fetch customer list
@@ -489,6 +493,89 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         }
     };
 
+    const selectCustomer = (customer: Customer) => {
+        setFormData(prev => ({
+            ...prev,
+            訪問先名: customer.直送先名 || customer.得意先名 || '',
+            得意先CD: customer.得意先CD || '',
+            エリア: customer.エリア || '',
+            重点顧客: customer.重点顧客 || '',
+            ランク: customer.ランク || ''
+        }));
+        setShowSuggestions(false);
+
+        // Fetch interviewers for this customer
+        if (customer.得意先CD) {
+            getInterviewers(customer.得意先CD, selectedFile).then(data => {
+                setInterviewers(data);
+            }).catch(err => {
+                console.error('Failed to fetch interviewers:', err);
+                setInterviewers([]);
+            });
+
+            // Fetch designs for this customer
+            getDesigns(customer.得意先CD, selectedFile).then(data => {
+                setDesigns(data);
+            }).catch(err => {
+                console.error('Failed to fetch designs:', err);
+                setDesigns([]);
+            });
+        }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        setFormData(prev => ({
+            ...prev,
+            [e.target.name]: e.target.value
+        }));
+    };
+
+    const handleDesignModeChange = (mode: 'none' | 'new' | 'existing') => {
+        setDesignMode(mode);
+        if (mode === 'none') {
+            setFormData(prev => ({
+                ...prev,
+                デザイン提案有無: '',
+                デザイン種別: '',
+                デザイン名: '',
+                デザイン進捗状況: '',
+                'デザイン依頼No.': ''
+            }));
+        } else if (mode === 'new') {
+            setFormData(prev => ({
+                ...prev,
+                デザイン提案有無: 'あり',
+                デザイン種別: '',
+                デザイン名: '',
+                デザイン進捗状況: '新規',
+                'デザイン依頼No.': ''
+            }));
+        } else if (mode === 'existing') {
+            setFormData(prev => ({
+                ...prev,
+                デザイン提案有無: 'あり',
+                デザイン種別: '',
+                デザイン名: '',
+                デザイン進捗状況: '',
+                'デザイン依頼No.': ''
+            }));
+        }
+    };
+
+    const handleDesignSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const designNo = e.target.value;
+        const selectedDesign = designs.find(d => String(d.デザイン依頼No) === designNo);
+        if (selectedDesign) {
+            setFormData(prev => ({
+                ...prev,
+                'デザイン依頼No.': String(selectedDesign.デザイン依頼No),
+                デザイン種別: selectedDesign.デザイン種別,
+                デザイン名: selectedDesign.デザイン名,
+                デザイン進捗状況: selectedDesign.デザイン進捗状況
+            }));
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
@@ -515,40 +602,10 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         }
     };
 
-
-    const selectCustomer = (customer: Customer) => {
-        setFormData(prev => ({
-            ...prev,
-            訪問先名: customer.得意先名 || '',
-            得意先CD: customer.得意先CD || '',
-            エリア: customer.エリア || '',
-            重点顧客: customer.重点顧客 || '',
-            ランク: customer.ランク || ''
-        }));
-        setShowSuggestions(false);
-
-        // Fetch interviewers for this customer
-        if (customer.得意先CD) {
-            getInterviewers(customer.得意先CD, selectedFile).then(data => {
-                setInterviewers(data);
-            }).catch(err => {
-                console.error('Failed to fetch interviewers:', err);
-                setInterviewers([]);
-            });
-        }
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        setFormData(prev => ({
-            ...prev,
-            [e.target.name]: e.target.value
-        }));
-    };
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center">
+                <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
                     <h2 className="text-xl font-bold text-sf-text">新規日報作成</h2>
                     <button
                         onClick={onClose}
@@ -599,75 +656,55 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             </select>
                         </div>
 
-                        <div className="relative md:col-span-2">
+                        <div className="md:col-span-2 relative">
                             <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
                             <input
                                 type="text"
                                 name="訪問先名"
                                 value={formData.訪問先名}
                                 onChange={handleCustomerNameChange}
-                                onFocus={() => {
-                                    if (formData.訪問先名 && filteredCustomers.length > 0) {
-                                        setShowSuggestions(true);
-                                    }
-                                }}
                                 required
                                 autoComplete="off"
-                                placeholder="得意先名を入力してください"
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />
-                            {showSuggestions && filteredCustomers.length > 0 && (
-                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-60 overflow-y-auto">
-                                    {filteredCustomers.map((customer, idx) => (
-                                        <div
-                                            key={idx}
+                            {showSuggestions && (
+                                <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg">
+                                    {filteredCustomers.map((customer, index) => (
+                                        <li
+                                            key={index}
+                                            className="px-3 py-2 hover:bg-sf-bg-light cursor-pointer"
                                             onClick={() => selectCustomer(customer)}
-                                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer text-sm"
                                         >
-                                            <div className="font-medium">{customer.得意先名}</div>
-                                            <div className="text-xs text-sf-text-weak">
-                                                CD: {customer.得意先CD} | エリア: {customer.エリア || '-'} | ランク: {customer.ランク || '-'}
+                                            <div className="font-medium">
+                                                {customer.得意先名}
+                                                {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">({customer.直送先名})</span>}
                                             </div>
-                                        </div>
+                                            <div className="text-xs text-sf-text-weak">
+                                                {customer.得意先CD} - {customer.エリア}
+                                            </div>
+                                        </li>
                                     ))}
-                                    {filteredCustomers.length === 20 && (
-                                        <div className="px-3 py-2 text-xs text-center text-sf-text-weak bg-gray-50 border-t border-sf-border">
-                                            検索結果が多いため、上位20件のみ表示しています
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            {formData.得意先CD && (
-                                <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-sf-text-weak border border-gray-200">
-                                    <span className="font-medium">得意先CD:</span> {formData.得意先CD} |
-                                    <span className="font-medium ml-2">エリア:</span> {formData.エリア || '-'} |
-                                    <span className="font-medium ml-2">ランク:</span> {formData.ランク || '-'} |
-                                    <span className="font-medium ml-2">重点:</span> {formData.重点顧客 || '-'}
-                                </div>
+                                </ul>
                             )}
                         </div>
 
                         <div>
                             <label className="block text-sm font-medium text-sf-text mb-1">面談者</label>
-                            <input
-                                type="text"
-                                name="面談者"
-                                value={formData.面談者}
-                                onChange={handleChange}
-                                list="interviewers-list"
-                                placeholder={interviewers.length > 0 ? "候補から選択または新規入力" : "面談者名を入力"}
-                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                            />
-                            <datalist id="interviewers-list">
-                                {interviewers.map((interviewer, idx) => (
-                                    <option key={idx} value={interviewer} />
-                                ))}
-                            </datalist>
-                            {interviewers.length > 0 && (
-                                <p className="mt-1 text-xs text-sf-text-weak">
-                                    過去の面談者: {interviewers.join(', ')}
-                                </p>
-                            )}
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    name="面談者"
+                                    value={formData.面談者}
+                                    onChange={handleChange}
+                                    list="interviewer-suggestions"
+                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                />
+                                <datalist id="interviewer-suggestions">
+                                    {interviewers.map((interviewer, index) => (
+                                        <option key={index} value={interviewer} />
+                                    ))}
+                                </datalist>
+                            </div>
                         </div>
 
                         <div>
@@ -688,6 +725,112 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                         </div>
                     </div>
 
+                    {/* Design Input Section */}
+                    <div className="md:col-span-2 border-t border-sf-border pt-4 mt-2">
+                        <h3 className="font-medium text-sf-text mb-3">デザイン情報</h3>
+                        <div className="space-y-4">
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-2">
+                                    <input
+                                        type="radio"
+                                        name="designMode"
+                                        value="none"
+                                        checked={designMode === 'none'}
+                                        onChange={() => handleDesignModeChange('none')}
+                                        className="text-sf-light-blue focus:ring-sf-light-blue"
+                                    />
+                                    <span>なし</span>
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input
+                                        type="radio"
+                                        name="designMode"
+                                        value="new"
+                                        checked={designMode === 'new'}
+                                        onChange={() => handleDesignModeChange('new')}
+                                        className="text-sf-light-blue focus:ring-sf-light-blue"
+                                    />
+                                    <span>新規</span>
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input
+                                        type="radio"
+                                        name="designMode"
+                                        value="existing"
+                                        checked={designMode === 'existing'}
+                                        onChange={() => handleDesignModeChange('existing')}
+                                        className="text-sf-light-blue focus:ring-sf-light-blue"
+                                    />
+                                    <span>既存</span>
+                                </label>
+                            </div>
+
+                            {designMode === 'existing' && (
+                                <div>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">過去のデザイン案件</label>
+                                    <select
+                                        onChange={handleDesignSelect}
+                                        value={formData['デザイン依頼No.']}
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                    >
+                                        <option value="">選択してください</option>
+                                        {designs.map((design) => (
+                                            <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
+                                                {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {(designMode === 'new' || designMode === 'existing') && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン依頼No.</label>
+                                        <input
+                                            type="text"
+                                            name="デザイン依頼No."
+                                            value={formData['デザイン依頼No.']}
+                                            onChange={handleChange}
+                                            readOnly={designMode === 'existing'}
+                                            className={`w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue ${designMode === 'existing' ? 'bg-gray-100' : ''}`}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン種別</label>
+                                        <input
+                                            type="text"
+                                            name="デザイン種別"
+                                            value={formData.デザイン種別}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン名</label>
+                                        <input
+                                            type="text"
+                                            name="デザイン名"
+                                            value={formData.デザイン名}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン進捗状況</label>
+                                        <input
+                                            type="text"
+                                            name="デザイン進捗状況"
+                                            value={formData.デザイン進捗状況}
+                                            onChange={handleChange}
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-sf-text mb-1">商談内容</label>
                         <textarea
@@ -695,7 +838,9 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             value={formData.商談内容}
                             onChange={handleChange}
                             rows={4}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 8}
+                            onBlur={(e) => e.currentTarget.rows = 4}
                         />
                     </div>
 
@@ -705,8 +850,10 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             name="提案物"
                             value={formData.提案物}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 
@@ -716,8 +863,10 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             name="次回プラン"
                             value={formData.次回プラン}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 
@@ -737,9 +886,9 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             {submitting ? '作成中...' : '作成'}
                         </button>
                     </div>
-                </form >
-            </div >
-        </div >
+                </form>
+            </div>
+        </div>
     );
 }
 
@@ -895,7 +1044,9 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
                             value={formData.商談内容}
                             onChange={handleChange}
                             rows={4}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 8}
+                            onBlur={(e) => e.currentTarget.rows = 4}
                         />
                     </div>
 
@@ -905,8 +1056,10 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
                             name="提案物"
                             value={formData.提案物}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 
@@ -916,8 +1069,10 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
                             name="次回プラン"
                             value={formData.次回プラン}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 

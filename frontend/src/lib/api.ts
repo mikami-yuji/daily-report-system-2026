@@ -80,6 +80,8 @@ export interface Customer {
     得意先CD: string;
     得意先名: string;
     フリガナ: string;
+    直送先CD?: string;
+    直送先名?: string;
     エリア: string;
     重点顧客: string;
     ランク: string;
@@ -99,3 +101,16 @@ export const getInterviewers = async (customerCode: string, filename?: string): 
     return response.data;
 };
 
+export interface Design {
+    デザイン依頼No: number;
+    デザイン名: string;
+    デザイン種別: string;
+    デザイン進捗状況: string;
+    デザイン提案有無: string;
+}
+
+export const getDesigns = async (customerCd: string, filename?: string): Promise<Design[]> => {
+    const params = filename ? { filename } : {};
+    const response = await axios.get(`${API_URL}/designs/${customerCd}`, { params });
+    return response.data.designs;
+};

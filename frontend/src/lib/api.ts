@@ -97,3 +97,16 @@ export const getInterviewers = async (customerCd: string, filename?: string): Pr
     return response.data.interviewers;
 };
 
+export interface Design {
+    デザイン依頼No: number;
+    デザイン名: string;
+    デザイン種別: string;
+    デザイン進捗状況: string;
+    デザイン提案有無: string;
+}
+
+export const getDesigns = async (customerCd: string, filename?: string): Promise<Design[]> => {
+    const params = filename ? { filename } : {};
+    const response = await axios.get(`${API_URL}/designs/${customerCd}`, { params });
+    return response.data.designs;
+};

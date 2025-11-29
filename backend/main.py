@@ -205,6 +205,62 @@ def get_interviewers(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/designs/{customer_cd}")
+def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
+    """Get list of design requests for a specific customer"""
+    excel_file = os.path.join(EXCEL_DIR, filename)
+    if not os.path.exists(excel_file):
+        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
+    
+    try:
+        # Read the '営業日報' sheet
+        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        
+        # Clean up column names
+        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        
+        # Rename specific columns
+        df = df.rename(columns={
+            '得意先CD.': '得意先CD',
+        })
+        
+        # Convert customer_cd to float for matching
+        try:
+            customer_cd_float = float(customer_cd)
+        except ValueError:
+            customer_cd_float = customer_cd
+        
+        # Filter by customer code
+        customer_reports = df[df['得意先CD'] == customer_cd_float].copy()
+        
+        # Filter for records with design request number
+        design_reports = customer_reports[customer_reports['デザイン依頼No.'].notna()]
+        
+        # Get unique design request numbers
+        unique_design_nos = design_reports['デザイン依頼No.'].unique()
+        
+        designs = []
+        for design_no in unique_design_nos:
+            # Get all records for this design number
+            design_records = design_reports[design_reports['デザイン依頼No.'] == design_no]
+            
+            # Get the latest record (assuming lower down in Excel is newer, or we could sort by date if available)
+            # Here we just take the last one in the dataframe which corresponds to the last row in Excel
+            latest_record = design_records.iloc[-1]
+            
+            design_info = {
+                "デザイン依頼No": design_no,
+                "デザイン名": str(latest_record['デザイン名']) if pd.notna(latest_record['デザイン名']) else "",
+                "デザイン種別": str(latest_record['デザイン種別']) if pd.notna(latest_record['デザイン種別']) else "",
+                "デザイン進捗状況": str(latest_record['デザイン進捗状況']) if pd.notna(latest_record['デザイン進捗状況']) else "",
+                "デザイン提案有無": str(latest_record['デザイン提案有無']) if pd.notna(latest_record['デザイン提案有無']) else ""
+            }
+            designs.append(design_info)
+            
+        return {"customer_cd": customer_cd, "designs": designs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/reports")
 def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
     excel_file = os.path.join(EXCEL_DIR, filename)

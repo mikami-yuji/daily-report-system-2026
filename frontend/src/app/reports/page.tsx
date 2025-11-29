@@ -507,7 +507,6 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
 
 
     const selectCustomer = (customer: Customer) => {
-        console.log('selectCustomer called with:', customer);
         setFormData(prev => ({
             ...prev,
             訪問先名: customer.得意先名 || '',
@@ -520,16 +519,12 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
 
         // Fetch interviewers for this customer
         if (customer.得意先CD) {
-            console.log('Fetching interviewers for customer CD:', customer.得意先CD);
             getInterviewers(customer.得意先CD, selectedFile).then(data => {
-                console.log('Interviewers fetched:', data);
                 setInterviewers(data);
             }).catch(err => {
                 console.error('Failed to fetch interviewers:', err);
                 setInterviewers([]);
             });
-        } else {
-            console.log('No customer CD, skipping interviewer fetch');
         }
     };
 

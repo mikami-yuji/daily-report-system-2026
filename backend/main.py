@@ -72,6 +72,11 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         # Clean up column names
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
         
+        # Rename specific columns
+        df = df.rename(columns={
+            '得意先CD.': '得意先CD',
+        })
+        
         # Fill NaN values with empty strings
         df = df.fillna(value='')
         

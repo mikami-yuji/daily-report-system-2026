@@ -58,16 +58,40 @@ def list_excel_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/customers")
-def get_customers(filename: str = DEFAULT_EXCEL_FILE):
-    """Get customer list from the Excel file"""
+
+# Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
+CACHE = {}
+
+def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
+    """
+    Get dataframe from cache or read from Excel file if modified or not in cache.
+    """
     excel_file = os.path.join(EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
     
+    current_mtime = os.path.getmtime(excel_file)
+    cache_key = (filename, sheet_name)
+    
+    if cache_key in CACHE:
+        cached_data = CACHE[cache_key]
+        if cached_data['mtime'] == current_mtime:
+            return cached_data['df'].copy() # Return copy to prevent mutation of cached data
+            
+    # Read from file
     try:
-        # Read the '得意先_List' sheet
-        df = pd.read_excel(excel_file, sheet_name='得意先_List', header=0)
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
+        CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
+        return df.copy()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
+
+@app.get("/customers")
+def get_customers(filename: str = DEFAULT_EXCEL_FILE):
+    """Get customer list from the Excel file"""
+    try:
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '得意先_List')
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
@@ -108,17 +132,13 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         return cleaned_records
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+        
 
 @app.get("/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
     try:
-        # Read the '営業日報' sheet
-        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
         
         # Clean up column names (remove newlines)
         df.columns = [str(col).replace('\n', '') for col in df.columns]
@@ -170,13 +190,9 @@ def get_reports(filename: str = DEFAULT_EXCEL_FILE):
 @app.get("/interviewers/{customer_cd}")
 def get_interviewers(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of interviewers for a specific customer"""
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
     try:
-        # Read the '営業日報' sheet
-        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '') for col in df.columns]
@@ -208,13 +224,9 @@ def get_interviewers(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
 @app.get("/designs/{customer_cd}")
 def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of design requests for a specific customer"""
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
     try:
-        # Read the '営業日報' sheet
-        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '') for col in df.columns]

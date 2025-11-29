@@ -825,7 +825,9 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             value={formData.商談内容}
                             onChange={handleChange}
                             rows={4}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 8}
+                            onBlur={(e) => e.currentTarget.rows = 4}
                         />
                     </div>
 
@@ -835,8 +837,10 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             name="提案物"
                             value={formData.提案物}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 
@@ -846,8 +850,10 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                             name="次回プラン"
                             value={formData.次回プラン}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 
@@ -1025,7 +1031,9 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
                             value={formData.商談内容}
                             onChange={handleChange}
                             rows={4}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 8}
+                            onBlur={(e) => e.currentTarget.rows = 4}
                         />
                     </div>
 
@@ -1035,8 +1043,10 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
                             name="提案物"
                             value={formData.提案物}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 
@@ -1046,8 +1056,10 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
                             name="次回プラン"
                             value={formData.次回プラン}
                             onChange={handleChange}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                            rows={1}
+                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                            onFocus={(e) => e.currentTarget.rows = 6}
+                            onBlur={(e) => e.currentTarget.rows = 1}
                         />
                     </div>
 

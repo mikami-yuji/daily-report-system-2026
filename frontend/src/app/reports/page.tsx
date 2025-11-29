@@ -486,7 +486,7 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
     const selectCustomer = (customer: Customer) => {
         setFormData(prev => ({
             ...prev,
-            訪問先名: customer.得意先名 || '',
+            訪問先名: customer.直送先名 || customer.得意先名 || '',
             得意先CD: customer.得意先CD || '',
             エリア: customer.エリア || '',
             重点顧客: customer.重点顧客 || '',
@@ -665,7 +665,10 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                             className="px-3 py-2 hover:bg-sf-bg-light cursor-pointer"
                                             onClick={() => selectCustomer(customer)}
                                         >
-                                            <div className="font-medium">{customer.得意先名}</div>
+                                            <div className="font-medium">
+                                                {customer.得意先名}
+                                                {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">({customer.直送先名})</span>}
+                                            </div>
                                             <div className="text-xs text-sf-text-weak">
                                                 {customer.得意先CD} - {customer.エリア}
                                             </div>

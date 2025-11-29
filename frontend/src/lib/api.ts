@@ -79,6 +79,8 @@ export const uploadFile = async (file: File) => {
 export interface Customer {
     得意先CD: string;
     得意先名: string;
+    直送先CD?: string;
+    直送先名?: string;
     エリア: string;
     重点顧客: string;
     ランク: string;

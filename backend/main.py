@@ -99,6 +99,7 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         # Rename specific columns
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
+            '直送先CD.': '直送先CD',
         })
         
         # Fill NaN values with empty strings

@@ -622,7 +622,7 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                         >
                                             <div className="font-medium">
                                                 {customer.得意先名}
-                                                {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">({customer.直送先名})</span>}
+                                                {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">(直送先: {customer.直送先名})</span>}
                                             </div>
                                             <div className="text-xs text-sf-text-weak">
                                                 {customer.得意先CD} - {customer.エリア}

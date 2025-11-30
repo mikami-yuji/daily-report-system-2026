@@ -139,8 +139,8 @@ export default function AnalyticsPage() {
                     {/* Mixed Analysis Chart */}
                     <div className="bg-white rounded-lg shadow p-6">
                         <h2 className="text-xl font-bold text-gray-900 mb-4">活動と成果の相関（混合分析）</h2>
-                        <div style={{ width: '100%', height: 400 }}>
-                            <ResponsiveContainer>
+                        <div style={{ width: '100%', height: 400, minHeight: 400 }}>
+                            <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={analytics.trends}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis dataKey="date" tick={{ fontSize: 12 }} />
@@ -173,8 +173,8 @@ export default function AnalyticsPage() {
                         {/* Contact Trends */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">商談活動推移</h2>
-                            <div style={{ width: '100%', height: 300 }}>
-                                <ResponsiveContainer>
+                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
+                                <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart data={analytics.trends}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="date" tick={{ fontSize: 12 }} />
@@ -192,11 +192,11 @@ export default function AnalyticsPage() {
                         {/* Area Distribution */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">エリア別活動分布</h2>
-                            <div style={{ width: '100%', height: 300 }}>
-                                <ResponsiveContainer>
+                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
+                                <ResponsiveContainer width="100%" height="100%">
                                     <PieChart>
                                         <Pie
-                                            data={analytics.byArea}
+                                            data={analytics.byArea.filter(item => item.area !== '未設定')}
                                             dataKey="count"
                                             nameKey="area"
                                             cx="50%"
@@ -206,7 +206,7 @@ export default function AnalyticsPage() {
                                             paddingAngle={5}
                                             label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                                         >
-                                            {analytics.byArea.map((entry, index) => (
+                                            {analytics.byArea.filter(item => item.area !== '未設定').map((entry, index) => (
                                                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                             ))}
                                         </Pie>
@@ -223,7 +223,7 @@ export default function AnalyticsPage() {
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-bold text-gray-900 mb-4">エリア別訪問数ランキング</h3>
                             <div className="space-y-3">
-                                {analytics.byArea.slice(0, 5).map((item, index) => (
+                                {analytics.byArea.filter(item => item.area !== '未設定').slice(0, 5).map((item, index) => (
                                     <div key={index} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded">
                                         <div className="flex items-center gap-3">
                                             <span className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded-full text-xs font-bold text-gray-600">
@@ -240,7 +240,7 @@ export default function AnalyticsPage() {
                         <div className="bg-white rounded-lg shadow p-6">
                             <h3 className="text-lg font-bold text-gray-900 mb-4">行動内容別ランキング</h3>
                             <div className="space-y-3">
-                                {analytics.byAction.slice(0, 5).map((item, index) => (
+                                {analytics.byAction.filter(item => item.action !== '未設定').slice(0, 5).map((item, index) => (
                                     <div key={index} className="flex justify-between items-center p-2 hover:bg-gray-50 rounded">
                                         <div className="flex items-center gap-3">
                                             <span className="w-6 h-6 flex items-center justify-center bg-gray-100 rounded-full text-xs font-bold text-gray-600">
@@ -260,18 +260,20 @@ export default function AnalyticsPage() {
             {activeTab === 'design' && (
                 <div className="space-y-8 animate-fadeIn">
                     {/* Design KPIs */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <KPICard title="デザイン提案" value={analytics.kpis.totalProposals} icon={FileText} color="green" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <KPICard title="デザイン提案" value={analytics.kpis.totalProposals} icon={FileText} color="blue" />
                         <KPICard title="進行中案件" value={analytics.kpis.activeProjects} icon={Briefcase} color="purple" />
-                        <KPICard title="決定デザイン" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="orange" />
+                        <KPICard title="決定デザイン" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="green" />
+                        <KPICard title="不採用" value={analytics.kpis.rejectedDesigns} icon={CheckCircle} color="red" />
+                        <KPICard title="決定率" value={`${analytics.kpis.acceptanceRate}%`} icon={CheckCircle} color="orange" />
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Design Progress */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン進捗状況</h2>
-                            <div style={{ width: '100%', height: 300 }}>
-                                <ResponsiveContainer>
+                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
+                                <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={analytics.designProgress} layout="vertical" margin={{ left: 40 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                         <XAxis type="number" />
@@ -289,17 +291,18 @@ export default function AnalyticsPage() {
 
                         {/* Design Trends */}
                         <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-xl font-bold text-gray-900 mb-4">提案・決定推移</h2>
-                            <div style={{ width: '100%', height: 300 }}>
-                                <ResponsiveContainer>
+                            <h2 className="text-xl font-bold text-gray-900 mb-4">提案・決定・不採用推移</h2>
+                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
+                                <ResponsiveContainer width="100%" height="100%">
                                     <ComposedChart data={analytics.trends}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                                         <YAxis />
                                         <Tooltip />
                                         <Legend />
-                                        <Bar dataKey="proposals" name="提案数" fill="#82ca9d" barSize={20} radius={[4, 4, 0, 0]} />
-                                        <Line type="monotone" dataKey="completed" name="決定数" stroke="#ff7300" strokeWidth={3} />
+                                        <Bar dataKey="proposals" name="提案数" fill="#8884d8" barSize={20} radius={[4, 4, 0, 0]} />
+                                        <Line type="monotone" dataKey="completed" name="決定数" stroke="#82ca9d" strokeWidth={3} />
+                                        <Line type="monotone" dataKey="rejected" name="不採用数" stroke="#ff8042" strokeWidth={3} />
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             </div>

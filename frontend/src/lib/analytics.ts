@@ -6,6 +6,8 @@ export interface AnalyticsData {
         totalProposals: number;
         activeProjects: number;
         completedDesigns: number;
+        rejectedDesigns: number;
+        acceptanceRate: number;
         phoneContacts: number;
         emailContacts: number;
     };
@@ -13,6 +15,8 @@ export interface AnalyticsData {
         date: string;
         visits: number;
         proposals: number;
+        completed: number;
+        rejected: number;
         phone: number;
         email: number;
     }[];
@@ -33,6 +37,7 @@ export interface AnalyticsData {
         name: string;
         visits: number;
         proposals: number;
+        acceptanceRate: number;
     }[];
     designProgress: {
         status: string;
@@ -70,6 +75,18 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         return status.includes('出稿');
     }).length;
 
+    // Rejected designs
+    const rejectedDesigns = filteredReports.filter(r => {
+        if (!r.デザイン進捗状況) return false;
+        const status = String(r.デザイン進捗状況);
+        return status.includes('不採用');
+    }).length;
+
+    // Acceptance Rate
+    const acceptanceRate = totalProposals > 0
+        ? Math.round((completedDesigns / totalProposals) * 100)
+        : 0;
+
     // Phone and email contacts
     const phoneContacts = filteredReports.filter(r => {
         const action = String(r.行動内容 || '');
@@ -82,17 +99,25 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
     }).length;
 
     // Trends by date
-    const trendMap = new Map<string, { visits: number; proposals: number; phone: number; email: number }>();
+    const trendMap = new Map<string, { visits: number; proposals: number; completed: number; rejected: number; phone: number; email: number }>();
     filteredReports.forEach(report => {
         const date = report.日付;
         const action = String(report.行動内容 || '');
+        const status = String(report.デザイン進捗状況 || '');
+
         if (!trendMap.has(date)) {
-            trendMap.set(date, { visits: 0, proposals: 0, phone: 0, email: 0 });
+            trendMap.set(date, { visits: 0, proposals: 0, completed: 0, rejected: 0, phone: 0, email: 0 });
         }
         const trend = trendMap.get(date)!;
         trend.visits++;
         if (report.デザイン提案有無 === 'あり') {
             trend.proposals++;
+        }
+        if (status.includes('出稿')) {
+            trend.completed++;
+        }
+        if (status.includes('不採用')) {
+            trend.rejected++;
         }
         if (action.includes('電話')) {
             trend.phone++;
@@ -143,20 +168,29 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         .sort((a, b) => b.count - a.count);
 
     // By Interviewer
-    const interviewerMap = new Map<string, { visits: number; proposals: number }>();
+    const interviewerMap = new Map<string, { visits: number; proposals: number; completed: number }>();
     filteredReports.forEach(report => {
         const interviewer = report.面談者 || '未設定';
+        const status = String(report.デザイン進捗状況 || '');
+
         if (!interviewerMap.has(interviewer)) {
-            interviewerMap.set(interviewer, { visits: 0, proposals: 0 });
+            interviewerMap.set(interviewer, { visits: 0, proposals: 0, completed: 0 });
         }
         const data = interviewerMap.get(interviewer)!;
         data.visits++;
         if (report.デザイン提案有無 === 'あり') {
             data.proposals++;
         }
+        if (status.includes('出稿')) {
+            data.completed++;
+        }
     });
     const byInterviewer = Array.from(interviewerMap.entries())
-        .map(([name, data]) => ({ name, ...data }))
+        .map(([name, data]) => ({
+            name,
+            ...data,
+            acceptanceRate: data.proposals > 0 ? Math.round((data.completed / data.proposals) * 100) : 0
+        }))
         .sort((a, b) => b.visits - a.visits);
 
     // Design Progress
@@ -177,6 +211,8 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
             totalProposals,
             activeProjects,
             completedDesigns,
+            rejectedDesigns,
+            acceptanceRate,
             phoneContacts,
             emailContacts
         },

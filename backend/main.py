@@ -34,6 +34,11 @@ class ReportInput(BaseModel):
     次回プラン: str = ""
     上長コメント: str = ""
     コメント返信欄: str = ""
+    上長: str = ""
+    山澄常務: str = ""
+    岡本常務: str = ""
+    中野次長: str = ""
+    既読チェック: str = ""
 
 @app.get("/")
 def read_root():
@@ -326,12 +331,18 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
         wb = openpyxl.load_workbook(excel_file, keep_vba=True)
         ws = wb['営業日報']
         
+        # Find the maximum management number by scanning all rows
+        max_mgmt_num = 0
+        for row in range(2, ws.max_row + 1):  # Start from row 2 (skip header)
+            mgmt_num = ws.cell(row=row, column=1).value
+            if isinstance(mgmt_num, (int, float)) and not pd.isna(mgmt_num):
+                max_mgmt_num = max(max_mgmt_num, int(mgmt_num))
+        
+        # Increment to get new management number
+        new_mgmt_num = max_mgmt_num + 1
+        
         # Find the next empty row
         next_row = ws.max_row + 1
-        
-        # Get the last management number and increment it
-        last_mgmt_num = ws.cell(row=ws.max_row, column=1).value
-        new_mgmt_num = (last_mgmt_num + 1) if isinstance(last_mgmt_num, int) else next_row - 1
         
         # Prepare the data to write
         # Adjust column indices based on actual Excel structure (251113_2026-_-_008.xlsm)
@@ -346,26 +357,31 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
         ws.cell(row=next_row, column=19, value=report.商談内容)  # 商談内容 (Index 19)
         ws.cell(row=next_row, column=20, value=report.提案物)  # 提案物 (Index 20)
         ws.cell(row=next_row, column=21, value=report.次回プラン)  # 次回プラン (Index 21)
-        ws.cell(row=next_row, column=23, value=report.上長コメント)  # 上長コメント (Index 23)
-        ws.cell(row=next_row, column=24, value=report.コメント返信欄)  # コメント返信欄 (Index 24)
         
         # Save the workbook
         wb.save(excel_file)
         wb.close()
         
+        # Clear cache
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
         return {"message": "Report added successfully", "management_number": new_mgmt_num}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.put("/reports/{management_number}")
-def update_report(management_number: int, report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
+@app.post("/reports/{management_number}")
+def update_report(management_number: float, report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
+    """Update an existing report by management number"""
     try:
-        # Load workbook with openpyxl to preserve formulas and macros
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        
+        # Load the workbook
         wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+             
         ws = wb['営業日報']
         
         # Find the row with the matching management number
@@ -379,23 +395,35 @@ def update_report(management_number: int, report: ReportInput, filename: str = D
         if not target_row:
             raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
         
-        # Update the data
+        # Update the data with correct column indices
         ws.cell(row=target_row, column=2, value=report.日付)
         ws.cell(row=target_row, column=3, value=report.行動内容)
         ws.cell(row=target_row, column=4, value=report.エリア)
         ws.cell(row=target_row, column=5, value=report.得意先CD)
         ws.cell(row=target_row, column=7, value=report.訪問先名)
-        ws.cell(row=target_row, column=12, value=report.面談者)
-        ws.cell(row=target_row, column=13, value=report.滞在時間)
-        ws.cell(row=target_row, column=19, value=report.商談内容)
-        ws.cell(row=target_row, column=20, value=report.提案物)
-        ws.cell(row=target_row, column=21, value=report.次回プラン)
-        ws.cell(row=target_row, column=23, value=report.上長コメント)
-        ws.cell(row=target_row, column=24, value=report.コメント返信欄)
+        ws.cell(row=target_row, column=11, value=report.面談者)
+        ws.cell(row=target_row, column=12, value=report.滞在時間)
+        ws.cell(row=target_row, column=18, value=report.商談内容)
+        ws.cell(row=target_row, column=19, value=report.提案物)
+        ws.cell(row=target_row, column=20, value=report.次回プラン)
+        
+        # Comments and Approvals
+        ws.cell(row=target_row, column=22, value=report.上長コメント)
+        ws.cell(row=target_row, column=23, value=report.コメント返信欄)
+        ws.cell(row=target_row, column=24, value=report.上長)
+        ws.cell(row=target_row, column=25, value=report.山澄常務)
+        ws.cell(row=target_row, column=26, value=report.岡本常務)
+        ws.cell(row=target_row, column=27, value=report.中野次長)
+        ws.cell(row=target_row, column=29, value=report.既読チェック)
         
         # Save the workbook
         wb.save(excel_file)
         wb.close()
+        
+        # Clear cache for this file
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
         
         return {"message": "Report updated successfully"}
     except Exception as e:

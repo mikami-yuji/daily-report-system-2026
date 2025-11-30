@@ -58,9 +58,9 @@ export const addReport = async (report: Omit<Report, '管理番号'>, filename?:
     return response.data;
 };
 
-export const updateReport = async (managementNumber: number, report: Omit<Report, '管理番号'>, filename?: string) => {
+export const updateReport = async (managementNumber: number, report: Partial<Omit<Report, '管理番号'>>, filename?: string) => {
     const params = filename ? { filename } : {};
-    const response = await axios.put(`${API_URL}/reports/${managementNumber}`, report, { params });
+    const response = await axios.post(`${API_URL}/reports/${managementNumber}`, report, { params });
     return response.data;
 };
 

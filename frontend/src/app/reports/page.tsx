@@ -540,6 +540,8 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                 throw new Error(`Failed to create report: ${JSON.stringify(errorData)}`);
             }
 
+            const responseData = await response.json();
+            alert(`日報を保存しました。\n\n保存先:\n${responseData.file_path}`);
             onSuccess();
         } catch (error: any) {
             console.error('Error creating report:', error);

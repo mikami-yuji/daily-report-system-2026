@@ -394,7 +394,11 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
         if cache_key in CACHE:
             del CACHE[cache_key]
         
-        return {"message": "Report added successfully", "management_number": new_mgmt_num}
+        return {
+            "message": "Report added successfully", 
+            "management_number": new_mgmt_num,
+            "file_path": os.path.abspath(excel_file)
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

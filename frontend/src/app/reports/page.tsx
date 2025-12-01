@@ -541,7 +541,7 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
             }
 
             const responseData = await response.json();
-            alert(`日報を保存しました。\n\n保存先:\n${responseData.file_path}`);
+            alert(`日報を保存しました。\n\n管理番号: ${responseData.management_number}\n\n保存先:\n${responseData.file_path}`);
             onSuccess();
         } catch (error: any) {
             console.error('Error creating report:', error);

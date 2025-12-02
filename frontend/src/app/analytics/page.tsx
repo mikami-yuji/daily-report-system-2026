@@ -139,8 +139,8 @@ export default function AnalyticsPage() {
                     {/* Mixed Analysis Chart */}
                     <div className="bg-white rounded-lg shadow p-6">
                         <h2 className="text-xl font-bold text-gray-900 mb-4">活動と成果の相関（混合分析）</h2>
-                        <div style={{ width: '100%', height: 400, minHeight: 400 }}>
-                            <ResponsiveContainer width="100%" height="100%">
+                        <div style={{ width: '100%', height: 400 }}>
+                            <ResponsiveContainer width="100%" height={400}>
                                 <ComposedChart data={analytics.trends}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                     <XAxis dataKey="date" tick={{ fontSize: 12 }} />
@@ -173,8 +173,8 @@ export default function AnalyticsPage() {
                         {/* Contact Trends */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">商談活動推移</h2>
-                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                            <div style={{ width: '100%', height: 300 }}>
+                                <ResponsiveContainer width="100%" height={300}>
                                     <ComposedChart data={analytics.trends}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="date" tick={{ fontSize: 12 }} />
@@ -192,8 +192,8 @@ export default function AnalyticsPage() {
                         {/* Area Distribution */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">エリア別活動分布</h2>
-                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                            <div style={{ width: '100%', height: 300 }}>
+                                <ResponsiveContainer width="100%" height={300}>
                                     <PieChart>
                                         <Pie
                                             data={analytics.byArea.filter(item => item.area !== '未設定')}
@@ -272,8 +272,8 @@ export default function AnalyticsPage() {
                         {/* Design Progress */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン進捗状況</h2>
-                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                            <div style={{ width: '100%', height: 300 }}>
+                                <ResponsiveContainer width="100%" height={300}>
                                     <BarChart data={analytics.designProgress} layout="vertical" margin={{ left: 40 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                         <XAxis type="number" />
@@ -292,8 +292,8 @@ export default function AnalyticsPage() {
                         {/* Design Trends */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-xl font-bold text-gray-900 mb-4">提案・決定・不採用推移</h2>
-                            <div style={{ width: '100%', height: 300, minHeight: 300 }}>
-                                <ResponsiveContainer width="100%" height="100%">
+                            <div style={{ width: '100%', height: 300 }}>
+                                <ResponsiveContainer width="100%" height={300}>
                                     <ComposedChart data={analytics.trends}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="date" tick={{ fontSize: 12 }} />

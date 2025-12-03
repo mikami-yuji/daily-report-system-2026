@@ -196,7 +196,11 @@ export default function ReportsPage() {
                 ) : (
                     <div className="p-4 space-y-4">
                         {reports.map((report, i) => (
-                            <div key={i} className="bg-white p-4 rounded border border-sf-border shadow-sm hover:shadow-md transition-shadow">
+                            <div
+                                key={i}
+                                className="bg-white p-4 rounded border border-sf-border shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-sf-light-blue"
+                                onClick={() => handleRowClick(i)}
+                            >
                                 <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
                                     <div className="flex items-center gap-3">
                                         <span className="font-bold text-sf-text">{report.日付}</span>

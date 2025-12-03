@@ -70,7 +70,7 @@ export default function CalendarPage() {
     };
 
     const handlePrint = useReactToPrint({
-        content: () => printRef.current,
+        contentRef: printRef,
         documentTitle: `訪問カレンダー_${currentDate.getFullYear()}年${getMonthName(currentDate.getMonth())}`,
     });
 
@@ -211,19 +211,19 @@ export default function CalendarPage() {
                                 key={index}
                                 onClick={() => day.isCurrentMonth && day.visits.length > 0 && setSelectedDay(day)}
                                 className={`min-h-[120px] border rounded-lg p-2 transition-all print:min-h-[100px] print:break-inside-avoid ${day.isCurrentMonth
-                                        ? 'bg-white border-gray-200 hover:border-sf-light-blue hover:shadow-md cursor-pointer'
-                                        : 'bg-gray-50 border-gray-100'
+                                    ? 'bg-white border-gray-200 hover:border-sf-light-blue hover:shadow-md cursor-pointer'
+                                    : 'bg-gray-50 border-gray-100'
                                     } ${isToday ? 'ring-2 ring-sf-light-blue' : ''} ${day.visits.length > 0 ? 'print:border-2 print:border-gray-400' : ''
                                     }`}
                             >
                                 <div
                                     className={`text-sm font-semibold mb-1 ${!day.isCurrentMonth
-                                            ? 'text-gray-400'
-                                            : dayOfWeek === 0
-                                                ? 'text-red-600'
-                                                : dayOfWeek === 6
-                                                    ? 'text-blue-600'
-                                                    : 'text-gray-700'
+                                        ? 'text-gray-400'
+                                        : dayOfWeek === 0
+                                            ? 'text-red-600'
+                                            : dayOfWeek === 6
+                                                ? 'text-blue-600'
+                                                : 'text-gray-700'
                                         } ${isToday ? 'text-white bg-sf-light-blue rounded px-1' : ''}`}
                                 >
                                     {day.date.getDate()}

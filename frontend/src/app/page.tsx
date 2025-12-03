@@ -170,9 +170,7 @@ export default function Home() {
               <option key={file.name} value={file.name}>{file.name}</option>
             ))}
           </select>
-          <button className="bg-sf-light-blue text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 shadow-sm transition-colors">
-            新規日報作成
-          </button>
+
         </div>
       </div>
 

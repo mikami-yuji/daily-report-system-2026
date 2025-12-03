@@ -47,11 +47,18 @@ export interface AnalyticsData {
         totalCustomers: number;
         totalVisits: number;
         totalCalls: number;
+        totalProposals: number;
+        completedDesigns: number;
+        rejectedDesigns: number;
+        acceptanceRate: number;
         coverageRate: number;
         byCustomer: {
             name: string;
             visits: number;
             calls: number;
+            proposals: number;
+            completed: number;
+            rejected: number;
             lastVisit: string | null;
         }[];
     };
@@ -281,27 +288,21 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
 
     // Priority Customer Analysis
     const priorityReports = filteredReports.filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '');
-    const priorityCustomerMap = new Map<string, { visits: number; calls: number; lastVisit: string | null }>();
-
-    // Initialize map with all priority customers found in the filtered set
-    // Note: Ideally we should know ALL priority customers even if not visited in this period, 
-    // but we can only know about those present in the reports or if we had a separate customer master list.
-    // For now, we analyze based on activity in the reports.
+    const priorityCustomerMap = new Map<string, { visits: number; calls: number; proposals: number; completed: number; rejected: number; lastVisit: string | null }>();
 
     priorityReports.forEach(report => {
-        // Use customer code or name as key
         const customerName = report.訪問先名 || '不明';
         const action = String(report.行動内容 || '');
+        const status = String(report.デザイン進捗状況 || '');
         const date = report.日付 || null;
 
         if (!priorityCustomerMap.has(customerName)) {
-            priorityCustomerMap.set(customerName, { visits: 0, calls: 0, lastVisit: null });
+            priorityCustomerMap.set(customerName, { visits: 0, calls: 0, proposals: 0, completed: 0, rejected: 0, lastVisit: null });
         }
         const data = priorityCustomerMap.get(customerName)!;
 
         if (action.includes('訪問')) {
             data.visits++;
-            // Update last visit if this report is newer
             if (date) {
                 if (!data.lastVisit || date > data.lastVisit) {
                     data.lastVisit = date;
@@ -311,6 +312,15 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         if (action.includes('電話')) {
             data.calls++;
         }
+        if (report.デザイン提案有無 === 'あり') {
+            data.proposals++;
+        }
+        if (status.includes('出稿')) {
+            data.completed++;
+        }
+        if (status.includes('不採用')) {
+            data.rejected++;
+        }
     });
 
     const priorityByCustomer = Array.from(priorityCustomerMap.entries())
@@ -319,17 +329,22 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
 
     const totalPriorityVisits = priorityByCustomer.reduce((sum, c) => sum + c.visits, 0);
     const totalPriorityCalls = priorityByCustomer.reduce((sum, c) => sum + c.calls, 0);
+    const totalPriorityProposals = priorityByCustomer.reduce((sum, c) => sum + c.proposals, 0);
+    const totalPriorityCompleted = priorityByCustomer.reduce((sum, c) => sum + c.completed, 0);
+    const totalPriorityRejected = priorityByCustomer.reduce((sum, c) => sum + c.rejected, 0);
+    const priorityAcceptanceRate = totalPriorityProposals > 0
+        ? Math.round((totalPriorityCompleted / totalPriorityProposals) * 100)
+        : 0;
     const uniquePriorityCustomers = priorityCustomerMap.size;
-
-    // Coverage rate is tricky without total number of priority customers. 
-    // We'll assume uniquePriorityCustomers is the total for now, which makes coverage 100% of active ones.
-    // Or we can just omit coverage rate if it's misleading. 
-    // Let's keep it simple: just count unique customers active in this period.
 
     const priority = {
         totalCustomers: uniquePriorityCustomers,
         totalVisits: totalPriorityVisits,
         totalCalls: totalPriorityCalls,
+        totalProposals: totalPriorityProposals,
+        completedDesigns: totalPriorityCompleted,
+        rejectedDesigns: totalPriorityRejected,
+        acceptanceRate: priorityAcceptanceRate,
         coverageRate: 0, // Placeholder
         byCustomer: priorityByCustomer
     };

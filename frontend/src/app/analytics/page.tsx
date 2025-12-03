@@ -1,5 +1,4 @@
 'use client';
-'use client';
 
 import { useEffect, useState } from 'react';
 import { useFile } from '@/context/FileContext';
@@ -316,10 +315,13 @@ export default function AnalyticsPage() {
             {activeTab === 'priority' && (
                 <div className="space-y-8 animate-fadeIn">
                     {/* Priority KPIs */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <KPICard title="重点顧客数 (活動あり)" value={analytics.priority.totalCustomers} icon={Star} color="yellow" />
-                        <KPICard title="重点顧客訪問数" value={analytics.priority.totalVisits} icon={Users} color="blue" />
-                        <KPICard title="重点顧客電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        <KPICard title="重点顧客数" value={analytics.priority.totalCustomers} icon={Star} color="yellow" />
+                        <KPICard title="訪問数" value={analytics.priority.totalVisits} icon={Users} color="blue" />
+                        <KPICard title="電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
+                        <KPICard title="デザイン提案" value={analytics.priority.totalProposals} icon={FileText} color="purple" />
+                        <KPICard title="出稿" value={analytics.priority.completedDesigns} icon={CheckCircle} color="green" />
+                        <KPICard title="出稿率" value={`${analytics.priority.acceptanceRate}%`} icon={CheckCircle} color="red" />
                     </div>
 
                     {/* Priority Customer List */}
@@ -330,15 +332,18 @@ export default function AnalyticsPage() {
                                 <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                                     <tr>
                                         <th className="px-6 py-3">顧客名</th>
-                                        <th className="px-6 py-3 text-center">訪問回数</th>
-                                        <th className="px-6 py-3 text-center">電話回数</th>
+                                        <th className="px-6 py-3 text-center">訪問</th>
+                                        <th className="px-6 py-3 text-center">電話</th>
+                                        <th className="px-6 py-3 text-center">提案</th>
+                                        <th className="px-6 py-3 text-center">出稿</th>
+                                        <th className="px-6 py-3 text-center">不採用</th>
                                         <th className="px-6 py-3 text-right">最終訪問日</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {analytics.priority.byCustomer.length === 0 ? (
                                         <tr>
-                                            <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+                                            <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                                                 データがありません
                                             </td>
                                         </tr>
@@ -358,6 +363,24 @@ export default function AnalyticsPage() {
                                                     <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${customer.calls > 0 ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
                                                         }`}>
                                                         {customer.calls}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${customer.proposals > 0 ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                        {customer.proposals}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${customer.completed > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                        {customer.completed}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${customer.rejected > 0 ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                        {customer.rejected}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-right text-gray-500">

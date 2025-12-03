@@ -8,7 +8,7 @@ interface KPICardProps {
         value: number;
         isPositive: boolean;
     };
-    color?: 'blue' | 'green' | 'orange' | 'red' | 'purple';
+    color?: 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'yellow';
 }
 
 const colorClasses = {
@@ -36,6 +36,11 @@ const colorClasses = {
         bg: 'bg-purple-50',
         icon: 'text-purple-600',
         border: 'border-purple-100'
+    },
+    yellow: {
+        bg: 'bg-yellow-50',
+        icon: 'text-yellow-600',
+        border: 'border-yellow-100'
     }
 };
 

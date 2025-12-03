@@ -1,18 +1,19 @@
 'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useFile } from '@/context/FileContext';
 import { getReports, Report } from '@/lib/api';
 import { aggregateAnalytics, getDateRange, AnalyticsData } from '@/lib/analytics';
 import KPICard from '@/components/KPICard';
-import { Users, FileText, Briefcase, CheckCircle, Phone, Mail, LayoutDashboard, MessageSquare, Palette } from 'lucide-react';
+import { Users, FileText, Briefcase, CheckCircle, Phone, Mail, LayoutDashboard, MessageSquare, Palette, Star } from 'lucide-react';
 import {
     ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell, Area, BarChart
 } from 'recharts';
 
 type Period = 'today' | 'week' | 'month' | 'quarter' | 'year';
-type Tab = 'overview' | 'business' | 'design';
+type Tab = 'overview' | 'business' | 'design' | 'priority';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
@@ -98,14 +99,15 @@ export default function AnalyticsPage() {
             {/* Controls */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 {/* Tabs */}
-                <div className="flex border-b border-gray-200 w-full md:w-auto">
+                <div className="flex border-b border-gray-200 w-full md:w-auto overflow-x-auto">
                     {renderTabButton('overview', '全体概要', <LayoutDashboard size={18} />)}
                     {renderTabButton('business', '商談分析', <MessageSquare size={18} />)}
                     {renderTabButton('design', 'デザイン分析', <Palette size={18} />)}
+                    {renderTabButton('priority', '重点顧客分析', <Star size={18} />)}
                 </div>
 
                 {/* Period Selector */}
-                <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+                <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1 shrink-0">
                     {(['today', 'week', 'month', 'quarter', 'year'] as Period[]).map(p => (
                         <button
                             key={p}
@@ -306,6 +308,66 @@ export default function AnalyticsPage() {
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'priority' && (
+                <div className="space-y-8 animate-fadeIn">
+                    {/* Priority KPIs */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <KPICard title="重点顧客数 (活動あり)" value={analytics.priority.totalCustomers} icon={Star} color="yellow" />
+                        <KPICard title="重点顧客訪問数" value={analytics.priority.totalVisits} icon={Users} color="blue" />
+                        <KPICard title="重点顧客電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
+                    </div>
+
+                    {/* Priority Customer List */}
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h2 className="text-xl font-bold text-gray-900 mb-4">重点顧客別活動状況</h2>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-3">顧客名</th>
+                                        <th className="px-6 py-3 text-center">訪問回数</th>
+                                        <th className="px-6 py-3 text-center">電話回数</th>
+                                        <th className="px-6 py-3 text-right">最終訪問日</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {analytics.priority.byCustomer.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={4} className="px-6 py-4 text-center text-gray-500">
+                                                データがありません
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        analytics.priority.byCustomer.map((customer, index) => (
+                                            <tr key={index} className="bg-white border-b hover:bg-gray-50">
+                                                <td className="px-6 py-4 font-medium text-gray-900">
+                                                    {customer.name}
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${customer.visits > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                        {customer.visits}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-center">
+                                                    <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${customer.calls > 0 ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-800'
+                                                        }`}>
+                                                        {customer.calls}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right text-gray-500">
+                                                    {customer.lastVisit || '-'}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>

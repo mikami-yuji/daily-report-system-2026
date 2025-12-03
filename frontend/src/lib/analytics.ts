@@ -43,6 +43,18 @@ export interface AnalyticsData {
         status: string;
         count: number;
     }[];
+    priority: {
+        totalCustomers: number;
+        totalVisits: number;
+        totalCalls: number;
+        coverageRate: number;
+        byCustomer: {
+            name: string;
+            visits: number;
+            calls: number;
+            lastVisit: string | null;
+        }[];
+    };
 }
 
 export function parseDate(dateStr: string | undefined): Date | null {
@@ -267,6 +279,61 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         .map(([status, count]) => ({ status, count }))
         .sort((a, b) => b.count - a.count);
 
+    // Priority Customer Analysis
+    const priorityReports = filteredReports.filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '');
+    const priorityCustomerMap = new Map<string, { visits: number; calls: number; lastVisit: string | null }>();
+
+    // Initialize map with all priority customers found in the filtered set
+    // Note: Ideally we should know ALL priority customers even if not visited in this period, 
+    // but we can only know about those present in the reports or if we had a separate customer master list.
+    // For now, we analyze based on activity in the reports.
+
+    priorityReports.forEach(report => {
+        // Use customer code or name as key
+        const customerName = report.訪問先名 || '不明';
+        const action = String(report.行動内容 || '');
+        const date = report.日付 || null;
+
+        if (!priorityCustomerMap.has(customerName)) {
+            priorityCustomerMap.set(customerName, { visits: 0, calls: 0, lastVisit: null });
+        }
+        const data = priorityCustomerMap.get(customerName)!;
+
+        if (action.includes('訪問')) {
+            data.visits++;
+            // Update last visit if this report is newer
+            if (date) {
+                if (!data.lastVisit || date > data.lastVisit) {
+                    data.lastVisit = date;
+                }
+            }
+        }
+        if (action.includes('電話')) {
+            data.calls++;
+        }
+    });
+
+    const priorityByCustomer = Array.from(priorityCustomerMap.entries())
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.visits - a.visits);
+
+    const totalPriorityVisits = priorityByCustomer.reduce((sum, c) => sum + c.visits, 0);
+    const totalPriorityCalls = priorityByCustomer.reduce((sum, c) => sum + c.calls, 0);
+    const uniquePriorityCustomers = priorityCustomerMap.size;
+
+    // Coverage rate is tricky without total number of priority customers. 
+    // We'll assume uniquePriorityCustomers is the total for now, which makes coverage 100% of active ones.
+    // Or we can just omit coverage rate if it's misleading. 
+    // Let's keep it simple: just count unique customers active in this period.
+
+    const priority = {
+        totalCustomers: uniquePriorityCustomers,
+        totalVisits: totalPriorityVisits,
+        totalCalls: totalPriorityCalls,
+        coverageRate: 0, // Placeholder
+        byCustomer: priorityByCustomer
+    };
+
     return {
         kpis: {
             totalVisits,
@@ -283,7 +350,8 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         byRank,
         byAction,
         byInterviewer,
-        designProgress
+        designProgress,
+        priority
     };
 }
 

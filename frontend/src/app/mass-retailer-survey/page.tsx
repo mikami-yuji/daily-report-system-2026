@@ -198,8 +198,21 @@ export default function MassRetailerSurveyPage() {
 
                             {/* Content */}
                             {report.コメント && (
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{report.コメント}</p>
+                                <div className="mb-3">
+                                    <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">コメント</h4>
+                                    <div className="bg-gray-50 rounded-lg p-4">
+                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{report.コメント}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 商談内容 */}
+                            {report.商談内容 && (
+                                <div className="mb-3">
+                                    <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">商談内容</h4>
+                                    <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{report.商談内容}</p>
+                                    </div>
                                 </div>
                             )}
 

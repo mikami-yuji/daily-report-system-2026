@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getReports, Report, getCustomers, Customer, updateReport, getInterviewers, getDesigns, Design } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table, Edit, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function ReportsPage() {
     const { files, selectedFile, setSelectedFile } = useFile();
@@ -326,6 +327,7 @@ export default function ReportsPage() {
                     hasPrev={selectedReportIndex < reports.length - 1}
                     onEdit={() => {
                         setEditingReport(reports[selectedReportIndex]);
+                        setSelectedReportIndex(null); // 詳細モーダルを閉じる
                         setShowEditReportModal(true);
                     }}
                 />
@@ -885,10 +887,11 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
             // We need to pass the management number to update the specific report
             const { 管理番号, ...rest } = report;
             await updateReport(report.管理番号, { ...rest, ...formData }, selectedFile);
+            toast.success('日報を更新しました');
             onSuccess();
         } catch (error) {
             console.error('Error updating report:', error);
-            alert('日報の更新に失敗しました');
+            toast.error('日報の更新に失敗しました');
         } finally {
             setSubmitting(false);
         }

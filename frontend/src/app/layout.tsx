@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Toaster } from 'react-hot-toast';
 import AppLayout from "@/components/AppLayout";
 import { FileProvider } from "@/context/FileContext";
 
@@ -27,6 +28,7 @@ export default function RootLayout({
   return (
     <html lang="ja" suppressHydrationWarning>
       <body className="antialiased bg-sf-bg text-sf-text h-screen overflow-hidden">
+        <Toaster position="top-right" />
         <FileProvider>
           <AppLayout>
             {children}

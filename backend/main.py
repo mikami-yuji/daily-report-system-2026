@@ -203,6 +203,57 @@ def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/reports/{management_number}")
+def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
+    """指定された管理番号の日報を取得"""
+    try:
+        # Get dataframe from cache
+        df = get_cached_dataframe(filename, '営業日報')
+        
+        # Clean up column names
+        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        
+        # Rename specific columns
+        df = df.rename(columns={
+            '得意先CD.': '得意先CD',
+            '訪問先名得意先名': '訪問先名'
+        })
+        
+        # Filter by management number
+        report_df = df[df['管理番号'] == management_number]
+        
+        if report_df.empty:
+            raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
+        
+        # Get the first (and should be only) record
+        record = report_df.iloc[0].to_dict()
+        
+        # Clean the record
+        import math
+        cleaned_record = {}
+        for key, value in record.items():
+            if isinstance(value, float):
+                if math.isnan(value) or math.isinf(value):
+                    cleaned_record[key] = None
+                elif key == '得意先CD' and not math.isnan(value):
+                    cleaned_record[key] = str(int(value))
+                else:
+                    cleaned_record[key] = value
+            elif value == '':
+                cleaned_record[key] = None
+            elif isinstance(value, str):
+                import re
+                cleaned_value = re.sub(r'_x000D_', '\n', value)
+                cleaned_value = cleaned_value.replace('\r', '')
+                cleaned_record[key] = cleaned_value
+            else:
+                cleaned_record[key] = value
+        
+        return cleaned_record
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
@@ -448,8 +499,8 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/reports/{management_number}")
-def update_report(management_number: float, report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
-    """Update an existing report by management number"""
+def update_report(management_number: int, report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
+    """既存の日報を更新（全項目対応）"""
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
         
@@ -471,9 +522,31 @@ def update_report(management_number: float, report: ReportInput, filename: str =
         if not target_row:
             raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
         
-        ws.cell(row=target_row, column=26, value=report.岡本常務)
-        ws.cell(row=target_row, column=27, value=report.中野次長)
-        ws.cell(row=target_row, column=29, value=report.既読チェック)
+        # Update all fields (same column mapping as add_report)
+        columns_to_write = {
+            2: report.日付,
+            3: report.行動内容,
+            4: report.エリア,
+            5: report.得意先CD,
+            6: report.直送先CD,
+            7: report.訪問先名,
+            8: report.直送先名,
+            9: report.重点顧客,
+            10: report.ランク,
+            12: report.面談者,
+            13: report.滞在時間,
+            14: report.デザイン提案有無,
+            15: report.デザイン種別,
+            16: report.デザイン名,
+            17: report.デザイン進捗状況,
+            18: report.デザイン依頼No,
+            19: report.商談内容,
+            20: report.提案物,
+            21: report.次回プラン
+        }
+
+        for col_idx, value in columns_to_write.items():
+            ws.cell(row=target_row, column=col_idx, value=value)
         
         # Save the workbook
         wb.save(excel_file)
@@ -484,7 +557,9 @@ def update_report(management_number: float, report: ReportInput, filename: str =
         if cache_key in CACHE:
             del CACHE[cache_key]
         
-        return {"message": "Report updated successfully"}
+        return {"message": "Report updated successfully", "management_number": management_number}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -512,5 +587,5 @@ async def upload_file(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
 

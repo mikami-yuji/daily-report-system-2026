@@ -64,6 +64,12 @@ export const updateReport = async (managementNumber: number, report: Partial<Omi
     return response.data;
 };
 
+export const deleteReport = async (managementNumber: number, filename?: string) => {
+    const params = filename ? { filename } : {};
+    const response = await axios.delete(`${API_URL}/reports/${managementNumber}`, { params });
+    return response.data;
+};
+
 export const uploadFile = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);

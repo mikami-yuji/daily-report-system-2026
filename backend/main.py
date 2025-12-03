@@ -563,6 +563,49 @@ def update_report(management_number: int, report: ReportInput, filename: str = D
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/reports/{management_number}")
+def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
+    """指定された管理番号の日報を削除"""
+    try:
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        
+        # Load the workbook
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+             
+        ws = wb['営業日報']
+        
+        # Find the row with the matching management number
+        target_row = None
+        for row in range(2, ws.max_row + 1):
+            cell_value = ws.cell(row=row, column=1).value
+            if cell_value == management_number:
+                target_row = row
+                break
+        
+        if not target_row:
+            raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
+        
+        # Delete the row
+        ws.delete_rows(target_row, 1)
+        
+        # Save the workbook
+        wb.save(excel_file)
+        wb.close()
+        
+        # Clear cache for this file
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
+        return {"message": "Report deleted successfully", "management_number": management_number}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Upload an Excel file to the backend directory"""

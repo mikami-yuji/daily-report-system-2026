@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, Report, getCustomers, Customer, updateReport, getInterviewers, getDesigns, Design } from '@/lib/api';
+import { getReports, Report, getCustomers, Customer, updateReport, deleteReport, getInterviewers, getDesigns, Design } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
-import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table, Edit, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Plus, Filter, RefreshCw, FileText, ChevronDown, ChevronUp, FolderOpen, LayoutList, Table, Edit, ChevronLeft, ChevronRight, X, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // Helper to sanitize report object for API updates
@@ -1205,6 +1205,25 @@ function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, 
         }
     };
 
+    const handleDelete = async () => {
+        if (!confirm('この日報を削除してもよろしいですか？\n\n※この操作は取り消せません。')) {
+            return;
+        }
+
+        setSaving(true);
+        try {
+            await deleteReport(report.管理番号, selectedFile);
+            toast.success('日報を削除しました');
+            onClose();
+            if (onUpdate) onUpdate();
+        } catch (error) {
+            console.error('Failed to delete report:', error);
+            toast.error('日報の削除に失敗しました');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const hasDesign = report.デザイン提案有無 === 'あり';
 
     return (
@@ -1436,6 +1455,14 @@ function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, 
                     >
                         <ChevronLeft size={16} />
                         前の日報
+                    </button>
+                    <button
+                        onClick={handleDelete}
+                        disabled={saving}
+                        className="flex items-center gap-2 px-4 py-2 rounded transition-colors bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-transparent text-red-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Trash2 size={16} />
+                        削除
                     </button>
                     <button
                         onClick={onPrev}

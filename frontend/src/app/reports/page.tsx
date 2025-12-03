@@ -900,7 +900,9 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
         try {
             // We need to pass the management number to update the specific report
             const { 管理番号, ...rest } = report;
-            await updateReport(report.管理番号, { ...rest, ...formData }, selectedFile);
+            const fullReport = { ...rest, ...formData };
+            const sanitized = sanitizeReport(fullReport);
+            await updateReport(report.管理番号, sanitized, selectedFile);
             toast.success('日報を更新しました', {
                 duration: 4000,
                 position: 'top-right',

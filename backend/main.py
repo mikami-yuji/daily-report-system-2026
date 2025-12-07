@@ -105,7 +105,11 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
     Get dataframe from cache or read from Excel file if modified or not in cache.
     """
     excel_file = os.path.join(EXCEL_DIR, filename)
-    print(f"DEBUG: Accessing file: {excel_file}")
+    with open("backend.log", "a", encoding="utf-8") as f:
+        f.write(f"DEBUG: Accessing file: {excel_file}\n")
+        f.write(f"DEBUG: EXCEL_DIR: {EXCEL_DIR}\n")
+        f.write(f"DEBUG: Exists: {os.path.exists(excel_file)}\n")
+    
     if not os.path.exists(excel_file):
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
     

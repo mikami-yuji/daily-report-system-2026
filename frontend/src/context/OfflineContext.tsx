@@ -9,14 +9,20 @@ interface OfflineReport {
     data: any;
     status: 'pending' | 'syncing' | 'error';
     filename: string;
+    type: 'create' | 'update';
+    reportId?: number;
 }
 
 interface OfflineContextType {
     isOnline: boolean;
     offlineReports: OfflineReport[];
-    saveOfflineReport: (data: any, filename: string) => void;
+    saveOfflineReport: (data: any, filename: string, type?: 'create' | 'update', reportId?: number) => void;
     syncReports: () => Promise<void>;
     removeOfflineReport: (id: string) => void;
+    cachedCustomers: any[];
+    cacheCustomers: (customers: any[]) => void;
+    cachedReports: any[];
+    cacheReports: (reports: any[]) => void;
 }
 
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
@@ -24,6 +30,8 @@ const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 export function OfflineProvider({ children }: { children: ReactNode }) {
     const [isOnline, setIsOnline] = useState(true);
     const [offlineReports, setOfflineReports] = useState<OfflineReport[]>([]);
+    const [cachedCustomers, setCachedCustomers] = useState<any[]>([]);
+    const [cachedReports, setCachedReports] = useState<any[]>([]);
 
     // Initialize state from local storage and event listeners
     useEffect(() => {
@@ -34,6 +42,26 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
                 setOfflineReports(JSON.parse(saved));
             } catch (e) {
                 console.error('Failed to parse offline reports', e);
+            }
+        }
+
+        // Load cached customers
+        const savedCustomers = localStorage.getItem('cachedCustomers');
+        if (savedCustomers) {
+            try {
+                setCachedCustomers(JSON.parse(savedCustomers));
+            } catch (e) {
+                console.error('Failed to parse cached customers', e);
+            }
+        }
+
+        // Load cached reports
+        const savedReports = localStorage.getItem('cachedReports');
+        if (savedReports) {
+            try {
+                setCachedReports(JSON.parse(savedReports));
+            } catch (e) {
+                console.error('Failed to parse cached reports', e);
             }
         }
 
@@ -65,17 +93,45 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('offlineReports', JSON.stringify(offlineReports));
     }, [offlineReports]);
 
-    const saveOfflineReport = (data: any, filename: string) => {
+    // Save to local storage whenever customers change
+    useEffect(() => {
+        if (cachedCustomers.length > 0) {
+            localStorage.setItem('cachedCustomers', JSON.stringify(cachedCustomers));
+        }
+    }, [cachedCustomers]);
+
+    // Save to local storage whenever cached reports change
+    useEffect(() => {
+        if (cachedReports.length > 0) {
+            localStorage.setItem('cachedReports', JSON.stringify(cachedReports));
+        }
+    }, [cachedReports]);
+
+    const saveOfflineReport = (data: any, filename: string, type: 'create' | 'update' = 'create', reportId?: number) => {
         const newReport: OfflineReport = {
             id: crypto.randomUUID(),
             timestamp: Date.now(),
             data,
             status: 'pending',
-            filename
+            filename,
+            type,
+            reportId
         };
 
-        setOfflineReports(prev => [...prev, newReport]);
+        setOfflineReports(prev => {
+            const updated = [...prev, newReport];
+            localStorage.setItem('offlineReports', JSON.stringify(updated));
+            return updated;
+        });
         toast.success('オフラインで保存しました。オンライン時に自動送信されます。');
+    };
+
+    const cacheCustomers = (customers: any[]) => {
+        setCachedCustomers(customers);
+    };
+
+    const cacheReports = (reports: any[]) => {
+        setCachedReports(reports);
     };
 
     const removeOfflineReport = (id: string) => {
@@ -99,13 +155,24 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
                     r.id === report.id ? { ...r, status: 'syncing' } : r
                 ));
 
-                const response = await fetch(`/api/reports?filename=${encodeURIComponent(report.filename)}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(report.data),
-                });
+                let response;
+                if (report.type === 'update' && report.reportId) {
+                    response = await fetch(`/api/reports/${report.reportId}?filename=${encodeURIComponent(report.filename)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(report.data),
+                    });
+                } else {
+                    response = await fetch(`/api/reports?filename=${encodeURIComponent(report.filename)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(report.data),
+                    });
+                }
 
                 if (!response.ok) {
                     throw new Error('Server error');
@@ -137,7 +204,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <OfflineContext.Provider value={{ isOnline, offlineReports, saveOfflineReport, syncReports, removeOfflineReport }}>
+        <OfflineContext.Provider value={{ isOnline, offlineReports, saveOfflineReport, syncReports, removeOfflineReport, cachedCustomers, cacheCustomers, cachedReports, cacheReports }}>
             {children}
         </OfflineContext.Provider>
     );

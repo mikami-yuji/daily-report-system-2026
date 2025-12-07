@@ -23,6 +23,25 @@ const sanitizeReport = (report: any) => {
 
 export default function ReportsPage() {
     const { files, selectedFile, setSelectedFile } = useFile();
+    const { isOnline, saveOfflineReport, cachedCustomers, cacheCustomers, cachedReports, cacheReports, offlineReports } = useOffline();
+
+    // Merge offline changes into reports
+    const mergeOfflineReports = (baseReports: Report[]) => {
+        let merged = [...baseReports];
+
+        offlineReports.forEach(offlineReport => {
+            if (offlineReport.type === 'update' && offlineReport.reportId) {
+                const index = merged.findIndex(r => r.管理番号 === offlineReport.reportId);
+                if (index !== -1) {
+                    merged[index] = { ...merged[index], ...offlineReport.data };
+                }
+            } else if (offlineReport.type === 'create') {
+                // For created reports, we might want to prepend them or handle them differently
+                // For now, let's focus on updates as requested
+            }
+        });
+        return merged;
+    };
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedReportIndex, setSelectedReportIndex] = useState<number | null>(null);
@@ -32,11 +51,13 @@ export default function ReportsPage() {
     const [showEditReportModal, setShowEditReportModal] = useState(false);
     const [editingReport, setEditingReport] = useState<Report | null>(null);
 
+
+
     useEffect(() => {
         if (selectedFile) {
             fetchData();
         }
-    }, [selectedFile]);
+    }, [selectedFile, isOnline, cachedReports]);
 
     const fetchData = () => {
         setLoading(true);
@@ -45,11 +66,23 @@ export default function ReportsPage() {
             const validData = data.filter(report => report.日付 && report.日付.trim() !== '');
             // Sort data initially based on current sortOrder
             const sortedData = sortReports(validData, sortOrder);
-            setReports(sortedData);
+
+            // Merge offline reports
+            const mergedData = mergeOfflineReports(sortedData);
+
+            setReports(mergedData);
+            cacheReports(sortedData); // Cache the ORIGINAL successful response
             setLoading(false);
         }).catch(err => {
             console.error(err);
+            // Fallback to cache if fetch fails (offline or server error)
+            if (cachedReports.length > 0) {
+                const mergedCached = mergeOfflineReports(cachedReports);
+                setReports(mergedCached);
+                toast('キャッシュされた日報を表示します', { icon: '📡' });
+            }
             setLoading(false);
+
         });
     };
 
@@ -329,9 +362,14 @@ export default function ReportsPage() {
                     onSuccess={() => {
                         setShowEditReportModal(false);
                         setEditingReport(null);
-                        fetchData();
+                        if (isOnline) fetchData(); // Only fetch if online, otherwise we handled it optimistically
                     }}
                     selectedFile={selectedFile}
+                    isOnline={isOnline}
+                    saveOfflineReport={saveOfflineReport}
+                    setReports={setReports}
+                    cacheReports={cacheReports}
+                    reports={reports}
                 />
             )}
 
@@ -412,14 +450,7 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>('none');
     const [designs, setDesigns] = useState<Design[]>([]);
 
-    useEffect(() => {
-        // Fetch customer list
-        getCustomers(selectedFile).then(data => {
-            setCustomers(data);
-        }).catch(err => {
-            console.error('Failed to fetch customers:', err);
-        });
-    }, [selectedFile]);
+    // Customer fetching moved to useEffect below with offline support
 
     // Handle customer name change with keyword search across all fields including kana
     const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -543,7 +574,22 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         }
     };
 
-    const { isOnline, saveOfflineReport } = useOffline();
+    const { isOnline, saveOfflineReport, cachedCustomers, cacheCustomers } = useOffline();
+
+    useEffect(() => {
+        // Fetch customer list
+        getCustomers(selectedFile).then(data => {
+            setCustomers(data);
+            cacheCustomers(data); // Cache successful response
+        }).catch(err => {
+            console.error('Failed to fetch customers:', err);
+            // Fallback to cache if fetch fails (offline or server error)
+            if (cachedCustomers.length > 0) {
+                setCustomers(cachedCustomers);
+                toast('キャッシュされた得意先リストを使用します', { icon: '📡' });
+            }
+        });
+    }, [selectedFile, isOnline, cachedCustomers]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -886,9 +932,14 @@ interface EditReportModalProps {
     onClose: () => void;
     onSuccess: () => void;
     selectedFile: string;
+    isOnline: boolean;
+    saveOfflineReport: (data: any, filename: string, type?: 'create' | 'update', reportId?: number) => void;
+    setReports: React.Dispatch<React.SetStateAction<Report[]>>;
+    cacheReports: (reports: any[]) => void;
+    reports: Report[];
 }
 
-function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditReportModalProps) {
+function EditReportModal({ report, onClose, onSuccess, selectedFile, isOnline, saveOfflineReport, setReports, cacheReports, reports }: EditReportModalProps) {
     const [formData, setFormData] = useState({
         日付: report.日付 || '',
         行動内容: report.行動内容 || '',
@@ -911,11 +962,24 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
         e.preventDefault();
         setSubmitting(true);
 
+        const { 管理番号, ...rest } = report;
+        const fullReport = { ...rest, ...formData };
+        const sanitized = sanitizeReport(fullReport);
+
         try {
-            // We need to pass the management number to update the specific report
-            const { 管理番号, ...rest } = report;
-            const fullReport = { ...rest, ...formData };
-            const sanitized = sanitizeReport(fullReport);
+
+            if (!isOnline) {
+                saveOfflineReport(sanitized, selectedFile, 'update', report.管理番号);
+
+                // Optimistic UI update
+                const updatedReport = { ...report, ...sanitized };
+                setReports(prev => prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
+                cacheReports(reports.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
+
+                onSuccess();
+                return;
+            }
+
             await updateReport(report.管理番号, sanitized, selectedFile);
             toast.success('日報を更新しました', {
                 duration: 4000,
@@ -924,10 +988,24 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditRepor
             onSuccess();
         } catch (error) {
             console.error('Error updating report:', error);
-            toast.error('日報の更新に失敗しました', {
+
+            // Fallback to offline save on error (e.g. server down)
+            saveOfflineReport(sanitized, selectedFile, 'update', report.管理番号);
+
+            // Optimistic UI update
+            const updatedReport = { ...report, ...sanitized };
+            setReports(prev => {
+                const newReports = prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r);
+                cacheReports(newReports); // Update cache as well
+                return newReports;
+            });
+
+            toast.success('サーバー通信エラー。オフラインで保存しました。', {
                 duration: 4000,
                 position: 'top-right',
+                icon: '📡'
             });
+            onSuccess();
         } finally {
             setSubmitting(false);
         }

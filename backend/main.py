@@ -92,36 +92,8 @@ def list_excel_files():
                     "size": file_size,
                     "modified": datetime.fromtimestamp(file_mtime).isoformat()
                 })
-        return {"files": files, "default": DEFAULT_EXCEL_FILE}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
-CACHE = {}
-
-def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
-    """
-    Get dataframe from cache or read from Excel file if modified or not in cache.
-    """
-    excel_file = os.path.join(EXCEL_DIR, filename)
-    with open("backend.log", "a", encoding="utf-8") as f:
         f.write(f"DEBUG: Accessing file: {excel_file}\n")
         f.write(f"DEBUG: EXCEL_DIR: {EXCEL_DIR}\n")
-        f.write(f"DEBUG: Exists: {os.path.exists(excel_file)}\n")
-    
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
-    current_mtime = os.path.getmtime(excel_file)
-    cache_key = (filename, sheet_name)
-    
-    if cache_key in CACHE:
-        cached_data = CACHE[cache_key]
-        if cached_data['mtime'] == current_mtime:
-            return cached_data['df'].copy() # Return copy to prevent mutation of cached data
-            
-    # Read from file
     try:
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
         CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
@@ -494,6 +466,9 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
                 copy_style(source_cell, target_cell)
 
         
+        # Create backup before saving
+        create_backup(excel_file)
+        
         # Save the workbook
         wb.save(excel_file)
         wb.close()
@@ -560,6 +535,9 @@ def update_report(management_number: int, report: ReportInput, filename: str = D
 
         for col_idx, value in columns_to_write.items():
             ws.cell(row=target_row, column=col_idx, value=value)
+        
+        # Create backup before saving
+        create_backup(excel_file)
         
         # Save the workbook
         wb.save(excel_file)

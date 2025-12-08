@@ -473,6 +473,7 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
         wb.save(excel_file)
         wb.close()
         
+        
         # Clear cache
         cache_key = (filename, '営業日報')
         if cache_key in CACHE:
@@ -483,6 +484,11 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
             "management_number": new_mgmt_num,
             "file_path": os.path.abspath(excel_file)
         }
+    except PermissionError:
+        raise HTTPException(
+            status_code=409,
+            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -551,6 +557,11 @@ def update_report(management_number: int, report: ReportInput, filename: str = D
         return {"message": "Report updated successfully", "management_number": management_number}
     except HTTPException:
         raise
+    except PermissionError:
+        raise HTTPException(
+            status_code=409,
+            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -593,6 +604,11 @@ def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
         return {"message": "Report deleted successfully", "management_number": management_number}
     except HTTPException:
         raise
+    except PermissionError:
+        raise HTTPException(
+            status_code=409,
+            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

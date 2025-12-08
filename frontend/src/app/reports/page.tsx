@@ -214,6 +214,9 @@ export default function ReportsPage() {
                                         <div>
                                             <span className="text-xs text-sf-text-weak">訪問先名</span>
                                             <p className="font-medium text-sf-light-blue">{report.訪問先名}</p>
+                                            {report.直送先名 && (
+                                                <p className="text-xs text-sf-text-weak mt-1">直送: {report.直送先名}</p>
+                                            )}
                                         </div>
                                         <div>
                                             <span className="text-xs text-sf-text-weak">行動内容</span>
@@ -240,7 +243,10 @@ export default function ReportsPage() {
                                     <div className="flex items-center gap-3">
                                         <span className="font-bold text-sf-text">{report.日付}</span>
                                         <span className="text-sm px-2 py-0.5 rounded bg-gray-100 text-sf-text-weak">{report.行動内容}</span>
-                                        <span className="text-sm font-medium text-sf-light-blue">{report.訪問先名}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-medium text-sf-light-blue">{report.訪問先名}</span>
+                                            {report.直送先名 && <span className="text-xs text-sf-text-weak">直送: {report.直送先名}</span>}
+                                        </div>
                                     </div>
                                     <div className="text-sm text-sf-text-weak">
                                         面談者: {report.面談者 || '-'}
@@ -428,7 +434,9 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         行動内容: '',
         エリア: '',
         得意先CD: '',
+        直送先CD: '',
         訪問先名: '',
+        直送先名: '',
         面談者: '',
         滞在時間: '',
         商談内容: '',
@@ -495,7 +503,9 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
         setFormData(prev => ({
             ...prev,
             訪問先名: customer.直送先名 || customer.得意先名 || '',
+            直送先名: customer.直送先名 || '',
             得意先CD: customer.得意先CD || '',
+            直送先CD: customer.直送先CD || '',
             エリア: customer.エリア || '',
             重点顧客: customer.重点顧客 || '',
             ランク: customer.ランク || ''
@@ -692,6 +702,12 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                 autoComplete="off"
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />
+                            {formData.直送先名 && (
+                                <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1">
+                                    <span className="i-lucide-truck w-3 h-3"></span>
+                                    直送先: {formData.直送先名} (CD: {formData.直送先CD})
+                                </div>
+                            )}
                             {showSuggestions && (
                                 <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg">
                                     {filteredCustomers.map((customer, index) => (
@@ -945,7 +961,9 @@ function EditReportModal({ report, onClose, onSuccess, selectedFile, isOnline, s
         行動内容: report.行動内容 || '',
         エリア: report.エリア || '',
         得意先CD: report.得意先CD || '',
+        直送先CD: report.直送先CD || '',
         訪問先名: report.訪問先名 || '',
+        直送先名: report.直送先名 || '',
         面談者: report.面談者 || '',
         滞在時間: report.滞在時間 || '',
         商談内容: report.商談内容 || '',
@@ -1322,7 +1340,10 @@ function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, 
                 {/* ヘッダー */}
                 <div className="p-6 border-b border-sf-border flex justify-between items-start bg-gray-50 rounded-t-lg">
                     <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-sf-text mb-2">{report.訪問先名}</h2>
+                        <h2 className="text-2xl font-bold text-sf-text mb-2">
+                            {report.訪問先名}
+                            {report.直送先名 && <span className="text-base font-normal text-sf-text-weak ml-3">(直送先: {report.直送先名})</span>}
+                        </h2>
                         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-sf-text-weak">
                             <span className="flex items-center gap-1">
                                 <span className="i-lucide-calendar w-4 h-4" />

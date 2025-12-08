@@ -92,8 +92,32 @@ def list_excel_files():
                     "size": file_size,
                     "modified": datetime.fromtimestamp(file_mtime).isoformat()
                 })
-        f.write(f"DEBUG: Accessing file: {excel_file}\n")
-        f.write(f"DEBUG: EXCEL_DIR: {EXCEL_DIR}\n")
+        return {"files": files, "default": DEFAULT_EXCEL_FILE}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
+CACHE = {}
+
+def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
+    """
+    Get dataframe from cache or read from Excel file if modified or not in cache.
+    """
+    excel_file = os.path.join(EXCEL_DIR, filename)
+    
+    if not os.path.exists(excel_file):
+        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
+    
+    current_mtime = os.path.getmtime(excel_file)
+    cache_key = (filename, sheet_name)
+    
+    if cache_key in CACHE:
+        cached_data = CACHE[cache_key]
+        if cached_data['mtime'] == current_mtime:
+            return cached_data['df'].copy() # Return copy to prevent mutation of cached data
+            
+    # Read from file
     try:
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
         CACHE[cache_key] = {'mtime': current_mtime, 'df': df}

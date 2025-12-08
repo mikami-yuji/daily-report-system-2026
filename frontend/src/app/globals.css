@@ -26,8 +26,4 @@ body {
   background-color: var(--sf-bg);
   color: var(--sf-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> efe6485 (fix: API proxy port and infinite re-rendering loop)

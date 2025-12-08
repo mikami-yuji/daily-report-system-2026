@@ -57,11 +57,7 @@ export default function ReportsPage() {
         if (selectedFile) {
             fetchData();
         }
-<<<<<<< HEAD
-    }, [selectedFile, isOnline, cachedReports]);
-=======
     }, [selectedFile, isOnline]);
->>>>>>> efe6485 (fix: API proxy port and infinite re-rendering loop)
 
     const fetchData = () => {
         setLoading(true);
@@ -593,11 +589,7 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                 toast('キャッシュされた得意先リストを使用します', { icon: '📡' });
             }
         });
-<<<<<<< HEAD
-    }, [selectedFile, isOnline, cachedCustomers]);
-=======
     }, [selectedFile, isOnline]);
->>>>>>> efe6485 (fix: API proxy port and infinite re-rendering loop)
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

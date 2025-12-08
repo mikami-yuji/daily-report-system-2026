@@ -468,34 +468,54 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
             訪問先名: value,
         }));
 
-        if (value.trim()) {
-            const searchTerm = value.toLowerCase();
-            // Convert hiragana to katakana for kana search
-            const katakanaSearchTerm = searchTerm.replace(/[\u3041-\u3096]/g, (match) => {
-                const chr = match.charCodeAt(0) + 0x60;
-                return String.fromCharCode(chr);
-            });
+        filterCustomers(value);
+    };
 
-            const filtered = customers.filter(c => {
-                // Search in customer name
-                if (c.得意先名 && c.得意先名.toLowerCase().includes(searchTerm)) {
-                    return true;
-                }
-                // Search in customer code
-                if (c.得意先CD && String(c.得意先CD).includes(searchTerm)) {
-                    return true;
-                }
-                // Search in kana (フリガナ)
-                if (c.フリガナ && c.フリガナ.toLowerCase().includes(katakanaSearchTerm)) {
-                    return true;
-                }
-                return false;
-            }).slice(0, 20);
-            setFilteredCustomers(filtered);
-            setShowSuggestions(filtered.length > 0);
-        } else {
-            setFilteredCustomers([]);
-            setShowSuggestions(false);
+    const filterCustomers = (searchTerm: string) => {
+        if (!searchTerm.trim()) {
+            // Empty search: show top 50 customers
+            setFilteredCustomers(customers.slice(0, 50));
+            setShowSuggestions(true);
+            return;
+        }
+
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        // Convert hiragana to katakana for kana search
+        const katakanaSearchTerm = lowerSearchTerm.replace(/[\u3041-\u3096]/g, (match) => {
+            const chr = match.charCodeAt(0) + 0x60;
+            return String.fromCharCode(chr);
+        });
+
+        const filtered = customers.filter(c => {
+            // Search in customer name
+            if (c.得意先名 && c.得意先名.toLowerCase().includes(lowerSearchTerm)) {
+                return true;
+            }
+            // Search in customer code
+            if (c.得意先CD && String(c.得意先CD).includes(lowerSearchTerm)) {
+                return true;
+            }
+            // Search in kana (フリガナ)
+            if (c.フリガナ && c.フリガナ.toLowerCase().includes(katakanaSearchTerm)) {
+                return true;
+            }
+            // Search in Direct Delivery Name
+            if (c.直送先名 && c.直送先名.toLowerCase().includes(lowerSearchTerm)) {
+                return true;
+            }
+            // Search in Direct Delivery Code
+            if (c.直送先CD && String(c.直送先CD).includes(lowerSearchTerm)) {
+                return true;
+            }
+            return false;
+        }).slice(0, 50); // Limit to 50 results
+        setFilteredCustomers(filtered);
+        setShowSuggestions(filtered.length > 0);
+    };
+
+    const handleCustomerInputFocus = () => {
+        if (!showSuggestions) {
+            filterCustomers(formData.訪問先名);
         }
     };
 
@@ -700,8 +720,18 @@ function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProp
                                 onChange={handleCustomerNameChange}
                                 required
                                 autoComplete="off"
-                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                onFocus={handleCustomerInputFocus}
+                                onClick={handleCustomerInputFocus}
+                                className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />
+                            <button
+                                type="button"
+                                onClick={handleCustomerInputFocus}
+                                className="absolute right-2 top-[34px] text-gray-400 hover:text-gray-600 p-1"
+                                tabIndex={-1}
+                            >
+                                <ChevronDown size={16} />
+                            </button>
                             {formData.直送先名 && (
                                 <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1">
                                     <span className="i-lucide-truck w-3 h-3"></span>

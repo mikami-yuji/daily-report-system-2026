@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict, Any
 import pandas as pd
 import openpyxl
 from datetime import datetime
@@ -30,21 +29,12 @@ def load_config():
                 config = json.load(f)
                 return config.get('excel_dir', r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度')
         except Exception as e:
-            print(f"Warning: Failed to load config.json: {e}")
+            print(f"警告: config.json の読み込みに失敗しました: {e}")
             return r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
     return r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
 
 EXCEL_DIR = load_config()
 DEFAULT_EXCEL_FILE = "daily_report_template.xlsm"
-
-def create_backup(file_path: str):
-    """Create a backup of the Excel file"""
-    try:
-        backup_path = f"{file_path}.bak"
-        shutil.copy2(file_path, backup_path)
-        print(f"Backup created at {backup_path}")
-    except Exception as e:
-        print(f"Warning: Failed to create backup: {e}")
 
 class ReportInput(BaseModel):
     model_config = {"populate_by_name": True}
@@ -129,14 +119,10 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
             
     # Read from file
     try:
-        # Explicitly use openpyxl engine
-        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0, engine='openpyxl')
+        df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
         CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
         return df.copy()
     except Exception as e:
-        print(f"Error reading Excel file {excel_file}: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
 
 @app.get("/customers")
@@ -184,12 +170,7 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
             cleaned_records.append(cleaned_record)
 
         return cleaned_records
-    except HTTPException:
-        raise
     except Exception as e:
-        print(f"Error in get_customers: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
         
 

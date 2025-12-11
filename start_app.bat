@@ -1,8 +1,8 @@
 @echo off
-echo Starting Daily Report System (Robust Mode)...
+echo Starting Daily Report System (Robust Mode - Python)...
 
-:: Bypass execution policy to allow running the PowerShell script
-powershell -ExecutionPolicy Bypass -File "%~dp0start_robust.ps1"
+:: Run the Python startup script
+python "%~dp0start_services.py"
 
 echo.
 echo Startup script finished.

@@ -2,7 +2,7 @@
 echo Starting Daily Report System (Robust Mode - Python)...
 
 :: Run the Python startup script
-python "%~dp0start_services.py"
+py "%~dp0start_services.py"
 
 echo.
 echo Startup script finished.

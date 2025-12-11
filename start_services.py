@@ -48,7 +48,7 @@ def check_network_path():
     # Try to load from config
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as f:
                 config = json.load(f)
                 path = config.get('excel_dir', DEFAULT_NETWORK_PATH)
                 print("設定ファイル(config.json)を読み込みました。")
@@ -87,7 +87,7 @@ def start_services():
     
     # 3. Start Backend
     print("\n[3/4] バックエンドを起動中...")
-    subprocess.Popen(f'start "Backend" /MIN cmd /k "cd {BACKEND_DIR} && python main.py"', shell=True)
+    subprocess.Popen(f'start "Backend" /MIN cmd /k "cd {BACKEND_DIR} && py main.py"', shell=True)
     print("バックエンドを起動しました。")
     
     # 4. Start Frontend

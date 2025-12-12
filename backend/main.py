@@ -100,6 +100,24 @@ def list_excel_files():
 # Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
 CACHE = {}
 
+def create_backup(file_path):
+    try:
+        backup_dir = os.path.join(os.path.dirname(file_path), 'backup')
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = os.path.basename(file_path)
+        name, ext = os.path.splitext(filename)
+        backup_filename = f"{name}_{timestamp}{ext}"
+        backup_path = os.path.join(backup_dir, backup_filename)
+        
+        shutil.copy2(file_path, backup_path)
+        print(f"Backup created: {backup_path}")
+    except Exception as e:
+        print(f"Warning: Failed to create backup: {e}")
+
+
 def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
     """
     Get dataframe from cache or read from Excel file if modified or not in cache.

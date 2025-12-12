@@ -240,6 +240,24 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
 
 
     const isInternalWork = ['社内（半日）', '社内（１日）', '外出時間', '量販店調査'].includes(formData.行動内容);
+    const isTravelTime = formData.行動内容 === '外出時間';
+
+    // State for Travel Time specifics
+    const [travelTimeData, setTravelTimeData] = useState({
+        time: '',
+        satisfaction: ''
+    });
+
+    useEffect(() => {
+        if (isTravelTime) {
+            const content = `時間: ${travelTimeData.time}\n満足度: ${travelTimeData.satisfaction}`;
+            setFormData(prev => ({ ...prev, 商談内容: content }));
+        }
+    }, [isTravelTime, travelTimeData]);
+
+    const handleTravelTimeChange = (field: 'time' | 'satisfaction', value: string) => {
+        setTravelTimeData(prev => ({ ...prev, [field]: value }));
+    };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -294,6 +312,37 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                                 <option value="その他">その他</option>
                             </select>
                         </div>
+
+                        {isTravelTime && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">時間</label>
+                                    <select
+                                        value={travelTimeData.time}
+                                        onChange={(e) => handleTravelTimeChange('time', e.target.value)}
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                    >
+                                        <option value="">選択してください</option>
+                                        {['08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30', '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00'].map(time => (
+                                            <option key={time} value={time}>{time}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">満足度</label>
+                                    <select
+                                        value={travelTimeData.satisfaction}
+                                        onChange={(e) => handleTravelTimeChange('satisfaction', e.target.value)}
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                    >
+                                        <option value="">選択してください</option>
+                                        <option value="満足">満足</option>
+                                        <option value="普通">普通</option>
+                                        <option value="不満">不満</option>
+                                    </select>
+                                </div>
+                            </>
+                        )}
 
                         {!isInternalWork && (
                             <>

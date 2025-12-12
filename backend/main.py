@@ -103,6 +103,14 @@ def list_excel_files():
                 })
         return {"files": files, "default": DEFAULT_EXCEL_FILE}
     except Exception as e:
+        import traceback
+        error_msg = f"Error accessing {EXCEL_DIR}: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        try:
+            with open("backend_error.log", "a", encoding="utf-8") as f:
+                f.write(f"[{datetime.now()}] {error_msg}\n")
+        except:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -17,6 +17,33 @@ interface EditReportModalProps {
 export default function EditReportModal({ report, onClose, onSuccess, selectedFile, setReports, reports }: EditReportModalProps) {
     const { isOnline, saveOfflineReport, cacheReports } = useOffline();
 
+    // Parse initial time and clean content from 商談内容
+    const parseInitialData = (content: string) => {
+        if (!content) return { start: '', end: '', content: '' };
+
+        let newContent = content;
+        let start = '';
+        let end = '';
+
+        // Extract Time
+        const timeMatch = newContent.match(/^【外出時間】(\d{2}:\d{2})〜(\d{2}:\d{2})\n/);
+        if (timeMatch) {
+            start = timeMatch[1];
+            end = timeMatch[2];
+            newContent = newContent.replace(timeMatch[0], '');
+        }
+
+        // Remove Satisfaction tag if present (to avoid duplication in view)
+        // We rely on report.ランク for the dropdown value
+        newContent = newContent.replace(/^【満足度】.*?\n/, '');
+
+        return { start, end, content: newContent };
+    };
+
+    const initialParsed = (report.行動内容 === '外出時間' && report.商談内容)
+        ? parseInitialData(report.商談内容)
+        : { start: '', end: '', content: report.商談内容 || '' };
+
     const [formData, setFormData] = useState({
         日付: report.日付 || '',
         行動内容: report.行動内容 || '',
@@ -27,7 +54,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         直送先名: report.直送先名 || '',
         面談者: report.面談者 || '',
         滞在時間: report.滞在時間 || '',
-        商談内容: report.商談内容 || '',
+        商談内容: initialParsed.content,
         提案物: report.提案物 || '',
         次回プラン: report.次回プラン || '',
         重点顧客: report.重点顧客 || '',
@@ -35,6 +62,17 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         上長コメント: report.上長コメント || '',
         コメント返信欄: report.コメント返信欄 || ''
     });
+    const [startOutTime, setStartOutTime] = useState(initialParsed.start);
+    const [endOutTime, setEndOutTime] = useState(initialParsed.end);
+
+    // 時間の選択肢を生成 (08:00 - 23:00)
+    const timeOptions = [];
+    for (let i = 8; i <= 23; i++) {
+        timeOptions.push(`${String(i).padStart(2, '0')}:00`);
+        if (i < 23) {
+            timeOptions.push(`${String(i).padStart(2, '0')}:30`);
+        }
+    }
     const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -42,7 +80,22 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         setSubmitting(true);
 
         const { 管理番号, ...rest } = report;
-        const fullReport = { ...rest, ...formData };
+
+        let finalFormData = { ...formData };
+
+        // 外出時間の場合は商談内容に時間を追記
+        if (formData.行動内容 === '外出時間') {
+            let timeString = '';
+            if (startOutTime && endOutTime) {
+                timeString += `【外出時間】${startOutTime}〜${endOutTime}\n`;
+            }
+            if (formData.ランク) {
+                timeString += `【満足度】${formData.ランク}\n`;
+            }
+            finalFormData.商談内容 = timeString + (formData.商談内容 || '');
+        }
+
+        const fullReport = { ...rest, ...finalFormData };
         const sanitized = sanitizeReport(fullReport);
 
         try {
@@ -74,21 +127,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             // Optimistic UI update
             const updatedReport = { ...report, ...sanitized };
             setReports(prev => prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
-            cacheReports(reports.map(r => r.管理番号 === report.管理番号 ? updatedReport : r)); // Note: This uses 'reports' from props which might be stale if setReports hasn't updated it yet? 
-            // Actually 'reports' prop is from render cycle. 'prev' in setReports is latest.
-            // Using 'reports' from props for cacheReports might be slightly risky if concurrent updates, but OK for now.
-            // Better: cacheReports(newReports) inside setReports?
-            // setReports(prev => { const new = ...; cacheReports(new); return new; });
-            // But cacheReports is from hook, stable.
-            // I'll stick to original logic structure which did:
-            /*
-            setReports(prev => {
-                const newReports = prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r);
-                cacheReports(newReports); // Update cache as well
-                return newReports;
-            });
-            */
-            // I should replicate that safer logic for fallback too.
+            cacheReports(reports.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
 
             setReports(prev => {
                 const newReports = prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r);
@@ -114,6 +153,9 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             [e.target.name]: e.target.value
         }));
     };
+
+    const isMinimalUI = ['社内（１日）', '社内（半日）', '量販店調査', '外出時間'].includes(formData.行動内容);
+    const isOuting = formData.行動内容 === '外出時間';
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -169,45 +211,109 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                             </select>
                         </div>
 
-                        <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
-                            <input
-                                type="text"
-                                name="訪問先名"
-                                value={formData.訪問先名}
-                                onChange={handleChange}
-                                required
-                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                            />
-                        </div>
+                        {isOuting && (
+                            <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded border border-sf-border">
+                                <div>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">出発時間 *</label>
+                                    <select
+                                        value={startOutTime}
+                                        onChange={(e) => {
+                                            setStartOutTime(e.target.value);
+                                            // 出発時間が変更されたら、帰社時間がそれより前ならリセット
+                                            if (endOutTime && e.target.value >= endOutTime) {
+                                                setEndOutTime('');
+                                            }
+                                        }}
+                                        required
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                    >
+                                        <option value="">選択してください</option>
+                                        {timeOptions.map(time => (
+                                            <option key={time} value={time}>{time}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">帰社時間 *</label>
+                                    <select
+                                        value={endOutTime}
+                                        onChange={(e) => setEndOutTime(e.target.value)}
+                                        required
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                    >
+                                        <option value="">選択してください</option>
+                                        {timeOptions.filter(t => !startOutTime || t > startOutTime).map(time => (
+                                            <option key={time} value={time}>{time}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
 
-                        <div>
-                            <label className="block text-sm font-medium text-sf-text mb-1">面談者</label>
-                            <input
-                                type="text"
-                                name="面談者"
-                                value={formData.面談者}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                            />
-                        </div>
+                        {!isMinimalUI && (
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
+                                <input
+                                    type="text"
+                                    name="訪問先名"
+                                    value={formData.訪問先名}
+                                    onChange={handleChange}
+                                    required={!isMinimalUI}
+                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                />
+                            </div>
+                        )}
 
-                        <div>
-                            <label className="block text-sm font-medium text-sf-text mb-1">滞在時間</label>
-                            <select
-                                name="滞在時間"
-                                value={formData.滞在時間}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                            >
-                                <option value="">選択してください</option>
-                                <option value="-">-</option>
-                                <option value="10分未満">10分未満</option>
-                                <option value="30分未満">30分未満</option>
-                                <option value="60分未満">60分未満</option>
-                                <option value="60分以上">60分以上</option>
-                            </select>
-                        </div>
+                        {!isMinimalUI && (
+                            <div>
+                                <label className="block text-sm font-medium text-sf-text mb-1">面談者</label>
+                                <input
+                                    type="text"
+                                    name="面談者"
+                                    value={formData.面談者}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                />
+                            </div>
+                        )}
+
+                        {!isMinimalUI && (
+                            <div>
+                                <label className="block text-sm font-medium text-sf-text mb-1">滞在時間</label>
+                                <select
+                                    name="滞在時間"
+                                    value={formData.滞在時間}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                >
+                                    <option value="">選択してください</option>
+                                    <option value="-">-</option>
+                                    <option value="10分未満">10分未満</option>
+                                    <option value="30分未満">30分未満</option>
+                                    <option value="60分未満">60分未満</option>
+                                    <option value="60分以上">60分以上</option>
+                                </select>
+                            </div>
+                        )}
+
+                        {/* 満足度・ランク分岐：外出時間のみ表示 */}
+                        {isOuting && (
+                            <div>
+                                <label className="block text-sm font-medium text-sf-text mb-1">満足度（達成率）</label>
+                                <select
+                                    name="ランク"
+                                    value={formData.ランク}
+                                    onChange={handleChange}
+                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                >
+                                    <option value="">選択してください</option>
+                                    <option value="25%">25%</option>
+                                    <option value="50%">50%</option>
+                                    <option value="75%">75%</option>
+                                    <option value="100%">100%</option>
+                                </select>
+                            </div>
+                        )}
                     </div>
 
                     <div>
@@ -223,31 +329,35 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         />
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-sf-text mb-1">提案物</label>
-                        <textarea
-                            name="提案物"
-                            value={formData.提案物}
-                            onChange={handleChange}
-                            rows={1}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
-                            onFocus={(e) => e.currentTarget.rows = 6}
-                            onBlur={(e) => e.currentTarget.rows = 1}
-                        />
-                    </div>
+                    {!isMinimalUI && (
+                        <div>
+                            <label className="block text-sm font-medium text-sf-text mb-1">提案物</label>
+                            <textarea
+                                name="提案物"
+                                value={formData.提案物}
+                                onChange={handleChange}
+                                rows={1}
+                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                                onFocus={(e) => e.currentTarget.rows = 6}
+                                onBlur={(e) => e.currentTarget.rows = 1}
+                            />
+                        </div>
+                    )}
 
-                    <div>
-                        <label className="block text-sm font-medium text-sf-text mb-1">次回プラン</label>
-                        <textarea
-                            name="次回プラン"
-                            value={formData.次回プラン}
-                            onChange={handleChange}
-                            rows={1}
-                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
-                            onFocus={(e) => e.currentTarget.rows = 6}
-                            onBlur={(e) => e.currentTarget.rows = 1}
-                        />
-                    </div>
+                    {!isMinimalUI && (
+                        <div>
+                            <label className="block text-sm font-medium text-sf-text mb-1">次回プラン</label>
+                            <textarea
+                                name="次回プラン"
+                                value={formData.次回プラン}
+                                onChange={handleChange}
+                                rows={1}
+                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue transition-all duration-200 resize-none"
+                                onFocus={(e) => e.currentTarget.rows = 6}
+                                onBlur={(e) => e.currentTarget.rows = 1}
+                            />
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-sf-border">
                         <div>

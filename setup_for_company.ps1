@@ -27,7 +27,8 @@ Write-Host "設定パス: $($ConfigContent.excel_dir)" -ForegroundColor Gray
 # ネットワークパスのアクセス確認
 if (Test-Path $ConfigContent.excel_dir) {
     Write-Host "ネットワークパスへのアクセスを確認しました: OK" -ForegroundColor Green
-} else {
+}
+else {
     Write-Host "警告: ネットワークパスにアクセスできません。" -ForegroundColor Yellow
     Write-Host "VPNに接続しているか、社内ネットワークに繋がっているか確認してください。" -ForegroundColor Yellow
 }
@@ -38,6 +39,7 @@ Write-Host "`nアプリケーションを起動します..." -ForegroundColor Cy
 $StartScript = Join-Path $PSScriptRoot "start_app.bat"
 if (Test-Path $StartScript) {
     Start-Process $StartScript
-} else {
+}
+else {
     Write-Error "start_app.batが見つかりません。"
 }

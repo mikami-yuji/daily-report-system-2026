@@ -7,7 +7,6 @@ from datetime import datetime
 import os
 import shutil
 import json
-from typing import Optional, List
 
 app = FastAPI()
 
@@ -467,30 +466,6 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         return {"customer_cd": customer_cd, "designs": designs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-def create_backup(file_path):
-    """Create a backup of the Excel file"""
-    try:
-        if not os.path.exists(file_path):
-            return
-            
-        # Create a backups directory if it doesn't exist? 
-        # For now, let's keep it in the same directory but with a specific suffix
-        # Or even better, a hidden .backups directory
-        # adhering to the user's implicit structure, let's just append .bak for now as requested
-        # actually, the previous code implied it handles it.
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Use .bak extension
-        backup_path = f"{file_path}.{timestamp}.bak"
-        
-        shutil.copy2(file_path, backup_path)
-        print(f"DEBUG: Backup created at {backup_path}")
-        
-    except Exception as e:
-        print(f"Warning: Failed to create backup: {e}")
-        # We generally don't want to fail the main operation if backup fails, 
-        # but we should log it.
 
 @app.post("/reports")
 def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):

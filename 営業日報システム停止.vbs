@@ -1,12 +1,12 @@
-' å–¶æ¥­æ—¥å ±ã‚·ã‚¹ãƒ†ãƒ  åœæ­¢
-' ã“ã®ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯ã™ã‚‹ã¨ã€ãƒãƒƒã‚¯ã‚¨ãƒ³ãƒ‰ã¨ãƒ•ãƒ­ãƒ³ãƒˆã‚¨ãƒ³ãƒ‰ã‚’åœæ­¢ã—ã¾ã™
+' ‰c‹Æ“ú•ñƒVƒXƒeƒ€ ’âŽ~
+' ‚±‚Ìƒtƒ@ƒCƒ‹‚ðƒ_ƒuƒ‹ƒNƒŠƒbƒN‚·‚é‚ÆAƒoƒbƒNƒGƒ“ƒh‚Æƒtƒƒ“ƒgƒGƒ“ƒh‚ð’âŽ~‚µ‚Ü‚·
 
 Set WshShell = CreateObject("WScript.Shell")
 
-' Node.jsãƒ—ãƒ­ã‚»ã‚¹ï¼ˆãƒ•ãƒ­ãƒ³ãƒˆã‚¨ãƒ³ãƒ‰ï¼‰ã‚’åœæ­¢
+' Node.jsƒvƒƒZƒXiƒtƒƒ“ƒgƒGƒ“ƒhj‚ð’âŽ~
 WshShell.Run "taskkill /F /IM node.exe", 0, True
 
-' Pythonãƒ—ãƒ­ã‚»ã‚¹ï¼ˆãƒãƒƒã‚¯ã‚¨ãƒ³ãƒ‰ï¼‰ã‚’åœæ­¢
+' PythonƒvƒƒZƒXiƒoƒbƒNƒGƒ“ƒhj‚ð’âŽ~
 WshShell.Run "taskkill /F /IM python.exe", 0, True
 
-MsgBox "å–¶æ¥­æ—¥å ±ã‚·ã‚¹ãƒ†ãƒ ã‚’åœæ­¢ã—ã¾ã—ãŸã€‚", vbInformation, "å–¶æ¥­æ—¥å ±ã‚·ã‚¹ãƒ†ãƒ "
+MsgBox "‰c‹Æ“ú•ñƒVƒXƒeƒ€‚ð’âŽ~‚µ‚Ü‚µ‚½B", vbInformation, "‰c‹Æ“ú•ñƒVƒXƒeƒ€"

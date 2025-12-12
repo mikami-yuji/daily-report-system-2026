@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
@@ -7,8 +8,6 @@ from datetime import datetime
 import os
 import shutil
 import json
-from typing import Optional
-
 
 app = FastAPI()
 
@@ -27,11 +26,11 @@ def load_config():
     config_path = os.path.join(os.path.dirname(__file__), 'config.json')
     if os.path.exists(config_path):
         try:
-            with open(config_path, 'r', encoding='utf-8-sig') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 return config.get('excel_dir', r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度')
         except Exception as e:
-            print(f"警告: config.json の読み込みに失敗しました: {e}")
+            print(f"Warning: Failed to load config.json: {e}")
             return r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
     return r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
 
@@ -84,29 +83,19 @@ def list_excel_files():
     """List all Excel files in the directory"""
     try:
         files = []
-        if not os.path.exists(EXCEL_DIR):
-             print(f"Error: EXCEL_DIR not found: {EXCEL_DIR}")
-             return {"files": [], "default": DEFAULT_EXCEL_FILE, "error": "Directory not found"}
-
         for file in os.listdir(EXCEL_DIR):
             if file.endswith(('.xlsx', '.xlsm')):
                 file_path = os.path.join(EXCEL_DIR, file)
-                try:
-                    file_size = os.path.getsize(file_path)
-                    file_mtime = os.path.getmtime(file_path)
-                    files.append({
-                        "name": file,
-                        "size": file_size,
-                        "modified": datetime.fromtimestamp(file_mtime).isoformat()
-                    })
-                except Exception as file_err:
-                    print(f"Skipping file {file} due to error: {file_err}")
-                    continue
+                file_size = os.path.getsize(file_path)
+                file_mtime = os.path.getmtime(file_path)
+                files.append({
+                    "name": file,
+                    "size": file_size,
+                    "modified": datetime.fromtimestamp(file_mtime).isoformat()
+                })
         return {"files": files, "default": DEFAULT_EXCEL_FILE}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Server Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
@@ -136,6 +125,31 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
         return df.copy()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
+
+
+def create_backup(file_path: str) -> Optional[str]:
+    """
+    Excelファイルのバックアップを作成する。
+    バックアップファイルは元のファイル名に日時を付加して同じディレクトリに保存。
+    """
+    try:
+        if not os.path.exists(file_path):
+            return None
+        
+        # バックアップファイル名を生成（例: file_20251210_123456.bak）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = os.path.dirname(file_path)
+        base_name = os.path.basename(file_path)
+        name_without_ext = os.path.splitext(base_name)[0]
+        backup_name = f"{name_without_ext}_{timestamp}.bak"
+        backup_path = os.path.join(backup_dir, backup_name)
+        
+        shutil.copy2(file_path, backup_path)
+        print(f"Backup created: {backup_path}")
+        return backup_path
+    except Exception as e:
+        print(f"Warning: Failed to create backup: {e}")
+        return None
 
 @app.get("/customers")
 def get_customers(filename: str = DEFAULT_EXCEL_FILE):

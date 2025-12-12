@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import shutil
 import json
+from typing import Optional, List
 
 app = FastAPI()
 

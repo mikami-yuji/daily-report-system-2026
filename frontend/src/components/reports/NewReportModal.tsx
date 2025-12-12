@@ -238,6 +238,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
         filterCustomers('');
     };
 
+
+    const isInternalWork = ['社内（半日）', '社内（１日）', '外出時間'].includes(formData.行動内容);
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -292,208 +295,214 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                             </select>
                         </div>
 
-                        <div className="md:col-span-2 relative">
-                            <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    name="訪問先名"
-                                    value={formData.訪問先名}
-                                    onChange={handleCustomerNameChange}
-                                    required
-                                    autoComplete="off"
-                                    className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                                />
-                                {formData.訪問先名 && (
-                                    <button
-                                        type="button"
-                                        onClick={handleClearCustomer}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
-                                        title="クリア"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                )}
-                            </div>
-                            {formData.直送先名 && (
-                                <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1">
-                                    <Truck size={12} />
-                                    直送先: {formData.直送先名} (CD: {formData.直送先CD})
+                        {!isInternalWork && (
+                            <>
+                                <div className="md:col-span-2 relative">
+                                    <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            name="訪問先名"
+                                            value={formData.訪問先名}
+                                            onChange={handleCustomerNameChange}
+                                            required={!isInternalWork}
+                                            autoComplete="off"
+                                            className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                        />
+                                        {formData.訪問先名 && (
+                                            <button
+                                                type="button"
+                                                onClick={handleClearCustomer}
+                                                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                                                title="クリア"
+                                            >
+                                                <X size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {formData.直送先名 && (
+                                        <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1">
+                                            <Truck size={12} />
+                                            直送先: {formData.直送先名} (CD: {formData.直送先CD})
+                                        </div>
+                                    )}
+                                    {showSuggestions && (
+                                        <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg">
+                                            {filteredCustomers.map((customer, index) => (
+                                                <li
+                                                    key={index}
+                                                    className="px-3 py-2 hover:bg-sf-bg-light cursor-pointer"
+                                                    onClick={() => selectCustomer(customer)}
+                                                >
+                                                    <div className="font-medium">
+                                                        {customer.得意先名}
+                                                        {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">(直送先: {customer.直送先名})</span>}
+                                                    </div>
+                                                    <div className="text-xs text-sf-text-weak">
+                                                        {customer.得意先CD} - {customer.エリア}
+                                                    </div>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
                                 </div>
-                            )}
-                            {showSuggestions && (
-                                <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg">
-                                    {filteredCustomers.map((customer, index) => (
-                                        <li
-                                            key={index}
-                                            className="px-3 py-2 hover:bg-sf-bg-light cursor-pointer"
-                                            onClick={() => selectCustomer(customer)}
-                                        >
-                                            <div className="font-medium">
-                                                {customer.得意先名}
-                                                {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">(直送先: {customer.直送先名})</span>}
-                                            </div>
-                                            <div className="text-xs text-sf-text-weak">
-                                                {customer.得意先CD} - {customer.エリア}
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                        </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-sf-text mb-1">面談者</label>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    name="面談者"
-                                    value={formData.面談者}
-                                    onChange={handleChange}
-                                    list="interviewer-suggestions"
-                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                                />
-                                <datalist id="interviewer-suggestions">
-                                    {interviewers.map((interviewer, index) => (
-                                        <option key={index} value={interviewer} />
-                                    ))}
-                                </datalist>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-sf-text mb-1">滞在時間</label>
-                            <select
-                                name="滞在時間"
-                                value={formData.滞在時間}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                            >
-                                <option value="">選択してください</option>
-                                <option value="-">-</option>
-                                <option value="10分未満">10分未満</option>
-                                <option value="30分未満">30分未満</option>
-                                <option value="60分未満">60分未満</option>
-                                <option value="60分以上">60分以上</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Design Input Section */}
-                    <div className="md:col-span-2 border-t border-sf-border pt-4 mt-2">
-                        <h3 className="font-medium text-sf-text mb-3">デザイン情報</h3>
-                        <div className="space-y-4">
-                            <div className="flex gap-4">
-                                <label className="flex items-center gap-2">
-                                    <input
-                                        type="radio"
-                                        name="designMode"
-                                        value="none"
-                                        checked={designMode === 'none'}
-                                        onChange={() => handleDesignModeChange('none')}
-                                        className="text-sf-light-blue focus:ring-sf-light-blue"
-                                    />
-                                    <span>なし</span>
-                                </label>
-                                <label className="flex items-center gap-2">
-                                    <input
-                                        type="radio"
-                                        name="designMode"
-                                        value="new"
-                                        checked={designMode === 'new'}
-                                        onChange={() => handleDesignModeChange('new')}
-                                        className="text-sf-light-blue focus:ring-sf-light-blue"
-                                    />
-                                    <span>新規</span>
-                                </label>
-                                <label className="flex items-center gap-2">
-                                    <input
-                                        type="radio"
-                                        name="designMode"
-                                        value="existing"
-                                        checked={designMode === 'existing'}
-                                        onChange={() => handleDesignModeChange('existing')}
-                                        className="text-sf-light-blue focus:ring-sf-light-blue"
-                                    />
-                                    <span>既存</span>
-                                </label>
-                            </div>
-
-                            {designMode === 'existing' && (
                                 <div>
-                                    <label className="block text-sm font-medium text-sf-text mb-1">過去のデザイン案件</label>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">面談者</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            name="面談者"
+                                            value={formData.面談者}
+                                            onChange={handleChange}
+                                            list="interviewer-suggestions"
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                        />
+                                        <datalist id="interviewer-suggestions">
+                                            {interviewers.map((interviewer, index) => (
+                                                <option key={index} value={interviewer} />
+                                            ))}
+                                        </datalist>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-sf-text mb-1">滞在時間</label>
                                     <select
-                                        onChange={handleDesignSelect}
-                                        value={formData['デザイン依頼No.']}
+                                        name="滞在時間"
+                                        value={formData.滞在時間}
+                                        onChange={handleChange}
                                         className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                                     >
                                         <option value="">選択してください</option>
-                                        {designs.map((design) => (
-                                            <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
-                                                {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
-                                            </option>
-                                        ))}
+                                        <option value="-">-</option>
+                                        <option value="10分未満">10分未満</option>
+                                        <option value="30分未満">30分未満</option>
+                                        <option value="60分未満">60分未満</option>
+                                        <option value="60分以上">60分以上</option>
                                     </select>
                                 </div>
-                            )}
+                            </>
+                        )}
+                    </div>
 
-                            {(designMode === 'new' || designMode === 'existing') && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン依頼No.</label>
+                    {/* Design Input Section */}
+                    {!isInternalWork && (
+                        <div className="md:col-span-2 border-t border-sf-border pt-4 mt-2">
+                            <h3 className="font-medium text-sf-text mb-3">デザイン情報</h3>
+                            <div className="space-y-4">
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2">
                                         <input
-                                            type="text"
-                                            name="デザイン依頼No."
-                                            value={formData['デザイン依頼No.']}
-                                            onChange={handleChange}
-                                            readOnly={designMode === 'existing'}
-                                            className={`w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue ${designMode === 'existing' ? 'bg-gray-100' : ''}`}
+                                            type="radio"
+                                            name="designMode"
+                                            value="none"
+                                            checked={designMode === 'none'}
+                                            onChange={() => handleDesignModeChange('none')}
+                                            className="text-sf-light-blue focus:ring-sf-light-blue"
                                         />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン種別</label>
+                                        <span>なし</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
                                         <input
-                                            type="text"
-                                            name="デザイン種別"
-                                            value={formData.デザイン種別}
-                                            onChange={handleChange}
-                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            type="radio"
+                                            name="designMode"
+                                            value="new"
+                                            checked={designMode === 'new'}
+                                            onChange={() => handleDesignModeChange('new')}
+                                            className="text-sf-light-blue focus:ring-sf-light-blue"
                                         />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン名</label>
+                                        <span>新規</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
                                         <input
-                                            type="text"
-                                            name="デザイン名"
-                                            value={formData.デザイン名}
-                                            onChange={handleChange}
-                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            type="radio"
+                                            name="designMode"
+                                            value="existing"
+                                            checked={designMode === 'existing'}
+                                            onChange={() => handleDesignModeChange('existing')}
+                                            className="text-sf-light-blue focus:ring-sf-light-blue"
                                         />
-                                    </div>
+                                        <span>既存</span>
+                                    </label>
+                                </div>
+
+                                {designMode === 'existing' && (
                                     <div>
-                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン進捗状況</label>
+                                        <label className="block text-sm font-medium text-sf-text mb-1">過去のデザイン案件</label>
                                         <select
-                                            name="デザイン進捗状況"
-                                            value={formData.デザイン進捗状況}
-                                            onChange={handleChange}
+                                            onChange={handleDesignSelect}
+                                            value={formData['デザイン依頼No.']}
                                             className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                                         >
                                             <option value="">選択してください</option>
-                                            <option value="-">-</option>
-                                            <option value="新規">新規</option>
-                                            <option value="50％未満">50％未満</option>
-                                            <option value="80％未満">80％未満</option>
-                                            <option value="80％以上">80％以上</option>
-                                            <option value="出稿">出稿</option>
-                                            <option value="不採用（コンペ負け）">不採用（コンペ負け）</option>
-                                            <option value="不採用（企画倒れ）">不採用（企画倒れ）</option>
-                                            <option value="保留">保留</option>
+                                            {designs.map((design) => (
+                                                <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
+                                                    {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
+                                                </option>
+                                            ))}
                                         </select>
                                     </div>
-                                </div>
-                            )}
+                                )}
+
+                                {(designMode === 'new' || designMode === 'existing') && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン依頼No.</label>
+                                            <input
+                                                type="text"
+                                                name="デザイン依頼No."
+                                                value={formData['デザイン依頼No.']}
+                                                onChange={handleChange}
+                                                readOnly={designMode === 'existing'}
+                                                className={`w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue ${designMode === 'existing' ? 'bg-gray-100' : ''}`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン種別</label>
+                                            <input
+                                                type="text"
+                                                name="デザイン種別"
+                                                value={formData.デザイン種別}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン名</label>
+                                            <input
+                                                type="text"
+                                                name="デザイン名"
+                                                value={formData.デザイン名}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン進捗状況</label>
+                                            <select
+                                                name="デザイン進捗状況"
+                                                value={formData.デザイン進捗状況}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            >
+                                                <option value="">選択してください</option>
+                                                <option value="-">-</option>
+                                                <option value="新規">新規</option>
+                                                <option value="50％未満">50％未満</option>
+                                                <option value="80％未満">80％未満</option>
+                                                <option value="80％以上">80％以上</option>
+                                                <option value="出稿">出稿</option>
+                                                <option value="不採用（コンペ負け）">不採用（コンペ負け）</option>
+                                                <option value="不採用（企画倒れ）">不採用（企画倒れ）</option>
+                                                <option value="保留">保留</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-sf-text mb-1">商談内容</label>

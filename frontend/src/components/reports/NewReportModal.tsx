@@ -545,13 +545,19 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-sf-text mb-1">デザイン種別</label>
-                                            <input
-                                                type="text"
+                                            <select
                                                 name="デザイン種別"
                                                 value={formData.デザイン種別}
                                                 onChange={handleChange}
                                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                                            />
+                                            >
+                                                <option value="">選択してください</option>
+                                                <option value="-">-</option>
+                                                <option value="別注（新版）">別注（新版）</option>
+                                                <option value="別注（改版）">別注（改版）</option>
+                                                <option value="別注（再版）">別注（再版）</option>
+                                                <option value="SP（新版）">SP（新版）</option>
+                                            </select>
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-sm font-medium text-sf-text mb-1">デザイン名</label>

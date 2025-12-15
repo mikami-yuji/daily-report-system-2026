@@ -45,7 +45,16 @@ def load_config():
 EXCEL_DIR = load_config()
 print(f"STARTUP: Working with EXCEL_DIR: {EXCEL_DIR}")
 
-DEFAULT_EXCEL_FILE = "daily_report_template.xlsm"
+# Find a default Excel file dynamically
+DEFAULT_EXCEL_FILE = "daily_report_template.xlsm" # Fallback
+if os.path.exists(EXCEL_DIR):
+    files = [f for f in os.listdir(EXCEL_DIR) if f.endswith('.xlsm') and not f.startswith('~$')]
+    if files:
+        DEFAULT_EXCEL_FILE = files[0]
+        print(f"INFO: Set default Excel file to: {DEFAULT_EXCEL_FILE}")
+    else:
+        print("WARN: No .xlsm files found in directory. Using fallback default.")
+
 
 class ReportInput(BaseModel):
     model_config = {"populate_by_name": True}

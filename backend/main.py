@@ -602,7 +602,9 @@ def add_report(report: ReportInput, filename: str = DEFAULT_EXCEL_FILE):
             18: report.商談内容, # 商談内容 (Corrected from 19)
             19: report.提案物, # 提案物 (Corrected from 20)
             20: report.次回プラン, # 次回プラン (Corrected from 21)
-            21: report.競合他社情報 # 競合他社情報 (New)
+            21: report.競合他社情報, # 競合他社情報 (New)
+            22: report.上長コメント, # コメント (Column 22)
+            23: report.コメント返信欄  # コメント返信欄 (Column 23)
         }
 
         for col_idx, value in columns_to_write.items():
@@ -687,7 +689,9 @@ def update_report(management_number: int, report: ReportInput, filename: str = D
             18: report.商談内容,
             19: report.提案物,
             20: report.次回プラン,
-            21: report.競合他社情報
+            21: report.競合他社情報,
+            22: report.上長コメント, # コメント (Column 22)
+            23: report.コメント返信欄  # コメント返信欄 (Column 23)
         }
 
         for col_idx, value in columns_to_write.items():

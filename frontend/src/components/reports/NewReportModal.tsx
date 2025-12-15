@@ -64,7 +64,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             // Fallback to cache if fetch fails (offline or server error)
             if (cachedCustomers.length > 0) {
                 setCustomers(cachedCustomers);
-                toast('キャッシュされた得意先リストを使用します', { icon: '📡' });
+                toast('キャッシュされた得意先リストを使用します', { icon: '📡', id: 'cached-customers' });
             }
         });
     }, [selectedFile, isOnline, cacheCustomers, cachedCustomers]);

@@ -69,7 +69,7 @@ export default function ReportsPage() {
             if (cachedReports.length > 0) {
                 const mergedCached = mergeOfflineReports(cachedReports);
                 setReports(mergedCached);
-                toast('キャッシュされた日報を表示します', { icon: '📡' });
+                toast('キャッシュされた日報を表示します', { icon: '📡', id: 'cached-reports' });
             }
             setLoading(false);
 

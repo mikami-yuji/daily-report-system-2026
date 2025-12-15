@@ -1,24 +1,21 @@
-' å–¶æ¥­æ—¥å ±ã‚·ã‚¹ãƒ†ãƒ  ãƒ¯ãƒ³ã‚¯ãƒªãƒƒã‚¯èµ·å‹•
-' ã“ã®ãƒ•ã‚¡ã‚¤ãƒ«ã‚’ãƒ€ãƒ–ãƒ«ã‚¯ãƒªãƒƒã‚¯ã™ã‚‹ã¨ã€ãƒãƒƒã‚¯ã‚¨ãƒ³ãƒ‰ã¨ãƒ•ãƒ­ãƒ³ãƒˆã‚¨ãƒ³ãƒ‰ãŒèµ·å‹•ã—ã€ãƒ–ãƒ©ã‚¦ã‚¶ãŒé–‹ãã¾ã™
+' ‰c‹Æ“ú•ñƒVƒXƒeƒ€ ƒƒ“ƒNƒŠƒbƒN‹N“®
+' ‚±‚Ìƒtƒ@ƒCƒ‹‚ðƒ_ƒuƒ‹ƒNƒŠƒbƒN‚·‚é‚ÆAƒoƒbƒNƒGƒ“ƒh‚Æƒtƒƒ“ƒgƒGƒ“ƒh‚ª‹N“®‚µAƒuƒ‰ƒEƒU‚ªŠJ‚«‚Ü‚·
 
 Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-' ã‚¹ã‚¯ãƒªãƒ—ãƒˆã®ãƒ‡ã‚£ãƒ¬ã‚¯ãƒˆãƒªã‚’å–å¾—
+' ƒXƒNƒŠƒvƒg‚ÌƒfƒBƒŒƒNƒgƒŠ‚ðŽæ“¾
 scriptPath = fso.GetParentFolderName(WScript.ScriptFullName)
 
-' start_app.bat ã‚’èµ·å‹•ï¼ˆéžè¡¨ç¤ºï¼‰
+' start_app.bat ‚ð‹N“®i”ñ•\Ž¦j
 WshShell.CurrentDirectory = scriptPath
 WshShell.Run "cmd /c start_app.bat", 0, False
 
-' ã‚µãƒ¼ãƒãƒ¼èµ·å‹•ã‚’å¾…ã¤
+' ƒT[ƒo[‹N“®‚ð‘Ò‚Â
 WScript.Sleep 5000
 
-' ãƒ–ãƒ©ã‚¦ã‚¶ã‚’é–‹ã
+' ƒuƒ‰ƒEƒU‚ðŠJ‚­
 WshShell.Run "http://localhost:3000", 1, False
 
-' å®Œäº†ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸
-MsgBox "å–¶æ¥­æ—¥å ±ã‚·ã‚¹ãƒ†ãƒ ã‚’èµ·å‹•ã—ã¾ã—ãŸï¼" & vbCrLf & vbCrLf & _
-       "ãƒ–ãƒ©ã‚¦ã‚¶ã§ http://localhost:3000 ãŒé–‹ãã¾ã™ã€‚" & vbCrLf & _
-       "ã“ã®ãƒ¡ãƒƒã‚»ãƒ¼ã‚¸ã‚’é–‰ã˜ã¦ã‚‚ã€ã‚·ã‚¹ãƒ†ãƒ ã¯ãƒãƒƒã‚¯ã‚°ãƒ©ã‚¦ãƒ³ãƒ‰ã§å‹•ä½œã—ç¶šã‘ã¾ã™ã€‚", _
-       vbInformation, "å–¶æ¥­æ—¥å ±ã‚·ã‚¹ãƒ†ãƒ "
+' Š®—¹ƒƒbƒZ[ƒW
+MsgBox "‰c‹Æ“ú•ñƒVƒXƒeƒ€‚ð‹N“®‚µ‚Ü‚µ‚½I" & vbCrLf & vbCrLf & "ƒuƒ‰ƒEƒU‚Å http://localhost:3000 ‚ªŠJ‚«‚Ü‚·B" & vbCrLf & "‚±‚ÌƒƒbƒZ[ƒW‚ð•Â‚¶‚Ä‚àAƒVƒXƒeƒ€‚ÍƒoƒbƒNƒOƒ‰ƒEƒ“ƒh‚Å“®ì‚µ‘±‚¯‚Ü‚·B", vbInformation, "‰c‹Æ“ú•ñƒVƒXƒeƒ€"

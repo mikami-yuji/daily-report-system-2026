@@ -5,7 +5,7 @@ echo Starting Daily Report System...
 start "Daily Report Backend" cmd /k "cd backend && py main.py"
 
 :: Start Frontend
-start "Daily Report Frontend" cmd /k "cd frontend && npm run dev"
+start "Daily Report Frontend" cmd /k "cd frontend && if not exist node_modules (echo Installing dependencies... && npm install) && npm run dev"
 
 echo Servers are starting...
 echo Backend will be at http://localhost:8001

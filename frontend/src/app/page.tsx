@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { getReports, Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3 } from 'lucide-react';
+import EditReportModal from '../components/reports/EditReportModal';
+import { MessageCircle, Bell } from 'lucide-react';
 import Link from 'next/link';
 import {
   BarChart,
@@ -28,6 +30,7 @@ export default function Home() {
   const { selectedFile } = useFile();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingReport, setEditingReport] = useState<Report | null>(null);
 
   useEffect(() => {
     if (selectedFile) {
@@ -46,6 +49,28 @@ export default function Home() {
       });
     }
   }, [selectedFile]);
+
+  // Handle Edit Success (Reload)
+  const handleEditSuccess = () => {
+    setEditingReport(null);
+    setLoading(true);
+    getReports(selectedFile).then(data => {
+      const sortedData = data.sort((a, b) => {
+        const dateA = String(a.日付 || '');
+        const dateB = String(b.日付 || '');
+        return dateB.localeCompare(dateA);
+      });
+      setReports(sortedData);
+      setLoading(false);
+    });
+  };
+
+  // --- Logic for Unread Comments ---
+  // Criteria: Has Supervisor Comment AND No Reply
+  const unreadComments = reports.filter(r =>
+    r.上長コメント && r.上長コメント.trim() !== '' &&
+    (!r.コメント返信欄 || r.コメント返信欄.trim() === '')
+  );
 
   // 統計計算
   const totalReports = reports.length;
@@ -128,6 +153,40 @@ export default function Home() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-sf-text">ホーム</h1>
       </div>
+
+      {/* Unread Comments Alert Section */}
+      {unreadComments.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-pulse-slow">
+          <div className="flex items-center gap-2 mb-2">
+            <Bell className="text-red-500 fill-red-500" size={24} />
+            <h2 className="text-lg font-bold text-red-700">新着コメントがあります ({unreadComments.length}件)</h2>
+          </div>
+          <div className="space-y-2">
+            {unreadComments.map((report) => (
+              <div
+                key={report.管理番号}
+                className="bg-white p-3 rounded border border-red-100 shadow-sm cursor-pointer hover:bg-red-50/50 transition-colors flex justify-between items-center"
+                onClick={() => setEditingReport(report)}
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-red-600">{report.日付}</span>
+                    <span className="text-sf-text font-medium">{report.訪問先名 || '訪問先なし'}</span>
+                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-500">No.{report.管理番号}</span>
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1 line-clamp-1">
+                    <span className="font-bold mr-1">上長:</span>
+                    {report.上長コメント}
+                  </div>
+                </div>
+                <button className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200">
+                  返信する
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* サマリーカード */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

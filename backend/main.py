@@ -1040,9 +1040,26 @@ def search_design_images(query: str, filename: Optional[str] = None):
                     # to avoid massive scan (timeout).
                     if not next_parent_matches:
                          # Skip unrelated folders
-                         # BUT maintain the heuristic: maybe strict filter is ok.
-                         # If query is not in name, and we are not already in a matched parent, skip.
-                         continue
+                         # BUT we must handle "Generic" folders like "Data", "Images", "Design", etc.
+                         # AND we must skip "Specific" folders that don't match (e.g. "12345-1").
+                         
+                         # Heuristic:
+                         # 1. If folder name starts with a digit, assume it's a specific Design/Order folder.
+                         #    If query is NOT in it, SKIP.
+                         # 2. If folder name does NOT start with a digit, assume it's Generic.
+                         #    ENTER (to find subfolders that might match).
+                         
+                         is_generic = True
+                         # Check if starts with digit
+                         if len(name) > 0 and name[0].isdigit():
+                             is_generic = False
+                        
+                         # Strict filter on "Specific" folders
+                         if not is_generic and query_lower not in name_lower:
+                             continue
+                         
+                         # If it is generic, we continue down to find files or subfolders
+                         pass
 
                     if '.' in name and not name.startswith('.'):
                         continue 

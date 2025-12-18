@@ -840,22 +840,45 @@ def get_design_images(filename: str):
     try:
         # Extract name from filename (e.g., 本社009　2025年度用日報【沖本】.xlsm -> 沖本)
         import re
+        # Helper for normalization
+        def normalize_text(text):
+            # Convert full-width parens and space to half-width
+            text = text.replace('（', '(').replace('）', ')').replace('　', ' ')
+            # Strip whitespace
+            return text.strip()
+
         match = re.search(r'【(.*?)】', filename)
         if not match:
             return {"message": "No name found in filename (expected '...【Name】.xlsm')", "images": []}
             
         target_name = match.group(1)
-        print(f"DEBUG: Searching for folder containing '{target_name}' in {DESIGN_DIR}")
+        normalized_target = normalize_text(target_name)
+        
+        print(f"DEBUG: Searching for folder containing '{target_name}' (Norm: {normalized_target}) in {DESIGN_DIR}")
         
         if not os.path.exists(DESIGN_DIR):
              return {"message": "Design directory not found", "images": []}
 
         # Find matching directory
         matched_dir = None
+        
+        # 1. Try exact match (normalized)
         for item in os.listdir(DESIGN_DIR):
-            if target_name in item and os.path.isdir(os.path.join(DESIGN_DIR, item)):
+            if normalized_target in normalize_text(item) and os.path.isdir(os.path.join(DESIGN_DIR, item)):
                 matched_dir = item
                 break
+        
+        # 2. If no match, try suffix stripping (e.g. 山下(和)次長 -> 山下(和))
+        if not matched_dir:
+            # Remove common job titles from the END of the string
+            # (次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)
+            stripped_target = re.sub(r'(次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', normalized_target)
+            if stripped_target != normalized_target:
+                 print(f"DEBUG: Retrying with stripped name: {stripped_target}")
+                 for item in os.listdir(DESIGN_DIR):
+                    if stripped_target in normalize_text(item) and os.path.isdir(os.path.join(DESIGN_DIR, item)):
+                        matched_dir = item
+                        break
         
         if not matched_dir:
             return {"message": f"No folder found for '{target_name}'", "images": []}
@@ -932,6 +955,13 @@ def search_design_images(query: str, filename: Optional[str] = None):
     if not query or len(query.strip()) < 2:
         return {"message": "Query too short", "images": []}
         
+    # Helper for normalization
+    def normalize_text(text):
+        # Convert full-width parens and space to half-width
+        text = text.replace('（', '(').replace('）', ')').replace('　', ' ')
+        # Strip whitespace
+        return text.strip()
+
     try:
         if not os.path.exists(DESIGN_DIR):
              return {"message": "Design directory not found", "images": []}
@@ -952,16 +982,27 @@ def search_design_images(query: str, filename: Optional[str] = None):
                     # Fallback to removing extension
                     name_part = os.path.splitext(os.path.basename(filename))[0]
                 
-                # print(f"DEBUG: Extracted Name: {name_part}") 
+                # Normalize name part
+                normalized_name = normalize_text(name_part)
+                # Also prepare stripped version (remove suffix)
+                stripped_name = re.sub(r'(次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', normalized_name)
+                
+                # print(f"DEBUG: Extracted Name: {name_part} -> Norm: {normalized_name}") 
 
                 # Use scandir for better performance on network drive for top-level listing
                 with os.scandir(DESIGN_DIR) as it:
                     for entry in it:
-                        # Match if the extracted name is in the folder name
-                        # e.g. "見上" in "大阪本社　08：見上"
-                        if entry.is_dir() and name_part in entry.name:
-                            found_folder = entry.path
-                            break
+                        if entry.is_dir():
+                            norm_entry_name = normalize_text(entry.name)
+                            # Match if the extracted name (normalized) is in the folder name (normalized)
+                            if normalized_name in norm_entry_name:
+                                found_folder = entry.path
+                                break
+                            # If not found, try stripped name
+                            if stripped_name != normalized_name and stripped_name in norm_entry_name:
+                                found_folder = entry.path
+                                break
+
                 if found_folder:
                     print(f"DEBUG: Search target set to: {found_folder}")
                     search_roots = [found_folder]

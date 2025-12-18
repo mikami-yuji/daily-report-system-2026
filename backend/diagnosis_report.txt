@@ -1,0 +1,48 @@
+Diagnosis Report
+Target Directory: \\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ
+Total Directories Scanned: 24
+
+--- Investigating Target: 木村（拓） ---
+Normalized Target: '木村(拓)' (Hex: e6:9c:a8:e6:9d:91:28:e6:8b:93:29)
+Stripped Target:   '木村(拓)' (Hex: e6:9c:a8:e6:9d:91:28:e6:8b:93:29)
+  [SUCCESS] Match Found!
+    Folder: '大阪本社　05：木村（拓）'
+    Norm Folder: '大阪本社 05：木村(拓)'
+    Match Type: Exact Normalized
+    Hex Dump: e5:a4:a7:e9:98:aa:e6:9c:ac:e7:a4:be:e3:80:80:30:35:ef:bc:9a:e6:9c:a8:e6:9d:91:ef:bc:88:e6:8b:93:ef:bc:89
+    Access Check: OK. Found 563 items.
+    First 5 items: .DS_Store, 1006-5kg-裏面.jpg, 1007-5kg-裏面.jpg, 1008-5kg-裏面.jpg, 1024981-20-565.jpg
+
+--- Investigating Target: 木村（寿） ---
+Normalized Target: '木村(寿)' (Hex: e6:9c:a8:e6:9d:91:28:e5:af:bf:29)
+Stripped Target:   '木村(寿)' (Hex: e6:9c:a8:e6:9d:91:28:e5:af:bf:29)
+  [SUCCESS] Match Found!
+    Folder: '大阪本社　06：木村（寿）'
+    Norm Folder: '大阪本社 06：木村(寿)'
+    Match Type: Exact Normalized
+    Hex Dump: e5:a4:a7:e9:98:aa:e6:9c:ac:e7:a4:be:e3:80:80:30:36:ef:bc:9a:e6:9c:a8:e6:9d:91:ef:bc:88:e5:af:bf:ef:bc:89
+    Access Check: OK. Found 50 items.
+    First 5 items: .DS_Store, 113100-2 全農徳島５ｋブレンド, 113312-3全農徳島にじきら, 115555-115556-14　無洗米三重　伊賀５ｋこし, 116423 116424 116429-1　ライス加納愛知にじきら５ｋ
+
+--- Investigating Target: 山下（和） ---
+Normalized Target: '山下(和)' (Hex: e5:b1:b1:e4:b8:8b:28:e5:92:8c:29)
+Stripped Target:   '山下(和)' (Hex: e5:b1:b1:e4:b8:8b:28:e5:92:8c:29)
+  [SUCCESS] Match Found!
+    Folder: '東京支店　01：山下（和）次長'
+    Norm Folder: '東京支店 01：山下(和)次長'
+    Match Type: Exact Normalized
+    Hex Dump: e6:9d:b1:e4:ba:ac:e6:94:af:e5:ba:97:e3:80:80:30:31:ef:bc:9a:e5:b1:b1:e4:b8:8b:ef:bc:88:e5:92:8c:ef:bc:89:e6:ac:a1:e9:95:b7
+    Access Check: OK. Found 28 items.
+    First 5 items: .DS_Store, 112895-1松原きらら10k, 114512-5-5kg_114310-6-5kg_114593-5-5kg, 114512-6-5kg_114310-7-5kg_114593-6-5kg, 114644-1松原上士別ななつ再版
+
+--- Investigating Target: 山下（和）次長 ---
+Normalized Target: '山下(和)次長' (Hex: e5:b1:b1:e4:b8:8b:28:e5:92:8c:29:e6:ac:a1:e9:95:b7)
+Stripped Target:   '山下(和)' (Hex: e5:b1:b1:e4:b8:8b:28:e5:92:8c:29)
+  [SUCCESS] Match Found!
+    Folder: '東京支店　01：山下（和）次長'
+    Norm Folder: '東京支店 01：山下(和)次長'
+    Match Type: Exact Normalized
+    Hex Dump: e6:9d:b1:e4:ba:ac:e6:94:af:e5:ba:97:e3:80:80:30:31:ef:bc:9a:e5:b1:b1:e4:b8:8b:ef:bc:88:e5:92:8c:ef:bc:89:e6:ac:a1:e9:95:b7
+    Access Check: OK. Found 28 items.
+    First 5 items: .DS_Store, 112895-1松原きらら10k, 114512-5-5kg_114310-6-5kg_114593-5-5kg, 114512-6-5kg_114310-7-5kg_114593-6-5kg, 114644-1松原上士別ななつ再版
+

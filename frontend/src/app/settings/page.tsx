@@ -124,6 +124,64 @@ export default function SettingsPage() {
                         </button>
                     </div>
                 </div>
+
+                {/* Sales Data Management Card */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Smartphone size={20} className="text-blue-600" />
+                        売上データ管理
+                    </h2>
+
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-600">
+                            全顧客の売上データを一括で登録・更新します。<br/>
+                            CSVファイル (Shift-JIS または UTF-8) をアップロードしてください。
+                        </p>
+                        
+                        <div className="flex items-center gap-4">
+                            <input
+                                type="file"
+                                accept=".csv"
+                                className="block w-full text-sm text-gray-500
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-sm file:font-semibold
+                                    file:bg-blue-50 file:text-blue-700
+                                    hover:file:bg-blue-100"
+                                onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+
+                                    if (!confirm('既存の売上データを上書きしますか？')) {
+                                        e.target.value = '';
+                                        return;
+                                    }
+
+                                    const formData = new FormData();
+                                    formData.append('file', file);
+
+                                    try {
+                                        const res = await fetch('http://localhost:8001/api/sales/upload', {
+                                            method: 'POST',
+                                            body: formData,
+                                        });
+
+                                        if (res.ok) {
+                                            alert('売上データを更新しました。');
+                                        } else {
+                                            const err = await res.json();
+                                            alert(`エラー: ${err.detail || 'アップロードに失敗しました'}`);
+                                        }
+                                    } catch (error) {
+                                        console.error(error);
+                                        alert('通信エラーが発生しました。');
+                                    }
+                                    e.target.value = ''; // Reset input
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

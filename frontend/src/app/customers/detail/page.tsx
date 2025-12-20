@@ -14,7 +14,11 @@ import {
     TrendingUp,
     Clock,
     ArrowLeft,
-    AlertTriangle
+
+    AlertTriangle,
+    DollarSign,
+    Upload,
+    Database
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -29,6 +33,20 @@ interface DesignRequest {
     lastUpdate: string;
 }
 
+interface SalesData {
+    found: boolean;
+    rank?: string | number;
+    rank_class?: string;
+    sales_amount?: string | number;
+    gross_profit?: string | number;
+    sales_yoy?: string | number;
+    sales_2y_ago?: string | number;
+    profit_2y_ago?: string | number;
+    customer_name?: string;
+    message?: string;
+    updated_at?: string;
+}
+
 function CustomerDetailContent() {
     const { selectedFile } = useFile();
     const searchParams = useSearchParams();
@@ -37,9 +55,23 @@ function CustomerDetailContent() {
     const [reports, setReports] = useState<Report[]>([]);
     const [loading, setLoading] = useState(true);
     const [customerName, setCustomerName] = useState('');
-    const [activeTab, setActiveTab] = useState<'timeline' | 'designs' | 'complaints'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'designs' | 'complaints' | 'sales'>('timeline');
     const [designRequests, setDesignRequests] = useState<DesignRequest[]>([]);
     const [selectedInterviewer, setSelectedInterviewer] = useState<string>('');
+    const [salesData, setSalesData] = useState<SalesData | null>(null);
+
+    // Fetch sales data when tab is active
+    useEffect(() => {
+        if (activeTab === 'sales' && customerCode) {
+            setSalesData(null); // Reset or show loading
+            fetch(`http://localhost:8001/api/sales/${customerCode}`)
+                .then(res => res.json())
+                .then(data => setSalesData(data))
+                .catch(err => console.error("Sales fetch error:", err));
+        }
+    }, [activeTab, customerCode]);
+
+
 
     useEffect(() => {
         if (customerCode && selectedFile) {
@@ -298,6 +330,18 @@ function CustomerDetailContent() {
                             {reports.filter(r => (r.行動内容 && r.行動内容.includes('クレーム')) || (r.商談内容 && String(r.商談内容).includes('クレーム'))).length}
                         </span>
                     </button>
+                    <button
+                        onClick={() => setActiveTab('sales')}
+                        className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2
+              ${activeTab === 'sales'
+                                ? 'border-sf-light-blue text-sf-light-blue'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+            `}
+                    >
+                        <DollarSign size={18} />
+                        売上データ
+                    </button>
                 </nav>
             </div>
 
@@ -537,6 +581,89 @@ function CustomerDetailContent() {
                                     </div>
                                 ))
                         )}
+                    </div>
+                )}
+
+
+                {activeTab === 'sales' && (
+                    <div className="space-y-6">
+                        {/* Auto-fetch logic is handled in useEffect now, or trigger here */}
+                        <div className="bg-white p-6 rounded border border-sf-border shadow-sm">
+                            <h3 className="text-lg font-semibold text-sf-text mb-4 text-center border-b pb-2">
+                                売上実績サマリ
+                                <span className="text-sm font-normal text-sf-text-weak ml-2">({customerName})</span>
+                            </h3>
+
+                            {!salesData ? (
+                                <div className="text-center py-8 text-sf-text-weak">
+                                    <p>データを読み込んでいます...</p>
+                                    <p className="text-xs mt-2 text-gray-400">
+                                        ※データが表示されない場合は、設定画面から売上CSVをアップロードしてください。
+                                    </p>
+                                </div>
+                            ) : !salesData.found ? (
+                                <div className="text-center py-8 text-gray-500">
+                                    <Database size={48} className="mx-auto mb-4 text-gray-300" />
+                                    <p className="font-medium">売上データが見つかりませんでした</p>
+                                    <p className="text-sm mt-2 text-gray-400">
+                                        設定画面から最新の売上データをアップロードしてください。
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    {/* Rank Info */}
+                                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-center">
+                                        <p className="text-sm text-blue-800 mb-1 font-bold">売上順位</p>
+                                        <p className="text-4xl font-bold text-blue-600">
+                                            {salesData.rank}
+                                            <span className="text-base font-normal text-blue-800 ml-1">位</span>
+                                        </p>
+                                        {salesData.rank_class && (
+                                            <span className="inline-block mt-2 px-3 py-1 bg-white text-blue-800 rounded-full text-sm font-medium shadow-sm">
+                                                ランク: {salesData.rank_class}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Sales Info */}
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-end border-b border-gray-100 pb-2">
+                                            <span className="text-sf-text-weak text-sm">今期売上金額</span>
+                                            <span className="text-2xl font-bold text-sf-text">
+                                                {Number(salesData.sales_amount).toLocaleString()}
+                                                <span className="text-sm font-normal ml-1">円</span>
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-end border-b border-gray-100 pb-2">
+                                            <span className="text-sf-text-weak text-sm">今期粗利</span>
+                                            <span className="text-2xl font-bold text-sf-text">
+                                                {Number(salesData.gross_profit).toLocaleString()}
+                                                <span className="text-sm font-normal ml-1">円</span>
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4 mt-4 pt-2">
+                                            <div className="text-right">
+                                                <p className="text-xs text-sf-text-weak">前々年売上</p>
+                                                <p className="font-medium text-gray-500">
+                                                    {Number(salesData.sales_2y_ago || 0).toLocaleString()}円
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-sf-text-weak">前々年粗利</p>
+                                                <p className="font-medium text-gray-500">
+                                                    {Number(salesData.profit_2y_ago || 0).toLocaleString()}円
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {salesData.updated_at && (
+                                            <p className="text-xs text-right text-gray-300 mt-2">
+                                                データ更新: {new Date(salesData.updated_at).toLocaleDateString()}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

@@ -1,0 +1,2 @@
+:HL["/_next/static/chunks/90be0e73b707b1cb.css","style"]
+0:{"buildId":"d4xlT9JXNN9aSALffe2gF","tree":{"name":"","paramType":null,"paramKey":"","hasRuntimePrefetch":false,"slots":{"children":{"name":"mass-retailer-survey","paramType":null,"paramKey":"mass-retailer-survey","hasRuntimePrefetch":false,"slots":{"children":{"name":"__PAGE__","paramType":null,"paramKey":"__PAGE__","hasRuntimePrefetch":false,"slots":null,"isRootLayout":false}},"isRootLayout":false}},"isRootLayout":true},"staleTime":300}

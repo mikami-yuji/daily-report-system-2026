@@ -69,6 +69,13 @@ export const updateReport = async (managementNumber: number, report: Partial<Omi
     return response.data;
 };
 
+// シンプルな返信専用API（楽観的ロックなし）
+export const updateReportReply = async (managementNumber: number, reply: string, filename?: string): Promise<{ success: boolean }> => {
+    const params = filename ? { filename } : {};
+    const response = await axios.patch(`${API_URL}/reports/${managementNumber}/reply`, { コメント返信欄: reply }, { params });
+    return response.data;
+};
+
 export const deleteReport = async (managementNumber: number, filename?: string) => {
     const params = filename ? { filename } : {};
     const response = await axios.delete(`${API_URL}/reports/${managementNumber}`, { params });
@@ -125,8 +132,10 @@ export interface Design {
     デザイン提案有無: string;
 }
 
-export const getDesigns = async (customerCd: string, filename?: string): Promise<Design[]> => {
-    const params = filename ? { filename } : {};
+export const getDesigns = async (customerCd: string, filename?: string, deliveryName?: string): Promise<Design[]> => {
+    const params: any = {};
+    if (filename) params.filename = filename;
+    if (deliveryName) params.delivery_name = deliveryName;
     const response = await axios.get(`${API_URL}/designs/${customerCd}`, { params });
     return response.data.designs;
 };

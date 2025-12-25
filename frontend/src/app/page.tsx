@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getReports, Report, getDesignImages, DesignImage, getImageUrl } from '@/lib/api';
+import { getReports, Report, getDesignImages, DesignImage, getImageUrl, updateReportReply } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon } from 'lucide-react';
 import EditReportModal from '../components/reports/EditReportModal';
-import { MessageCircle, Bell } from 'lucide-react';
+import { MessageCircle, Bell, X, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import {
   BarChart,
@@ -33,6 +33,10 @@ export default function Home() {
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [images, setImages] = useState<DesignImage[]>([]);
   const [imageFolder, setImageFolder] = useState<string>('');
+  // 通知返信用の状態
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
 
   useEffect(() => {
     if (selectedFile) {
@@ -73,12 +77,53 @@ export default function Home() {
     });
   };
 
+  // 通知への返信を送信（楽観的UI更新）
+  const handleSubmitReply = async (report: Report) => {
+    if (!replyText.trim()) return;
+
+    // 即座にUIを更新（楽観的更新）
+    setReports(prev => prev.map(r =>
+      r.管理番号 === report.管理番号
+        ? { ...r, コメント返信欄: replyText.trim() }
+        : r
+    ));
+    setReplyingTo(null);
+    setReplyText('');
+
+    // バックグラウンドでAPI呼び出し（エラー時のみ再読み込み）
+    try {
+      await updateReportReply(report.管理番号, replyText.trim(), selectedFile);
+    } catch (error) {
+      console.error('Failed to submit reply:', error);
+      handleEditSuccess(); // エラー時は再読み込み
+    }
+  };
+
+  // 通知を既読にする（楽観的UI更新）
+  const handleDismissNotification = async (report: Report) => {
+    // 即座にUIを更新（楽観的更新）
+    setReports(prev => prev.map(r =>
+      r.管理番号 === report.管理番号
+        ? { ...r, コメント返信欄: '確認済み' }
+        : r
+    ));
+
+    // バックグラウンドでAPI呼び出し（エラー時のみ再読み込み）
+    try {
+      await updateReportReply(report.管理番号, '確認済み', selectedFile);
+    } catch (error) {
+      console.error('Failed to dismiss notification:', error);
+      handleEditSuccess(); // エラー時は再読み込み
+    }
+  };
+
   // --- Logic for Unread Comments ---
   // Criteria: Has Supervisor Comment AND No Reply
-  const unreadComments = reports.filter(r =>
-    r.上長コメント && r.上長コメント.trim() !== '' &&
-    (!r.コメント返信欄 || r.コメント返信欄.trim() === '')
-  );
+  const unreadComments = reports.filter(r => {
+    const supervisorComment = r.上長コメント ? String(r.上長コメント).trim() : '';
+    const replyComment = r.コメント返信欄 ? String(r.コメント返信欄).trim() : '';
+    return supervisorComment !== '' && replyComment === '';
+  });
 
   // 統計計算
   const totalReports = reports.length;
@@ -205,23 +250,86 @@ export default function Home() {
             {unreadComments.map((report) => (
               <div
                 key={report.管理番号}
-                className="bg-white p-3 rounded border border-red-100 shadow-sm cursor-pointer hover:bg-red-50/50 transition-colors flex justify-between items-center"
-                onClick={() => setEditingReport(report)}
+                className="bg-white p-3 rounded border border-red-100 shadow-sm"
               >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-red-600">{report.日付}</span>
-                    <span className="text-sf-text font-medium">{report.訪問先名 || '訪問先なし'}</span>
-                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-500">No.{report.管理番号}</span>
+                {/* 通知ヘッダー */}
+                <div className="flex justify-between items-start">
+                  <div
+                    className="flex-1 cursor-pointer hover:bg-red-50/50 transition-colors rounded p-1 -m-1"
+                    onClick={() => setEditingReport(report)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-red-600">{report.日付}</span>
+                      <span className="text-sf-text font-medium">{report.訪問先名 || '訪問先なし'}</span>
+                      <span className="text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-500">No.{report.管理番号}</span>
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1 line-clamp-2">
+                      <span className="font-bold mr-1">上長:</span>
+                      {report.上長コメント}
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-600 mt-1 line-clamp-1">
-                    <span className="font-bold mr-1">上長:</span>
-                    {report.上長コメント}
+
+                  {/* ボタングループ */}
+                  <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                    {replyingTo !== report.管理番号 && (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setReplyingTo(report.管理番号); setReplyText(''); }}
+                          className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200 flex items-center gap-1"
+                        >
+                          <Send size={12} />
+                          返信
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDismissNotification(report); }}
+                          disabled={submittingReply}
+                          className="text-xs bg-gray-100 text-gray-600 px-3 py-1 rounded-full font-bold hover:bg-gray-200 flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <Trash2 size={12} />
+                          削除
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-                <button className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200">
-                  返信する
-                </button>
+
+                {/* インライン返信フォーム */}
+                {replyingTo === report.管理番号 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    {/* 商談内容の表示 */}
+                    {report.商談内容 && (
+                      <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                        <div className="font-bold text-blue-700 mb-1">📝 商談内容:</div>
+                        <div className="text-gray-700 whitespace-pre-wrap">{report.商談内容}</div>
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmitReply(report); } }}
+                        placeholder="返信を入力..."
+                        autoFocus
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-red-300"
+                      />
+                      <button
+                        onClick={() => handleSubmitReply(report)}
+                        disabled={submittingReply || !replyText.trim()}
+                        className="px-4 py-2 bg-red-500 text-white text-sm rounded font-bold hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Send size={14} />
+                        送信
+                      </button>
+                      <button
+                        onClick={() => { setReplyingTo(null); setReplyText(''); }}
+                        className="px-3 py-2 bg-gray-200 text-gray-600 text-sm rounded hover:bg-gray-300"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

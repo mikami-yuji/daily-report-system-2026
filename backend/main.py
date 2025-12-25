@@ -143,7 +143,7 @@ if os.path.exists(EXCEL_DIR):
 
 
 class ReportInput(BaseModel):
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "extra": "ignore"}  # 余分なフィールドを無視
     
     日付: str
     行動内容: str
@@ -368,7 +368,9 @@ def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE)
         # Rename specific columns
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
-            '訪問先名得意先名': '訪問先名'
+            '訪問先名得意先名': '訪問先名',
+            'コメント': '上長コメント',  # Excel uses 'コメント' for manager comment
+            'コメント返信欄': 'コメント返信欄'  # Keep as-is for reply field
         })
         
         # Filter by management number
@@ -422,7 +424,9 @@ def get_reports(filename: str = DEFAULT_EXCEL_FILE):
             '得意先CD.': '得意先CD',
             '訪問先名得意先名': '訪問先名',
             '直送先CD.': '直送先CD',
-            '直送先名.': '直送先名'
+            '直送先名.': '直送先名',
+            'コメント': '上長コメント',  # Excel uses 'コメント' for manager comment
+            'コメント返信欄': 'コメント返信欄'  # Keep as-is for reply field
         })
         
         # Replace all NaN, infinity, and null values with None
@@ -560,9 +564,11 @@ def get_interviewers(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/designs/{customer_cd}")
-def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
-    """Get list of design requests for a specific customer"""
+def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename: str = DEFAULT_EXCEL_FILE):
+    """Get list of design requests for a specific customer (optionally filtered by delivery destination)"""
     try:
+        logging.info(f"get_designs called: customer_cd={customer_cd}, delivery_name={delivery_name}")
+        
         # Get dataframe from cache
         df = get_cached_dataframe(filename, '営業日報')
         
@@ -572,7 +578,10 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         # Rename specific columns
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
+            '直送先名.': '直送先名'
         })
+        
+        logging.info(f"Columns in dataframe: {list(df.columns)[:20]}...")  # Log first 20 columns
         
         # Convert customer_cd to float for matching
         try:
@@ -582,9 +591,19 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         
         # Filter by customer code
         customer_reports = df[df['得意先CD'] == customer_cd_float].copy()
+        logging.info(f"After customer filter: {len(customer_reports)} rows")
+        
+        # Filter by delivery destination if provided
+        if delivery_name and '直送先名' in customer_reports.columns:
+            before_count = len(customer_reports)
+            customer_reports = customer_reports[customer_reports['直送先名'] == delivery_name]
+            logging.info(f"After delivery_name filter ({delivery_name}): {len(customer_reports)} rows (was {before_count})")
+        else:
+            logging.info(f"Skipping delivery_name filter: delivery_name={delivery_name}, has_column={'直送先名' in customer_reports.columns}")
         
         # Filter for records with design request number
         design_reports = customer_reports[customer_reports['デザイン依頼No.'].notna()]
+        logging.info(f"After design no filter: {len(design_reports)} rows")
         
         # Get unique design request numbers
         unique_design_nos = design_reports['デザイン依頼No.'].unique()
@@ -617,6 +636,7 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         return {"customer_cd": customer_cd, "designs": designs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/reports")
 def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
@@ -731,9 +751,63 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# シンプルな返信専用エンドポイント（楽観的ロックなし）
+class ReplyInput(BaseModel):
+    コメント返信欄: str
+
+@app.patch("/reports/{management_number}/reply")
+def update_report_reply(management_number: int, reply: ReplyInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    """コメント返信欄のみを更新（シンプル）"""
+    print(f"DEBUG update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
+    try:
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        print(f"DEBUG excel_file: {excel_file}")
+        
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        print(f"DEBUG workbook loaded")
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+        
+        ws = wb['営業日報']
+        print(f"DEBUG worksheet max_row: {ws.max_row}")
+        
+        # Find the row
+        target_row = None
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == management_number:
+                target_row = row
+                break
+        
+        print(f"DEBUG target_row: {target_row}")
+        if not target_row:
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # Column 23 = コメント返信欄
+        ws.cell(row=target_row, column=23, value=reply.コメント返信欄)
+        print(f"DEBUG cell set, saving...")
+        
+        wb.save(excel_file)
+        print(f"DEBUG saved")
+        wb.close()
+        
+        # Clear cache
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
+        return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERROR update_report_reply: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/reports/{management_number}")
 def update_report(management_number: int, report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """既存の日報を更新（全項目対応）"""
+    logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
         

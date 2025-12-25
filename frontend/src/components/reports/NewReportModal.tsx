@@ -150,7 +150,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             });
 
             // Fetch designs for this customer
-            getDesigns(customer.得意先CD, selectedFile).then(data => {
+            getDesigns(customer.得意先CD, selectedFile, customer.直送先名 || undefined).then(data => {
                 setDesigns(data);
             }).catch(err => {
                 console.error('Failed to fetch designs:', err);

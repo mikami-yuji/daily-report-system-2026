@@ -301,6 +301,13 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                                 <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
                                                 上長コメント
                                             </div>
+                                            {/* 商談内容の参照表示 */}
+                                            {report.商談内容 && (
+                                                <div className="mb-3 p-3 bg-white/70 border border-yellow-200 rounded text-sm max-h-32 overflow-y-auto">
+                                                    <div className="text-xs font-bold text-yellow-700 mb-1">📝 商談内容（参照）:</div>
+                                                    <div className="text-gray-700 whitespace-pre-wrap text-xs leading-relaxed">{cleanText(report.商談内容)}</div>
+                                                </div>
+                                            )}
                                             <textarea
                                                 value={comments.上長コメント}
                                                 onChange={(e) => setComments(prev => ({ ...prev, 上長コメント: e.target.value }))}

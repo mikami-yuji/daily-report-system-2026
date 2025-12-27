@@ -150,7 +150,7 @@ export default function SalesAnalysisPage() {
 
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fadeIn">
             <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-sf-border mb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-sf-text">売上分析</h1>

@@ -115,7 +115,7 @@ export default function CustomersPage() {
     const ranks = Array.from(new Set(customers.map(c => c.rank).filter(Boolean))).sort();
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fadeIn">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-semibold text-sf-text">得意先一覧</h1>
             </div>

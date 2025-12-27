@@ -117,7 +117,7 @@ export default function ReportsPage() {
     };
 
     return (
-        <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col">
+        <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col animate-fadeIn">
             <div className="flex justify-between items-center bg-white p-4 rounded border border-sf-border shadow-sm">
                 <div className="flex items-center gap-3">
                     <div className="bg-sf-light-blue p-2 rounded text-white shadow-sm">

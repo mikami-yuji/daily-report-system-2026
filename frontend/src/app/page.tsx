@@ -235,7 +235,7 @@ export default function Home() {
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fadeIn">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-semibold text-sf-text">ホーム</h1>
       </div>

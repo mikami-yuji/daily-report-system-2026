@@ -6,7 +6,6 @@ import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import LazyImage from '@/components/ui/LazyImage';
 
 interface DesignRequest {
     designNo: string;
@@ -331,7 +330,7 @@ export default function DesignSearchPage() {
             {/* 統計サマリー */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded border border-sf-border shadow-sm">
-                    <p className="text-sm text-sf-text-weak mb-1">総デザイン依頼数</p>
+                    <p className="text-sm text-sf-text-weak mb-1">デザイン依頼</p>
                     <p className="text-2xl font-semibold text-sf-text">{designRequests.length}</p>
                 </div>
                 <div className="bg-white p-4 rounded border border-sf-border shadow-sm">
@@ -551,10 +550,12 @@ export default function DesignSearchPage() {
                                                             <span className="text-xs font-bold mt-2 text-gray-500">PDF</span>
                                                         </div>
                                                     ) : (
-                                                        <LazyImage
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img
                                                             src={getImageUrl(img.path)}
                                                             alt={img.name}
                                                             className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform duration-300"
+                                                            loading="lazy"
                                                         />
                                                     )}
                                                 </a>

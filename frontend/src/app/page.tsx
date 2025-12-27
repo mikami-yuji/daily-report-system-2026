@@ -7,7 +7,6 @@ import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as
 import EditReportModal from '../components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import LazyImage from '@/components/ui/LazyImage';
 import {
   BarChart,
   Bar,
@@ -552,10 +551,12 @@ export default function Home() {
               {images.map((img, i) => (
                 <div key={i} className="group relative aspect-square bg-gray-100 rounded overflow-hidden border border-gray-200">
                   <a href={getImageUrl(img.path)} target="_blank" rel="noopener noreferrer">
-                    <LazyImage
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
                       src={getImageUrl(img.path)}
                       alt={img.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
                       {img.name}

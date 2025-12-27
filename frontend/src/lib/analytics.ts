@@ -128,29 +128,43 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         return action.includes('訪問');
     }).length;
 
-    // Count total design requests (records with デザイン依頼No.)
-    const totalProposals = filteredReports.filter(r => r['デザイン依頼No.'] && String(r['デザイン依頼No.']).trim() !== '').length;
+    // Count total unique design requests using システム確認用デザインNo. (same as design search)
+    const uniqueDesignNos = new Set(
+        filteredReports
+            .filter(r => r['システム確認用デザインNo.'] && String(r['システム確認用デザインNo.']).trim() !== '')
+            .map(r => String(r['システム確認用デザインNo.']).trim())
+    );
+    const totalProposals = uniqueDesignNos.size;
 
-    // Active projects: デザイン進捗状況 that are not 出稿 or 不採用
-    const activeProjects = filteredReports.filter(r => {
-        if (!r.デザイン進捗状況) return false;
-        const status = String(r.デザイン進捗状況);
-        return !['出稿', '不採用（コンペ負け）', '不採用（企画倒れ）'].some(s => status.includes(s));
-    }).length;
+    // Completed designs: unique designs with 出稿 status (count by システム確認用デザインNo.)
+    const completedDesignNos = new Set(
+        filteredReports
+            .filter(r => {
+                if (!r['システム確認用デザインNo.']) return false;
+                if (!r.デザイン進捗状況) return false;
+                return String(r.デザイン進捗状況).includes('出稿');
+            })
+            .map(r => String(r['システム確認用デザインNo.']).trim())
+    );
+    const completedDesigns = completedDesignNos.size;
 
-    // Completed designs: 出稿 status means design is finalized and published
-    const completedDesigns = filteredReports.filter(r => {
-        if (!r.デザイン進捗状況) return false;
-        const status = String(r.デザイン進捗状況);
-        return status.includes('出稿');
-    }).length;
+    // Rejected designs: unique designs with 不採用 status (count by システム確認用デザインNo.)
+    const rejectedDesignNos = new Set(
+        filteredReports
+            .filter(r => {
+                if (!r['システム確認用デザインNo.']) return false;
+                if (!r.デザイン進捗状況) return false;
+                return String(r.デザイン進捗状況).includes('不採用');
+            })
+            .map(r => String(r['システム確認用デザインNo.']).trim())
+    );
+    const rejectedDesigns = rejectedDesignNos.size;
 
-    // Rejected designs
-    const rejectedDesigns = filteredReports.filter(r => {
-        if (!r.デザイン進捗状況) return false;
-        const status = String(r.デザイン進捗状況);
-        return status.includes('不採用');
-    }).length;
+    // Active projects: all unique designs minus completed and rejected
+    const activeDesignNos = new Set(uniqueDesignNos);
+    completedDesignNos.forEach(no => activeDesignNos.delete(no));
+    rejectedDesignNos.forEach(no => activeDesignNos.delete(no));
+    const activeProjects = activeDesignNos.size;
 
     // Acceptance Rate
     const acceptanceRate = totalProposals > 0
@@ -274,30 +288,50 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         }))
         .sort((a, b) => b.visits - a.visits);
 
-    // Design Progress
-    const progressMap = new Map<string, number>();
+    // Design Progress: count by unique システム確認用デザインNo. using latest date record
+    // First, get the latest record for each unique design number
+    const latestDesignRecords = new Map<string, Report>();
     filteredReports
-        .filter(r => r.デザイン進捗状況)
+        .filter(r => r['システム確認用デザインNo.'] && r.デザイン進捗状況)
         .forEach(report => {
-            const status = String(report.デザイン進捗状況!);
-            progressMap.set(status, (progressMap.get(status) || 0) + 1);
+            const designNo = String(report['システム確認用デザインNo.']).trim();
+            const existing = latestDesignRecords.get(designNo);
+            if (!existing) {
+                latestDesignRecords.set(designNo, report);
+            } else {
+                // Compare dates and keep the latest
+                const existingDate = String(existing.日付 || '');
+                const currentDate = String(report.日付 || '');
+                if (currentDate > existingDate) {
+                    latestDesignRecords.set(designNo, report);
+                }
+            }
         });
+
+    // Now count by progress status using only the latest records
+    const progressMap = new Map<string, number>();
+    latestDesignRecords.forEach(report => {
+        const status = String(report.デザイン進捗状況!);
+        progressMap.set(status, (progressMap.get(status) || 0) + 1);
+    });
     const designProgress = Array.from(progressMap.entries())
         .map(([status, count]) => ({ status, count }))
         .sort((a, b) => b.count - a.count);
 
     // Priority Customer Analysis
     const priorityReports = filteredReports.filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '');
-    const priorityCustomerMap = new Map<string, { visits: number; calls: number; proposals: number; completed: number; rejected: number; lastVisit: string | null }>();
+    // Use Map to store unique design nos per customer
+    const priorityCustomerMap = new Map<string, { visits: number; calls: number; designNos: Set<string>; completed: number; rejected: number; lastVisit: string | null }>();
 
     priorityReports.forEach(report => {
         const customerName = report.訪問先名 || '不明';
         const action = String(report.行動内容 || '');
         const status = String(report.デザイン進捗状況 || '');
         const date = report.日付 || null;
+        const designNo = report['システム確認用デザインNo.'] ? String(report['システム確認用デザインNo.']).trim() : '';
 
         if (!priorityCustomerMap.has(customerName)) {
-            priorityCustomerMap.set(customerName, { visits: 0, calls: 0, proposals: 0, completed: 0, rejected: 0, lastVisit: null });
+            priorityCustomerMap.set(customerName, { visits: 0, calls: 0, designNos: new Set(), completed: 0, rejected: 0, lastVisit: null });
         }
         const data = priorityCustomerMap.get(customerName)!;
 
@@ -312,8 +346,9 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         if (action.includes('電話')) {
             data.calls++;
         }
-        if (report.デザイン提案有無 === 'あり') {
-            data.proposals++;
+        // Count unique design numbers per customer
+        if (designNo) {
+            data.designNos.add(designNo);
         }
         if (status.includes('出稿')) {
             data.completed++;
@@ -324,12 +359,18 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
     });
 
     const priorityByCustomer = Array.from(priorityCustomerMap.entries())
-        .map(([name, data]) => ({ name, ...data }))
+        .map(([name, data]) => ({ name, visits: data.visits, calls: data.calls, proposals: data.designNos.size, completed: data.completed, rejected: data.rejected, lastVisit: data.lastVisit }))
         .sort((a, b) => b.visits - a.visits);
 
     const totalPriorityVisits = priorityByCustomer.reduce((sum, c) => sum + c.visits, 0);
     const totalPriorityCalls = priorityByCustomer.reduce((sum, c) => sum + c.calls, 0);
-    const totalPriorityProposals = priorityByCustomer.reduce((sum, c) => sum + c.proposals, 0);
+    // Count unique design requests for priority customers (same logic as design search)
+    const uniquePriorityDesignNos = new Set(
+        priorityReports
+            .filter(r => r['システム確認用デザインNo.'] && String(r['システム確認用デザインNo.']).trim() !== '')
+            .map(r => String(r['システム確認用デザインNo.']).trim())
+    );
+    const totalPriorityProposals = uniquePriorityDesignNos.size;
     const totalPriorityCompleted = priorityByCustomer.reduce((sum, c) => sum + c.completed, 0);
     const totalPriorityRejected = priorityByCustomer.reduce((sum, c) => sum + c.rejected, 0);
     const priorityAcceptanceRate = totalPriorityProposals > 0

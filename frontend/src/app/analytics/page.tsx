@@ -132,7 +132,7 @@ export default function AnalyticsPage() {
                     {/* Overview KPIs */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <KPICard title="訪問件数" value={analytics.kpis.totalVisits} icon={Users} color="blue" />
-                        <KPICard title="総デザイン依頼数" value={analytics.kpis.totalProposals} icon={FileText} color="green" />
+                        <KPICard title="デザイン依頼" value={analytics.kpis.totalProposals} icon={FileText} color="green" />
                         <KPICard title="進行中案件" value={analytics.kpis.activeProjects} icon={Briefcase} color="purple" />
                         <KPICard title="出稿" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="orange" />
                     </div>
@@ -152,7 +152,7 @@ export default function AnalyticsPage() {
                                     />
                                     <Legend />
                                     <Bar yAxisId="left" dataKey="visits" name="訪問件数" fill="#8884d8" barSize={20} radius={[4, 4, 0, 0]} />
-                                    <Line yAxisId="right" type="monotone" dataKey="proposals" name="デザイン提案" stroke="#82ca9d" strokeWidth={3} dot={{ r: 4 }} />
+                                    <Line yAxisId="right" type="monotone" dataKey="proposals" name="デザイン依頼" stroke="#82ca9d" strokeWidth={3} dot={{ r: 4 }} />
                                     <Line yAxisId="right" type="monotone" dataKey="completed" name="出稿" stroke="#ff7300" strokeWidth={3} dot={{ r: 4 }} />
                                 </ComposedChart>
                             </ResponsiveContainer>
@@ -262,7 +262,7 @@ export default function AnalyticsPage() {
                 <div className="space-y-8 animate-fadeIn">
                     {/* Design KPIs */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                        <KPICard title="総デザイン依頼数" value={analytics.kpis.totalProposals} icon={FileText} color="blue" />
+                        <KPICard title="デザイン依頼" value={analytics.kpis.totalProposals} icon={FileText} color="blue" />
                         <KPICard title="進行中案件" value={analytics.kpis.activeProjects} icon={Briefcase} color="purple" />
                         <KPICard title="出稿" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="green" />
                         <KPICard title="不採用" value={analytics.kpis.rejectedDesigns} icon={CheckCircle} color="red" />
@@ -292,7 +292,7 @@ export default function AnalyticsPage() {
 
                         {/* Design Trends */}
                         <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-xl font-bold text-gray-900 mb-4">提案・決定・不採用推移</h2>
+                            <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン依頼・出稿・不採用推移</h2>
                             <div style={{ width: '100%', height: 300 }}>
                                 <ResponsiveContainer width="100%" height={300}>
                                     <ComposedChart data={analytics.trends}>
@@ -301,7 +301,7 @@ export default function AnalyticsPage() {
                                         <YAxis />
                                         <Tooltip />
                                         <Legend />
-                                        <Bar dataKey="proposals" name="提案数" fill="#8884d8" barSize={20} radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="proposals" name="デザイン依頼" fill="#8884d8" barSize={20} radius={[4, 4, 0, 0]} />
                                         <Line type="monotone" dataKey="completed" name="出稿数" stroke="#82ca9d" strokeWidth={3} />
                                         <Line type="monotone" dataKey="rejected" name="不採用数" stroke="#ff8042" strokeWidth={3} />
                                     </ComposedChart>
@@ -319,7 +319,7 @@ export default function AnalyticsPage() {
                         <KPICard title="重点顧客数" value={analytics.priority.totalCustomers} icon={Star} color="yellow" />
                         <KPICard title="訪問数" value={analytics.priority.totalVisits} icon={Users} color="blue" />
                         <KPICard title="電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
-                        <KPICard title="デザイン提案" value={analytics.priority.totalProposals} icon={FileText} color="purple" />
+                        <KPICard title="デザイン依頼" value={analytics.priority.totalProposals} icon={FileText} color="purple" />
                         <KPICard title="出稿" value={analytics.priority.completedDesigns} icon={CheckCircle} color="green" />
                         <KPICard title="出稿率" value={`${analytics.priority.acceptanceRate}%`} icon={CheckCircle} color="red" />
                     </div>
@@ -334,7 +334,7 @@ export default function AnalyticsPage() {
                                         <th className="px-6 py-3">顧客名</th>
                                         <th className="px-6 py-3 text-center">訪問</th>
                                         <th className="px-6 py-3 text-center">電話</th>
-                                        <th className="px-6 py-3 text-center">提案</th>
+                                        <th className="px-6 py-3 text-center">依頼</th>
                                         <th className="px-6 py-3 text-center">出稿</th>
                                         <th className="px-6 py-3 text-center">不採用</th>
                                         <th className="px-6 py-3 text-right">最終訪問日</th>

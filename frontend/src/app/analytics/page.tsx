@@ -5,7 +5,7 @@ import { useFile } from '@/context/FileContext';
 import { getReports, Report } from '@/lib/api';
 import { aggregateAnalytics, getDateRange, AnalyticsData } from '@/lib/analytics';
 import KPICard from '@/components/KPICard';
-import { Users, FileText, Briefcase, CheckCircle, Phone, Mail, LayoutDashboard, MessageSquare, Palette, Star } from 'lucide-react';
+import { Users, FileText, Briefcase, CheckCircle, XCircle, TrendingUp, Phone, Mail, LayoutDashboard, MessageSquare, Palette, Star } from 'lucide-react';
 import {
     ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell, Area, BarChart
@@ -265,8 +265,8 @@ export default function AnalyticsPage() {
                         <KPICard title="デザイン依頼" value={analytics.kpis.totalProposals} icon={FileText} color="blue" />
                         <KPICard title="進行中案件" value={analytics.kpis.activeProjects} icon={Briefcase} color="purple" />
                         <KPICard title="出稿" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="green" />
-                        <KPICard title="不採用" value={analytics.kpis.rejectedDesigns} icon={CheckCircle} color="red" />
-                        <KPICard title="出稿率" value={`${analytics.kpis.acceptanceRate}%`} icon={CheckCircle} color="orange" />
+                        <KPICard title="不採用" value={analytics.kpis.rejectedDesigns} icon={XCircle} color="red" />
+                        <KPICard title="出稿率" value={`${analytics.kpis.acceptanceRate}%`} icon={TrendingUp} color="orange" />
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -321,7 +321,7 @@ export default function AnalyticsPage() {
                         <KPICard title="電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
                         <KPICard title="デザイン依頼" value={analytics.priority.totalProposals} icon={FileText} color="purple" />
                         <KPICard title="出稿" value={analytics.priority.completedDesigns} icon={CheckCircle} color="green" />
-                        <KPICard title="出稿率" value={`${analytics.priority.acceptanceRate}%`} icon={CheckCircle} color="red" />
+                        <KPICard title="出稿率" value={`${analytics.priority.acceptanceRate}%`} icon={TrendingUp} color="red" />
                     </div>
 
                     {/* Priority Customer List */}

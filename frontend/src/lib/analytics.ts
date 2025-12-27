@@ -182,8 +182,8 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         return action.includes('メール');
     }).length;
 
-    // Trends by date
-    const trendMap = new Map<string, { visits: number; proposals: number; completed: number; rejected: number; phone: number; email: number }>();
+    // Trends by date (using unique design numbers for proposals)
+    const trendMap = new Map<string, { visits: number; proposalNos: Set<string>; completed: number; rejected: number; phone: number; email: number }>();
     filteredReports.forEach(report => {
         // Normalize date string for grouping
         const reportDate = parseDate(report.日付);
@@ -194,9 +194,10 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
 
         const action = String(report.行動内容 || '');
         const status = String(report.デザイン進捗状況 || '');
+        const designNo = report['システム確認用デザインNo.'] ? String(report['システム確認用デザインNo.']).trim() : '';
 
         if (!trendMap.has(dateKey)) {
-            trendMap.set(dateKey, { visits: 0, proposals: 0, completed: 0, rejected: 0, phone: 0, email: 0 });
+            trendMap.set(dateKey, { visits: 0, proposalNos: new Set(), completed: 0, rejected: 0, phone: 0, email: 0 });
         }
         const trend = trendMap.get(dateKey)!;
 
@@ -205,8 +206,9 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
             trend.visits++;
         }
 
-        if (report.デザイン提案有無 === 'あり') {
-            trend.proposals++;
+        // Count unique design numbers
+        if (designNo) {
+            trend.proposalNos.add(designNo);
         }
         if (status.includes('出稿')) {
             trend.completed++;
@@ -222,7 +224,7 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         }
     });
     const trends = Array.from(trendMap.entries())
-        .map(([date, data]) => ({ date, ...data }))
+        .map(([date, data]) => ({ date, visits: data.visits, proposals: data.proposalNos.size, completed: data.completed, rejected: data.rejected, phone: data.phone, email: data.email }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
     // By Area

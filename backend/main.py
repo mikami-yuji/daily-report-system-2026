@@ -75,21 +75,21 @@ def load_config():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 path = config.get('excel_dir', default_path)
-                print(f"INFO: Successfully loaded config. Excel Path: {path}")
+                logging.info(f"Successfully loaded config. Excel Path: {path}")
                 return path
         except Exception as e:
-            print(f"Warning: Failed to load config.json: {e}")
-            print(f"INFO: Using default path: {default_path}")
+            logging.warning(f"Failed to load config.json: {e}")
+            logging.info(f"Using default path: {default_path}")
             return default_path
     
-    print(f"INFO: config.json not found. Using default path: {default_path}")
+    logging.info(f"config.json not found. Using default path: {default_path}")
     return default_path
 
-    print(f"INFO: config.json not found. Using default path: {default_path}")
+    logging.info(f"config.json not found. Using default path: {default_path}")
     return default_path
 
 EXCEL_DIR = load_config()
-print(f"STARTUP: Working with EXCEL_DIR: {EXCEL_DIR}")
+logging.info(f"STARTUP: Working with EXCEL_DIR: {EXCEL_DIR}")
 
 # --- Global Sales Data Storage ---
 DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -137,9 +137,9 @@ if os.path.exists(EXCEL_DIR):
     files = [f for f in os.listdir(EXCEL_DIR) if f.endswith('.xlsm') and not f.startswith('~$')]
     if files:
         DEFAULT_EXCEL_FILE = files[0]
-        print(f"INFO: Set default Excel file to: {DEFAULT_EXCEL_FILE}")
+        logging.info(f"Set default Excel file to: {DEFAULT_EXCEL_FILE}")
     else:
-        print("WARN: No .xlsm files found in directory. Using fallback default.")
+        logging.warning("No .xlsm files found in directory. Using fallback default.")
 
 
 class ReportInput(BaseModel):
@@ -188,9 +188,9 @@ def read_root():
 @app.get("/files")
 def list_excel_files():
     """List all Excel files in the directory"""
-    print(f"DEBUG: Listing files in {EXCEL_DIR}")
+    logging.debug(f"Listing files in {EXCEL_DIR}")
     if not os.path.exists(EXCEL_DIR):
-         print(f"ERROR: Directory not found: {EXCEL_DIR}")
+         logging.error(f"Directory not found: {EXCEL_DIR}")
          raise HTTPException(status_code=500, detail=f"Excel Directory not found: {EXCEL_DIR}")
          
     try:
@@ -199,7 +199,7 @@ def list_excel_files():
         # listing network drive can appear to hang.
         
         items = os.listdir(EXCEL_DIR)
-        print(f"DEBUG: Found {len(items)} items in directory")
+        logging.debug(f"Found {len(items)} items in directory")
         
         for file in items:
             if file.endswith(('.xlsx', '.xlsm')):
@@ -213,12 +213,12 @@ def list_excel_files():
                         "modified": datetime.fromtimestamp(file_mtime).isoformat()
                     })
                 except Exception as file_err:
-                    print(f"WARN: Error processing file {file}: {file_err}")
+                    logging.warning(f"Error processing file {file}: {file_err}")
                     continue
                     
         return {"files": files, "default": DEFAULT_EXCEL_FILE}
     except Exception as e:
-        print(f"CRITICAL ERROR in list_excel_files: {str(e)}")
+        logging.critical(f"CRITICAL ERROR in list_excel_files: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
@@ -240,9 +240,9 @@ def create_backup(file_path):
         backup_path = os.path.join(backup_dir, backup_filename)
         
         shutil.copy2(file_path, backup_path)
-        print(f"Backup created: {backup_path}")
+        logging.info(f"Backup created: {backup_path}")
     except Exception as e:
-        print(f"Warning: Failed to create backup: {e}")
+        logging.warning(f"Failed to create backup: {e}")
 
 
 def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
@@ -252,7 +252,7 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
     excel_file = os.path.join(EXCEL_DIR, filename)
     
     if not os.path.exists(excel_file):
-        print(f"ERROR: File not found: {excel_file}")
+        logging.error(f"File not found: {excel_file}")
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found at {excel_file}")
     
     current_mtime = os.path.getmtime(excel_file)
@@ -265,12 +265,12 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
             
     # Read from file
     try:
-        print(f"DEBUG: Reading Excel {excel_file}, sheet={sheet_name}")
+        logging.debug(f"Reading Excel {excel_file}, sheet={sheet_name}")
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
         CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
         return df.copy()
     except Exception as e:
-        print(f"ERROR: Reading Excel failed: {e}")
+        logging.error(f"Reading Excel failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
@@ -412,7 +412,7 @@ def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE)
 @app.get("/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     try:
-        print(f"DEBUG: Fetching reports for {filename} from {EXCEL_DIR}")
+        logging.debug(f"Fetching reports for {filename} from {EXCEL_DIR}")
         # Get dataframe from cache
         df = get_cached_dataframe(filename, '営業日報')
         
@@ -560,7 +560,7 @@ def get_interviewers(
         
         return {"customer_cd": customer_cd, "interviewers": interviewers}
     except Exception as e:
-        print(f"Error in get_interviewers: {str(e)}") # Add logging
+        logging.error(f"Error in get_interviewers: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/designs/{customer_cd}")
@@ -663,14 +663,14 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
             except (ValueError, TypeError):
                 continue
         
-        print(f"DEBUG: Max Mgmt Num: {max_mgmt_num}, Max Mgmt Row: {max_mgmt_row}")
+        logging.debug(f"Max Mgmt Num: {max_mgmt_num}, Max Mgmt Row: {max_mgmt_row}")
 
         # Increment to get new management number
         new_mgmt_num = max_mgmt_num + 1
         
         # Insert at the row immediately after the last management number
         next_row = max_mgmt_row + 1
-        print(f"DEBUG: Writing to Row: {next_row}")
+        logging.debug(f"Writing to Row: {next_row}")
         
         # Prepare the data to write
         # Adjust column indices based on actual Excel structure (251113_2026-_-_008.xlsm)
@@ -761,18 +761,18 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
     import tempfile
     import shutil
     
-    print(f"DEBUG update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
+    logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
-        print(f"DEBUG excel_file: {excel_file}")
+        logging.debug(f"excel_file: {excel_file}")
         
         wb = openpyxl.load_workbook(excel_file, keep_vba=True)
-        print(f"DEBUG workbook loaded")
+        logging.debug("workbook loaded")
         if '営業日報' not in wb.sheetnames:
             raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
         
         ws = wb['営業日報']
-        print(f"DEBUG worksheet max_row: {ws.max_row}")
+        logging.debug(f"worksheet max_row: {ws.max_row}")
         
         # Find the row
         target_row = None
@@ -781,14 +781,14 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
                 target_row = row
                 break
         
-        print(f"DEBUG target_row: {target_row}")
+        logging.debug(f"target_row: {target_row}")
         if not target_row:
             wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
         # Column 23 = コメント返信欄
         ws.cell(row=target_row, column=23, value=reply.コメント返信欄)
-        print(f"DEBUG cell set, saving to temp file...")
+        logging.debug("cell set, saving to temp file...")
         
         # 安全な保存: 一時ファイルに保存してから置き換え
         temp_dir = tempfile.gettempdir()
@@ -798,16 +798,16 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
             # 一時ファイルに保存
             wb.save(temp_file)
             wb.close()
-            print(f"DEBUG saved to temp: {temp_file}")
+            logging.debug(f"saved to temp: {temp_file}")
             
             # 一時ファイルが正常か確認（読み込みテスト）
             test_wb = openpyxl.load_workbook(temp_file, read_only=True)
             test_wb.close()
-            print(f"DEBUG temp file verified")
+            logging.debug("temp file verified")
             
             # 元のファイルを一時ファイルで置き換え
             shutil.copy2(temp_file, excel_file)
-            print(f"DEBUG replaced original file")
+            logging.debug("replaced original file")
             
         finally:
             # 一時ファイルを削除
@@ -827,7 +827,7 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
         raise
     except Exception as e:
         import traceback
-        print(f"ERROR update_report_reply: {e}")
+        logging.error(f"update_report_reply: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -858,7 +858,7 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
 
         # --- Optimistic Locking Check ---
         if report.original_values:
-            print(f"DEBUG: Performing conflict check for Report {management_number}")
+            logging.debug(f"Performing conflict check for Report {management_number}")
             
             # Fields to check for conflicts (critical text fields)
             check_fields = {
@@ -880,7 +880,7 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
                 original_str = original_str.replace('\r\n', '\n').replace('\r', '\n').strip()
                 
                 if current_str != original_str:
-                    print(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
+                    logging.warning(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
                     conflicts.append(field_name)
             
             if conflicts:
@@ -1086,7 +1086,7 @@ def get_design_images(filename: str):
             stripped_target = re.sub(r'(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', normalized_target, flags=re.IGNORECASE)
             logging.info(f"Stripped target: {stripped_target}")
 
-            print(f"DEBUG: Searching for folder containing '{target_name}' (Norm: {normalized_target}) in {DESIGN_DIR}")
+            logging.debug(f"Searching for folder containing '{target_name}' (Norm: {normalized_target}) in {DESIGN_DIR}")
             
             if not os.path.exists(DESIGN_DIR):
                  logging.error(f"Design directory not found: {DESIGN_DIR}")
@@ -1170,7 +1170,7 @@ def get_design_images(filename: str):
 
     except Exception as e:
         logging.exception("Error in get_design_images")
-        print(f"Error listing images: {e}")
+        logging.error(f"Error listing images: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/images/content")
@@ -1263,11 +1263,11 @@ def search_design_images(query: str, filename: Optional[str] = None):
                                 break
 
                 if found_folder:
-                    print(f"DEBUG: Search target set to: {found_folder}")
+                    logging.debug(f"Search target set to: {found_folder}")
                     search_roots = [found_folder]
             except Exception as e:
                 logging.error(f"Failed to optimize search folder: {e}")
-                print(f"Warning: Failed to optimize search folder: {e}")
+                logging.warning(f"Failed to optimize search folder: {e}")
                 
         
         if found_folder:
@@ -1294,7 +1294,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
                 # Use listdir instead of scandir/walk to avoid hanging
                 items = os.listdir(directory)
             except Exception as e:
-                print(f"WARN: Failed to listdir {directory}: {e}")
+                logging.warning(f"Failed to listdir {directory}: {e}")
                 return results
 
             dirs_to_visit = []
@@ -1399,7 +1399,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
         # Main search loop
         try:
             for search_root in search_roots:
-                print(f"DEBUG: Searching root: {search_root}", flush=True)
+                logging.debug(f"Searching root: {search_root}")
                 # Use custom walker
                 # Initial parent_matches logic:
                 # If the search_root ITSELF matches query (e.g. we targeted a specific user folder matched by filename, but query is DesignNo),
@@ -1411,7 +1411,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
                     image_files = image_files[:MAX_RESULTS]
                     break
         except Exception as e:
-            print(f"ERROR: Search loop failed: {e}", flush=True)
+            logging.error(f"Search loop failed: {e}")
             # Return whatever we found so far instead of 500
             pass
             

@@ -6,6 +6,7 @@ import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import LazyImage from '@/components/ui/LazyImage';
 
 interface DesignRequest {
     designNo: string;
@@ -550,12 +551,10 @@ export default function DesignSearchPage() {
                                                             <span className="text-xs font-bold mt-2 text-gray-500">PDF</span>
                                                         </div>
                                                     ) : (
-                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                        <img
+                                                        <LazyImage
                                                             src={getImageUrl(img.path)}
                                                             alt={img.name}
                                                             className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform duration-300"
-                                                            loading="lazy"
                                                         />
                                                     )}
                                                 </a>

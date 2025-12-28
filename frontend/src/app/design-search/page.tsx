@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { getReports, Report, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
+import { useReports } from '@/hooks/useQueryHooks';
+import { Report, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -20,16 +21,16 @@ interface DesignRequest {
 
 export default function DesignSearchPage() {
     const { selectedFile } = useFile();
-    const [reports, setReports] = useState<Report[]>([]);
-    const [loading, setLoading] = useState(true);
+
+    // React Queryでデータ取得（自動キャッシュ）
+    const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [selectedType, setSelectedType] = useState<string>('');
     const [selectedProgress, setSelectedProgress] = useState<string>('');
-    const [designRequests, setDesignRequests] = useState<DesignRequest[]>([]);
     const [filteredRequests, setFilteredRequests] = useState<DesignRequest[]>([]);
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-    const [customers, setCustomers] = useState<Array<{ code: string, name: string }>>([]);
 
     // Image Search State
     const [searchingImage, setSearchingImage] = useState(false);
@@ -61,35 +62,12 @@ export default function DesignSearchPage() {
         }
     };
 
+    // エラー時のtoast表示
     useEffect(() => {
-        if (!selectedFile) return;
-
-        setLoading(true);
-        getReports(selectedFile).then(data => {
-            setReports(data);
-            const requests = processDesignRequests(data);
-
-            // デザイン依頼がある得意先のみを抽出
-            const customerMap = new Map<string, string>();
-            requests.forEach(req => {
-                if (req.customerCode && req.customerName && !customerMap.has(req.customerCode)) {
-                    customerMap.set(req.customerCode, req.customerName);
-                }
-            });
-
-            const customerList = Array.from(customerMap.entries())
-                .map(([code, name]) => ({ code, name }))
-                .sort((a, b) => a.code.localeCompare(b.code));
-
-            setDesignRequests(requests);
-            setCustomers(customerList);
-            setLoading(false);
-        }).catch(err => {
-            console.error(err);
+        if (error) {
             toast.error('デザイン依頼データの読み込みに失敗しました');
-            setLoading(false);
-        });
-    }, [selectedFile]);
+        }
+    }, [error]);
 
     const processDesignRequests = (data: Report[]): DesignRequest[] => {
         const designMap = new Map<string, DesignRequest>();
@@ -143,6 +121,24 @@ export default function DesignSearchPage() {
 
         return requests;
     };
+
+    // レポートからデザイン依頼を抽出（useMemoでキャッシュ）
+    const designRequests = useMemo(() => {
+        return processDesignRequests(reports);
+    }, [reports]);
+
+    // デザイン依頼がある得意先一覧（useMemoでキャッシュ）
+    const customers = useMemo(() => {
+        const customerMap = new Map<string, string>();
+        designRequests.forEach(req => {
+            if (req.customerCode && req.customerName && !customerMap.has(req.customerCode)) {
+                customerMap.set(req.customerCode, req.customerName);
+            }
+        });
+        return Array.from(customerMap.entries())
+            .map(([code, name]) => ({ code, name }))
+            .sort((a, b) => a.code.localeCompare(b.code));
+    }, [designRequests]);
 
     // フィルターされた状態での種別リスト
     const availableTypes = useMemo(() => {

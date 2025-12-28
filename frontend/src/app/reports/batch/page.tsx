@@ -71,8 +71,17 @@ export default function BatchReportPage() {
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '/').slice(2);
     const [date, setDate] = useState(today);
 
-    // 訪問リスト
-    const [visits, setVisits] = useState<VisitEntry[]>([createEmptyVisit()]);
+    // 訪問リスト（クライアント側でのみ初期化）
+    const [visits, setVisits] = useState<VisitEntry[]>([]);
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    // クライアント側でのみ初期訪問ブロックを作成(hydration mismatch回避）
+    useEffect(() => {
+        if (!isLoaded) {
+            setVisits([createEmptyVisit()]);
+            setIsLoaded(true);
+        }
+    }, [isLoaded]);
 
     // 得意先・面談者リスト
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -89,7 +98,6 @@ export default function BatchReportPage() {
     useEffect(() => {
         if (selectedFile) {
             getCustomers(selectedFile).then(setCustomers).catch(console.error);
-            getInterviewers(selectedFile).then(setInterviewers).catch(console.error);
         }
     }, [selectedFile]);
 

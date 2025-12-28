@@ -8,6 +8,7 @@ export interface CustomerSummary {
     visits: number;
     calls: number;
     designRequests: number;
+    designNos?: Set<string>;  // 内部追跡用（ユニークなデザインNo.）
     isPriority: boolean;
     lastActivity: string;
     rank: string;

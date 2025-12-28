@@ -14,6 +14,7 @@ export const processCustomers = (data: Report[]): CustomerSummary[] => {
         visits: 0,
         calls: 0,
         designRequests: 0,
+        designNos: new Set<string>(),  // ユニークなデザインNo.を追跡
         isPriority: isPriority,
         lastActivity: '',
         rank,
@@ -72,7 +73,10 @@ export const processCustomers = (data: Report[]): CustomerSummary[] => {
         target.totalActivities++;
         if (report.行動内容 && report.行動内容.includes('訪問')) target.visits++;
         if (report.行動内容 && report.行動内容.includes('電話')) target.calls++;
-        if (report['システム確認用デザインNo.'] && !isNaN(Number(report['システム確認用デザインNo.']))) target.designRequests++;
+        const designNo = report['システム確認用デザインNo.'];
+        if (designNo && !isNaN(Number(designNo))) {
+            target.designNos.add(String(designNo));
+        }
         const reportDate = String(report.日付 || '');
         if (!target.lastActivity || reportDate > target.lastActivity) {
             target.lastActivity = reportDate;
@@ -88,11 +92,22 @@ export const processCustomers = (data: Report[]): CustomerSummary[] => {
             parent.totalActivities++;
             if (report.行動内容 && report.行動内容.includes('訪問')) parent.visits++;
             if (report.行動内容 && report.行動内容.includes('電話')) parent.calls++;
-            if (report['システム確認用デザインNo.'] && !isNaN(Number(report['システム確認用デザインNo.']))) parent.designRequests++;
+            if (designNo && !isNaN(Number(designNo))) {
+                parent.designNos.add(String(designNo));
+            }
             if (!parent.lastActivity || reportDate > parent.lastActivity) parent.lastActivity = reportDate;
         }
     });
 
+    // Setからユニークなデザイン数を計算して返す
     return Array.from(customerMap.values())
+        .map(customer => ({
+            ...customer,
+            designRequests: customer.designNos.size,
+            subItems: customer.subItems?.map(sub => ({
+                ...sub,
+                designRequests: sub.designNos?.size || 0
+            }))
+        }))
         .sort((a, b) => b.totalActivities - a.totalActivities);
 };

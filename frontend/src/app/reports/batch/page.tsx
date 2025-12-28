@@ -110,9 +110,41 @@ export default function BatchReportPage() {
 
     // 訪問データ更新
     const updateVisit = (id: string, field: keyof VisitEntry, value: string | boolean): void => {
-        setVisits(visits.map(v =>
+        setVisits(prev => prev.map(v =>
             v.id === id ? { ...v, [field]: value } : v
         ));
+    };
+
+    // デザインモード変更（複数フィールドを一括更新）
+    const handleDesignModeChange = (id: string, mode: 'none' | 'new' | 'existing'): void => {
+        setVisits(prev => prev.map(v => {
+            if (v.id !== id) return v;
+
+            if (mode === 'none') {
+                return {
+                    ...v,
+                    designMode: 'none',
+                    デザイン提案有無: '',
+                    デザイン種別: '',
+                    デザイン名: '',
+                    デザイン進捗状況: '',
+                    'デザイン依頼No.': '',
+                };
+            } else if (mode === 'new') {
+                return {
+                    ...v,
+                    designMode: 'new',
+                    デザイン提案有無: 'あり',
+                    デザイン進捗状況: '新規',
+                };
+            } else {
+                return {
+                    ...v,
+                    designMode: 'existing',
+                    デザイン提案有無: 'あり',
+                };
+            }
+        }));
     };
 
     // 得意先検索
@@ -411,14 +443,7 @@ export default function BatchReportPage() {
                                                 type="radio"
                                                 name={`designMode-${visit.id}`}
                                                 checked={visit.designMode === 'none'}
-                                                onChange={() => {
-                                                    updateVisit(visit.id, 'designMode', 'none');
-                                                    updateVisit(visit.id, 'デザイン提案有無', '');
-                                                    updateVisit(visit.id, 'デザイン種別', '');
-                                                    updateVisit(visit.id, 'デザイン名', '');
-                                                    updateVisit(visit.id, 'デザイン進捗状況', '');
-                                                    updateVisit(visit.id, 'デザイン依頼No.', '');
-                                                }}
+                                                onChange={() => handleDesignModeChange(visit.id, 'none')}
                                                 className="text-sf-light-blue focus:ring-sf-light-blue"
                                             />
                                             <span>なし</span>
@@ -428,11 +453,7 @@ export default function BatchReportPage() {
                                                 type="radio"
                                                 name={`designMode-${visit.id}`}
                                                 checked={visit.designMode === 'new'}
-                                                onChange={() => {
-                                                    updateVisit(visit.id, 'designMode', 'new');
-                                                    updateVisit(visit.id, 'デザイン提案有無', 'あり');
-                                                    updateVisit(visit.id, 'デザイン進捗状況', '新規');
-                                                }}
+                                                onChange={() => handleDesignModeChange(visit.id, 'new')}
                                                 className="text-sf-light-blue focus:ring-sf-light-blue"
                                             />
                                             <span>新規</span>
@@ -442,10 +463,7 @@ export default function BatchReportPage() {
                                                 type="radio"
                                                 name={`designMode-${visit.id}`}
                                                 checked={visit.designMode === 'existing'}
-                                                onChange={() => {
-                                                    updateVisit(visit.id, 'designMode', 'existing');
-                                                    updateVisit(visit.id, 'デザイン提案有無', 'あり');
-                                                }}
+                                                onChange={() => handleDesignModeChange(visit.id, 'existing')}
                                                 className="text-sf-light-blue focus:ring-sf-light-blue"
                                             />
                                             <span>既存</span>

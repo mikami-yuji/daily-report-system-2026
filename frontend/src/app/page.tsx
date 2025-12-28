@@ -119,11 +119,15 @@ export default function Home() {
   };
 
   // --- Logic for Unread Comments ---
-  // Criteria: Has Supervisor Comment AND No Reply
+  // Criteria: Has Supervisor Comment AND (No Reply OR No 既読チェック)
+  // 上長コメントがあり、コメント返信欄か既読チェックのどちらかが空欄のもののみ
   const unreadComments = reports.filter(r => {
     const supervisorComment = r.上長コメント ? String(r.上長コメント).trim() : '';
     const replyComment = r.コメント返信欄 ? String(r.コメント返信欄).trim() : '';
-    return supervisorComment !== '' && replyComment === '';
+    const kidoku = r.既読チェック ? String(r.既読チェック).trim() : '';
+
+    // 上長コメントがあり、コメント返信欄と既読チェックの両方が空欄の場合のみ通知
+    return supervisorComment !== '' && (replyComment === '' || kidoku === '');
   });
 
   // 統計計算

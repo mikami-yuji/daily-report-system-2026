@@ -125,7 +125,7 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                                     <td className="px-4 py-3 text-center">
                                         {sub.isPriority && (
                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700">
-                                                ★重点
+                                                重点
                                             </span>
                                         )}
                                     </td>

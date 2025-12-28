@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getReports, Report, getDesignImages, DesignImage, getImageUrl, updateReportReply } from '@/lib/api';
+import { useEffect, useState, useMemo } from 'react';
+import { Report, getDesignImages, DesignImage, getImageUrl, updateReportReply } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
+import { useReports } from '@/hooks/useQueryHooks';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/useQueryHooks';
 import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon } from 'lucide-react';
 import EditReportModal from '../components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Check } from 'lucide-react';
@@ -28,8 +31,20 @@ interface MonthlyStats {
 
 export default function Home() {
   const { selectedFile } = useFile();
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  // React Queryでデータ取得（自動キャッシュ）
+  const { data: rawReports = [], isLoading, error } = useReports(selectedFile || undefined);
+
+  // 日付でソート（useMemo）
+  const reports = useMemo(() => {
+    return [...rawReports].sort((a, b) => {
+      const dateA = String(a.日付 || '');
+      const dateB = String(b.日付 || '');
+      return dateB.localeCompare(dateA);
+    });
+  }, [rawReports]);
+
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [images, setImages] = useState<DesignImage[]>([]);
   const [imageFolder, setImageFolder] = useState<string>('');
@@ -39,23 +54,9 @@ export default function Home() {
   const [submittingReply, setSubmittingReply] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);  // 通知一覧の展開状態
 
+  // 画像読み込み
   useEffect(() => {
     if (selectedFile) {
-      // Fetch Reports
-      getReports(selectedFile).then(data => {
-        const sortedData = data.sort((a, b) => {
-          const dateA = String(a.日付 || '');
-          const dateB = String(b.日付 || '');
-          return dateB.localeCompare(dateA);
-        });
-        setReports(sortedData);
-        setLoading(false);
-      }).catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
-
-      // Fetch Images
       getDesignImages(selectedFile).then(data => {
         setImages(data.images || []);
         setImageFolder(data.folder || '');
@@ -63,58 +64,37 @@ export default function Home() {
     }
   }, [selectedFile]);
 
-  // Handle Edit Success (Reload)
+  // Handle Edit Success (キャッシュ無効化)
   const handleEditSuccess = () => {
     setEditingReport(null);
-    setLoading(true);
-    getReports(selectedFile).then(data => {
-      const sortedData = data.sort((a, b) => {
-        const dateA = String(a.日付 || '');
-        const dateB = String(b.日付 || '');
-        return dateB.localeCompare(dateA);
-      });
-      setReports(sortedData);
-      setLoading(false);
-    });
+    queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
   };
 
-  // 通知への返信を送信（楽観的UI更新）
+  // 通知への返信を送信
   const handleSubmitReply = async (report: Report) => {
     if (!replyText.trim()) return;
 
-    // 即座にUIを更新（楽観的更新）
-    setReports(prev => prev.map(r =>
-      r.管理番号 === report.管理番号
-        ? { ...r, コメント返信欄: replyText.trim() }
-        : r
-    ));
     setReplyingTo(null);
+    const replyContent = replyText.trim();
     setReplyText('');
 
-    // バックグラウンドでAPI呼び出し（エラー時のみ再読み込み）
+    // API呼び出し後にキャッシュを更新
     try {
-      await updateReportReply(report.管理番号, replyText.trim(), selectedFile);
+      await updateReportReply(report.管理番号, replyContent, selectedFile);
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
     } catch (error) {
       console.error('Failed to submit reply:', error);
-      handleEditSuccess(); // エラー時は再読み込み
     }
   };
 
-  // 通知を既読にする（楽観的UI更新）
+  // 通知を既読にする
   const handleDismissNotification = async (report: Report) => {
-    // 即座にUIを更新（楽観的更新）
-    setReports(prev => prev.map(r =>
-      r.管理番号 === report.管理番号
-        ? { ...r, コメント返信欄: '確認済み' }
-        : r
-    ));
-
-    // バックグラウンドでAPI呼び出し（エラー時のみ再読み込み）
+    // API呼び出し後にキャッシュを更新
     try {
       await updateReportReply(report.管理番号, '確認済み', selectedFile);
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
     } catch (error) {
       console.error('Failed to dismiss notification:', error);
-      handleEditSuccess(); // エラー時は再読み込み
     }
   };
 
@@ -511,7 +491,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isLoading ? (
                 <tr><td colSpan={5} className="px-4 py-4 text-center text-sf-text-weak">読み込み中...</td></tr>
               ) : reports.length === 0 ? (
                 <tr><td colSpan={5} className="px-4 py-4 text-center text-sf-text-weak">日報が見つかりません</td></tr>

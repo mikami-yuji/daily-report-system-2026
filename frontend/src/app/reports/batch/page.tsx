@@ -154,8 +154,8 @@ export default function BatchReportPage() {
         if (!term.trim()) return [];
         const lowerTerm = term.toLowerCase();
         return customers.filter(c =>
-            c.code.toLowerCase().includes(lowerTerm) ||
-            c.name.toLowerCase().includes(lowerTerm) ||
+            (c.code && c.code.toLowerCase().includes(lowerTerm)) ||
+            (c.name && c.name.toLowerCase().includes(lowerTerm)) ||
             (c.kana && c.kana.toLowerCase().includes(lowerTerm))
         ).slice(0, 10);
     };

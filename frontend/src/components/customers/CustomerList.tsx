@@ -115,8 +115,20 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                                         {sub.directDeliveryName}
                                     </td>
                                     <td className="px-4 py-3 text-sf-text-weak text-xs">{sub.area || '-'}</td>
-                                    <td className="px-4 py-3 text-center"></td>
-                                    <td className="px-4 py-3 text-center"></td>
+                                    <td className="px-4 py-3 text-center">
+                                        {sub.rank && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-600">
+                                                {sub.rank}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        {sub.isPriority && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-50 text-yellow-700">
+                                                ★重点
+                                            </span>
+                                        )}
+                                    </td>
                                     <td className="px-4 py-3 text-center text-xs text-sf-text-weak">
                                         {sub.totalActivities}
                                     </td>

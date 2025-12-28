@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Report, updateReport } from '@/lib/api';
-import { useOffline } from '@/context/OfflineContext';
 import { sanitizeReport } from '@/lib/reportUtils';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -10,12 +9,10 @@ interface EditReportModalProps {
     onClose: () => void;
     onSuccess: () => void;
     selectedFile: string;
-    setReports: React.Dispatch<React.SetStateAction<Report[]>>;
     reports: Report[];
 }
 
-export default function EditReportModal({ report, onClose, onSuccess, selectedFile, setReports, reports }: EditReportModalProps) {
-    const { isOnline, saveOfflineReport, cacheReports } = useOffline();
+export default function EditReportModal({ report, onClose, onSuccess, selectedFile, reports }: EditReportModalProps) {
 
 
 
@@ -119,19 +116,6 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         const sanitized = sanitizeReport(fullReport);
 
         try {
-
-            if (!isOnline) {
-                saveOfflineReport(sanitized, selectedFile, 'update', report.管理番号);
-
-                // Optimistic UI update
-                const updatedReport = { ...report, ...sanitized };
-                setReports(prev => prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
-                cacheReports(reports.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
-
-                onSuccess();
-                return;
-            }
-
             await updateReport(report.管理番号, sanitized, selectedFile);
             toast.success(`日報を更新しました (No. ${report.管理番号})`);
             onSuccess();
@@ -152,31 +136,9 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         secondary: '#FFFAEE',
                     },
                 });
-                setSubmitting(false);
-                return; // Do not fallback to offline save for conflicts
+            } else {
+                toast.error('日報の更新に失敗しました');
             }
-
-            // Fallback to offline save on error (e.g. server down)
-            saveOfflineReport(sanitized, selectedFile, 'update', report.管理番号);
-
-            // Optimistic UI update
-            const updatedReport = { ...report, ...sanitized };
-            setReports(prev => prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
-            cacheReports(reports.map(r => r.管理番号 === report.管理番号 ? updatedReport : r));
-
-            setReports(prev => {
-                const newReports = prev.map(r => r.管理番号 === report.管理番号 ? updatedReport : r);
-                cacheReports(newReports);
-                return newReports;
-            });
-
-
-            toast.success('サーバー通信エラー。オフラインで保存しました。', {
-                duration: 4000,
-                position: 'top-right',
-                icon: '📡'
-            });
-            onSuccess();
         } finally {
             setSubmitting(false);
         }

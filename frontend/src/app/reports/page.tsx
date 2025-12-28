@@ -1,39 +1,25 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getReports, Report } from '@/lib/api';
+import { useEffect, useState, useMemo } from 'react';
+import { Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
+import { useReports } from '@/hooks/useQueryHooks';
 import { Plus, Filter, RefreshCw, FileText, LayoutList, Table } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useOffline } from '@/context/OfflineContext';
 import NewReportModal from '@/components/reports/NewReportModal';
 import EditReportModal from '@/components/reports/EditReportModal';
 import ReportDetailModal from '@/components/reports/ReportDetailModal';
 import { cleanText } from '@/lib/reportUtils';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/useQueryHooks';
 
 export default function ReportsPage() {
     const { files, selectedFile, setSelectedFile } = useFile();
-    const { isOnline, cachedReports, cacheReports, offlineReports } = useOffline();
+    const queryClient = useQueryClient();
 
-    // Merge offline changes into reports
-    const mergeOfflineReports = (baseReports: Report[]) => {
-        let merged = [...baseReports];
+    // React Queryでデータ取得（自動キャッシュ）
+    const { data: rawReports = [], isLoading, error, refetch } = useReports(selectedFile || undefined);
 
-        offlineReports.forEach(offlineReport => {
-            if (offlineReport.type === 'update' && offlineReport.reportId) {
-                const index = merged.findIndex(r => r.管理番号 === offlineReport.reportId);
-                if (index !== -1) {
-                    merged[index] = { ...merged[index], ...offlineReport.data };
-                }
-            } else if (offlineReport.type === 'create') {
-                // For created reports, we might want to prepend them or handle them differently
-                // For now, let's focus on updates as requested
-            }
-        });
-        return merged;
-    };
-    const [reports, setReports] = useState<Report[]>([]);
-    const [loading, setLoading] = useState(true);
     const [selectedReportIndex, setSelectedReportIndex] = useState<number | null>(null);
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
     const [viewMode, setViewMode] = useState<'table' | 'timeline'>('table');
@@ -44,60 +30,41 @@ export default function ReportsPage() {
     // ページネーション
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 50;
-    const totalPages = Math.ceil(reports.length / itemsPerPage);
-    const paginatedReports = reports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-
-
+    // エラー時のtoast表示
     useEffect(() => {
-        if (selectedFile) {
-            fetchData();
+        if (error) {
+            toast.error('日報データの読み込みに失敗しました');
         }
-    }, [selectedFile, isOnline]);
+    }, [error]);
 
-    const fetchData = () => {
-        setLoading(true);
-        getReports(selectedFile).then(data => {
-            // Filter out reports with no date
-            const validData = data.filter(report => report.日付 && report.日付.trim() !== '');
-            // Sort data initially based on current sortOrder
-            const sortedData = sortReports(validData, sortOrder);
-
-            // Merge offline reports
-            const mergedData = mergeOfflineReports(sortedData);
-
-            setReports(mergedData);
-            cacheReports(sortedData); // Cache the ORIGINAL successful response
-            setLoading(false);
-        }).catch(err => {
-            console.error(err);
-            // Fallback to cache if fetch fails (offline or server error)
-            if (cachedReports.length > 0) {
-                const mergedCached = mergeOfflineReports(cachedReports);
-                setReports(mergedCached);
-                toast('キャッシュされた日報を表示します', { icon: '📡', id: 'cached-reports' });
-            }
-            setLoading(false);
-
-        });
-    };
-
-    const sortReports = (data: Report[], order: 'asc' | 'desc') => {
-        return [...data].sort((a, b) => {
+    // レポートのソートと有効データフィルタリング（useMemoでキャッシュ）
+    const reports = useMemo(() => {
+        // 日付があるレポートのみ
+        const validData = rawReports.filter(report => report.日付 && report.日付.trim() !== '');
+        // ソート
+        return [...validData].sort((a, b) => {
             const dateA = String(a.日付 || '');
             const dateB = String(b.日付 || '');
-            if (order === 'asc') {
+            if (sortOrder === 'asc') {
                 return dateA.localeCompare(dateB);
             } else {
                 return dateB.localeCompare(dateA);
             }
         });
+    }, [rawReports, sortOrder]);
+
+    const totalPages = Math.ceil(reports.length / itemsPerPage);
+    const paginatedReports = reports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+    // データ更新時にキャッシュをリフレッシュ
+    const handleRefresh = () => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
+        toast.success('データを更新しました');
     };
 
     const toggleSortOrder = () => {
-        const newOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-        setSortOrder(newOrder);
-        setReports(prev => sortReports(prev, newOrder));
+        setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
     };
 
     const handleRowClick = (index: number) => {
@@ -158,7 +125,7 @@ export default function ReportsPage() {
                             {sortOrder === 'asc' ? '昇順' : '降順'}
                         </span>
                     </button>
-                    <button onClick={fetchData} className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors">
+                    <button onClick={handleRefresh} className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors">
                         <RefreshCw size={16} />
                     </button>
                     <button
@@ -172,7 +139,7 @@ export default function ReportsPage() {
             </div>
 
             <div className="bg-white border border-sf-border shadow-sm flex-1 overflow-auto rounded">
-                {loading ? (
+                {isLoading ? (
                     <div className="p-10 text-center text-sf-text-weak">読み込み中...</div>
                 ) : reports.length === 0 ? (
                     <div className="p-10 text-center text-sf-text-weak">日報が見つかりません</div>
@@ -371,7 +338,7 @@ export default function ReportsPage() {
                     onClose={() => setShowNewReportModal(false)}
                     onSuccess={() => {
                         setShowNewReportModal(false);
-                        fetchData();
+                        handleRefresh();
                     }}
                     selectedFile={selectedFile}
                 />
@@ -388,10 +355,9 @@ export default function ReportsPage() {
                     onSuccess={() => {
                         setShowEditReportModal(false);
                         setEditingReport(null);
-                        if (isOnline) fetchData(); // Only fetch if online, otherwise we handled it optimistically
+                        handleRefresh();
                     }}
                     selectedFile={selectedFile}
-                    setReports={setReports}
                     reports={reports}
                 />
             )}
@@ -410,7 +376,7 @@ export default function ReportsPage() {
                         setSelectedReportIndex(null); // 詳細モーダルを閉じる
                         setShowEditReportModal(true);
                     }}
-                    onUpdate={fetchData}
+                    onUpdate={handleRefresh}
                 />
             )}
         </div>

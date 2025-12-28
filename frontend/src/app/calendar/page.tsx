@@ -6,6 +6,7 @@ import { getReports, Report } from '@/lib/api';
 import { generateMonthCalendar, MonthData, CalendarDay, getDayName, getMonthName } from '@/lib/calendar';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Printer, Users, MapPin } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
+import toast from 'react-hot-toast';
 
 export default function CalendarPage() {
     const { selectedFile } = useFile();
@@ -34,6 +35,7 @@ export default function CalendarPage() {
             setReports(data);
         } catch (error) {
             console.error('Failed to load reports:', error);
+            toast.error('カレンダーデータの読み込みに失敗しました');
         } finally {
             setLoading(false);
         }

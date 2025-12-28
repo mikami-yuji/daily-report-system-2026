@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useFile } from '@/context/FileContext';
 import { getReports, Report } from '@/lib/api';
 import { Search, MapPin, Calendar, Building2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function MassRetailerSurveyPage() {
     const { selectedFile } = useFile();
@@ -45,6 +46,7 @@ export default function MassRetailerSurveyPage() {
             setAreas(uniqueAreas);
         } catch (error) {
             console.error('Failed to load reports:', error);
+            toast.error('量販店調査データの読み込みに失敗しました');
         } finally {
             setLoading(false);
         }

@@ -5,6 +5,7 @@ import { getReports, Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, Building2, AlertCircle, TrendingDown } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 
 export default function CompetitorInfoPage() {
     const { selectedFile } = useFile();
@@ -37,6 +38,7 @@ export default function CompetitorInfoPage() {
             setLoading(false);
         }).catch(err => {
             console.error(err);
+            toast.error('競合他社情報の読み込みに失敗しました');
             setLoading(false);
         });
     }, [selectedFile]);

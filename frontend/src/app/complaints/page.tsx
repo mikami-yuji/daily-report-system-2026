@@ -5,6 +5,7 @@ import { getReports, Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { Search, Calendar, User, Building2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 
 export default function ComplaintsPage() {
     const { selectedFile, isLoadingFiles } = useFile();
@@ -35,6 +36,7 @@ export default function ComplaintsPage() {
             setLoading(false);
         }).catch(err => {
             console.error(err);
+            toast.error('クレームデータの読み込みに失敗しました');
             setLoading(false);
         });
     }, [selectedFile, isLoadingFiles]);

@@ -10,6 +10,7 @@ import {
     ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     PieChart, Pie, Cell, Area, BarChart
 } from 'recharts';
+import toast from 'react-hot-toast';
 
 type Period = 'today' | 'week' | 'month' | 'quarter' | 'year';
 type Tab = 'overview' | 'business' | 'design' | 'priority';
@@ -42,6 +43,7 @@ export default function AnalyticsPage() {
             setReports(data);
         } catch (error) {
             console.error('Failed to load reports:', error);
+            toast.error('分析データの読み込みに失敗しました');
         } finally {
             setLoading(false);
         }

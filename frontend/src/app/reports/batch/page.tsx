@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
-import { Customer, getCustomers, getInterviewers, addReport } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search } from 'lucide-react';
@@ -32,6 +32,7 @@ type VisitEntry = {
     デザイン進捗状況: string;
     'デザイン依頼No.': string;
     designMode: 'none' | 'new' | 'existing';  // デザインモード
+    designs: Design[];  // 得意先ごとのデザイン案件リスト
     isExpanded: boolean;
 };
 
@@ -58,6 +59,7 @@ const createEmptyVisit = (): VisitEntry => ({
     デザイン進捗状況: '',
     'デザイン依頼No.': '',
     designMode: 'none',
+    designs: [],
     isExpanded: true,
 });
 
@@ -160,21 +162,55 @@ export default function BatchReportPage() {
 
     // 得意先選択
     const selectCustomer = (visitId: string, customer: Customer): void => {
-        setVisits(visits.map(v => {
+        setVisits(prev => prev.map(v => {
             if (v.id === visitId) {
                 return {
                     ...v,
                     得意先CD: customer.code,
                     訪問先名: customer.name,
+                    直送先CD: customer.ddCode || '',
+                    直送先名: customer.ddName || '',
                     エリア: customer.area || '',
                     ランク: customer.rank || '',
                     重点顧客: customer.priority || '',
+                    designs: [], // 初期化
                 };
             }
             return v;
         }));
         setShowSuggestions({ ...showSuggestions, [visitId]: false });
         setSearchTerms({ ...searchTerms, [visitId]: '' });
+
+        // デザイン案件を取得
+        if (customer.code) {
+            getDesigns(customer.code, selectedFile, customer.ddName || undefined)
+                .then(designs => {
+                    setVisits(prev => prev.map(v =>
+                        v.id === visitId ? { ...v, designs } : v
+                    ));
+                })
+                .catch(err => {
+                    console.error('Failed to fetch designs:', err);
+                });
+        }
+    };
+
+    // デザイン選択（既存デザインを選んだ時）
+    const handleDesignSelect = (visitId: string, designNo: string): void => {
+        setVisits(prev => prev.map(v => {
+            if (v.id !== visitId) return v;
+
+            const design = v.designs.find(d => String(d.デザイン依頼No) === designNo);
+            if (!design) return v;
+
+            return {
+                ...v,
+                'デザイン依頼No.': String(design.デザイン依頼No),
+                デザイン種別: design.デザイン種別 || '',
+                デザイン名: design.デザイン名 || '',
+                デザイン進捗状況: design.デザイン進捗状況 || '',
+            };
+        }));
     };
 
     // 展開/折りたたみ切り替え
@@ -469,6 +505,28 @@ export default function BatchReportPage() {
                                             <span>既存</span>
                                         </label>
                                     </div>
+
+                                    {/* 既存デザイン選択プルダウン */}
+                                    {visit.designMode === 'existing' && (
+                                        <div className="mb-4">
+                                            <label className="block text-xs font-medium text-sf-text-weak mb-1">過去のデザイン案件</label>
+                                            <select
+                                                value={visit['デザイン依頼No.']}
+                                                onChange={(e) => handleDesignSelect(visit.id, e.target.value)}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                            >
+                                                <option value="">選択してください</option>
+                                                {visit.designs.map((design) => (
+                                                    <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
+                                                        {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {visit.designs.length === 0 && visit.得意先CD && (
+                                                <p className="text-xs text-gray-500 mt-1">この得意先のデザイン案件はありません</p>
+                                            )}
+                                        </div>
+                                    )}
 
                                     {(visit.designMode === 'new' || visit.designMode === 'existing') && (
                                         <div className="space-y-4">

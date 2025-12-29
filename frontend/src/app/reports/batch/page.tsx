@@ -612,9 +612,11 @@ export default function BatchReportPage() {
                                     <textarea
                                         value={visit.商談内容}
                                         onChange={(e) => updateVisit(visit.id, '商談内容', e.target.value)}
-                                        rows={3}
+                                        rows={2}
+                                        onFocus={(e) => e.currentTarget.rows = 6}
+                                        onBlur={(e) => e.currentTarget.rows = 2}
                                         placeholder="商談の内容を入力..."
-                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none"
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none transition-all"
                                     />
                                 </div>
 
@@ -622,22 +624,26 @@ export default function BatchReportPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-medium text-sf-text-weak mb-1">提案物</label>
-                                        <input
-                                            type="text"
+                                        <textarea
                                             value={visit.提案物}
                                             onChange={(e) => updateVisit(visit.id, '提案物', e.target.value)}
+                                            rows={1}
+                                            onFocus={(e) => e.currentTarget.rows = 4}
+                                            onBlur={(e) => e.currentTarget.rows = 1}
                                             placeholder="カタログ、サンプルなど"
-                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none transition-all"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-xs font-medium text-sf-text-weak mb-1">次回プラン</label>
-                                        <input
-                                            type="text"
+                                        <textarea
                                             value={visit.次回プラン}
                                             onChange={(e) => updateVisit(visit.id, '次回プラン', e.target.value)}
+                                            rows={1}
+                                            onFocus={(e) => e.currentTarget.rows = 4}
+                                            onBlur={(e) => e.currentTarget.rows = 1}
                                             placeholder="次回訪問予定など"
-                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none transition-all"
                                         />
                                     </div>
                                 </div>
@@ -648,9 +654,11 @@ export default function BatchReportPage() {
                                     <textarea
                                         value={visit.競合他社情報}
                                         onChange={(e) => updateVisit(visit.id, '競合他社情報', e.target.value)}
-                                        rows={2}
+                                        rows={1}
+                                        onFocus={(e) => e.currentTarget.rows = 4}
+                                        onBlur={(e) => e.currentTarget.rows = 1}
                                         placeholder="競合他社の動向など"
-                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none"
+                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none transition-all"
                                     />
                                 </div>
                             </div>

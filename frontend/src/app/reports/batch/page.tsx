@@ -162,25 +162,31 @@ export default function BatchReportPage() {
         if (!term.trim()) return [];
         const lowerTerm = term.toLowerCase();
         return customers.filter(c =>
-            (c.code && c.code.toLowerCase().includes(lowerTerm)) ||
-            (c.name && c.name.toLowerCase().includes(lowerTerm)) ||
-            (c.kana && c.kana.toLowerCase().includes(lowerTerm))
+            (c.得意先CD && c.得意先CD.toLowerCase().includes(lowerTerm)) ||
+            (c.得意先名 && c.得意先名.toLowerCase().includes(lowerTerm)) ||
+            (c.フリガナ && c.フリガナ.toLowerCase().includes(lowerTerm)) ||
+            (c.直送先名 && c.直送先名.toLowerCase().includes(lowerTerm))
         ).slice(0, 10);
     };
 
     // 得意先選択
     const selectCustomer = (visitId: string, customer: Customer): void => {
+        // 表示名を作成（直送先があれば「得意先名　直送先名」形式）
+        const displayName = customer.直送先名
+            ? `${customer.得意先名}　${customer.直送先名}`
+            : customer.得意先名 || '';
+
         setVisits(prev => prev.map(v => {
             if (v.id === visitId) {
                 return {
                     ...v,
-                    得意先CD: customer.code,
-                    訪問先名: customer.name,
-                    直送先CD: customer.ddCode || '',
-                    直送先名: customer.ddName || '',
-                    エリア: customer.area || '',
-                    ランク: customer.rank || '',
-                    重点顧客: customer.priority || '',
+                    得意先CD: customer.得意先CD || '',
+                    訪問先名: displayName,
+                    直送先CD: customer.直送先CD || '',
+                    直送先名: customer.直送先名 || '',
+                    エリア: customer.エリア || '',
+                    ランク: customer.ランク || '',
+                    重点顧客: customer.重点顧客 || '',
                     designs: [], // 初期化
                 };
             }
@@ -190,8 +196,8 @@ export default function BatchReportPage() {
         setSearchTerms({ ...searchTerms, [visitId]: '' });
 
         // デザイン案件を取得
-        if (customer.code) {
-            getDesigns(customer.code, selectedFile, customer.ddName || undefined)
+        if (customer.得意先CD) {
+            getDesigns(customer.得意先CD, selectedFile, customer.直送先名 || undefined)
                 .then(designs => {
                     setVisits(prev => prev.map(v =>
                         v.id === visitId ? { ...v, designs } : v
@@ -410,12 +416,12 @@ export default function BatchReportPage() {
                                                     <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
                                                         {filterCustomers(searchTerms[visit.id]).map(c => (
                                                             <div
-                                                                key={c.code}
+                                                                key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
                                                                 className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
                                                                 onClick={() => selectCustomer(visit.id, c)}
                                                             >
-                                                                <span className="font-mono text-xs text-gray-500 mr-2">{c.code}</span>
-                                                                {c.name}
+                                                                <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
+                                                                {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}
                                                             </div>
                                                         ))}
                                                         {filterCustomers(searchTerms[visit.id]).length === 0 && (

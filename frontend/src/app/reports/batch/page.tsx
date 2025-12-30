@@ -471,16 +471,19 @@ export default function BatchReportPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">面談者</label>
-                                            <select
+                                            <input
+                                                type="text"
                                                 value={visit.面談者}
                                                 onChange={(e) => updateVisit(visit.id, '面談者', e.target.value)}
+                                                list={`interviewers-${visit.id}`}
+                                                placeholder="氏名を入力または選択"
                                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
-                                            >
-                                                <option value="">選択してください</option>
-                                                {interviewers.map(name => (
-                                                    <option key={name} value={name}>{name}</option>
+                                            />
+                                            <datalist id={`interviewers-${visit.id}`}>
+                                                {interviewers.map((name, index) => (
+                                                    <option key={index} value={name} />
                                                 ))}
-                                            </select>
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">滞在時間</label>

@@ -260,7 +260,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                         <div key={field} className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"
-                                                checked={approvals[field] === '済'}
+                                                checked={approvals[field] === '✓' || approvals[field] === '済'}
                                                 onChange={() => handleApprovalChange(field)}
                                                 disabled={saving}
                                                 className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer"
@@ -272,7 +272,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                         <div className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"
-                                                checked={approvals.既読チェック === '済'}
+                                                checked={approvals.既読チェック === '✓' || approvals.既読チェック === '済'}
                                                 onChange={() => handleApprovalChange('既読チェック')}
                                                 disabled={saving}
                                                 className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer"

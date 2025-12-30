@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Report, updateReport, deleteReport } from '@/lib/api';
+import { Report, updateReport, deleteReport, updateReportComment } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
@@ -95,16 +95,8 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
 
         setSaving(true);
         try {
-            // Prepare full report
-            const { 管理番号, ...rest } = report;
-            const fullReport = {
-                ...rest,
-                ...comments, // Use current comments state
-                [field]: comments[field],
-                ...approvals // Also include current approvals
-            };
-            const sanitized = sanitizeReport(fullReport);
-            await updateReport(report.管理番号, sanitized, selectedFile);
+            // コメント専用エンドポイントを使用（バリデーションエラー回避）
+            await updateReportComment(report.管理番号, { [field]: comments[field] }, selectedFile);
             toast.success('コメントを保存しました');
             if (onUpdate) onUpdate();
         } catch (error) {

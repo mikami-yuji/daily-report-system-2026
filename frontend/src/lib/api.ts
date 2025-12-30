@@ -90,6 +90,17 @@ export const updateReportReply = async (managementNumber: number, reply: string,
     return response.data;
 };
 
+// コメント更新専用API（上長コメントとコメント返信欄を個別に更新）
+export const updateReportComment = async (
+    managementNumber: number,
+    comment: { 上長コメント?: string; コメント返信欄?: string },
+    filename?: string
+): Promise<{ success: boolean }> => {
+    const params = filename ? { filename } : {};
+    const response = await api.patch(`${API_URL}/reports/${managementNumber}/comment`, comment, { params });
+    return response.data;
+};
+
 export const deleteReport = async (managementNumber: number, filename?: string) => {
     const params = filename ? { filename } : {};
     const response = await api.delete(`${API_URL}/reports/${managementNumber}`, { params });

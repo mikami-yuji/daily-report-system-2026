@@ -762,7 +762,12 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# シンプルな返信専用エンドポイント（楽観的ロックなし）
+# コメント更新専用エンドポイント（楽観的ロックなし）
+class CommentInput(BaseModel):
+    上長コメント: Optional[str] = None
+    コメント返信欄: Optional[str] = None
+
+# 後方互換性のため
 class ReplyInput(BaseModel):
     コメント返信欄: str
 
@@ -839,6 +844,78 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
     except Exception as e:
         import traceback
         logging.error(f"update_report_reply: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/reports/{management_number}/comment")
+def update_report_comment(management_number: int, comment: CommentInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    """上長コメントとコメント返信欄を個別に更新（安全な保存）"""
+    import tempfile
+    import shutil
+    
+    logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
+    try:
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+        
+        ws = wb['営業日報']
+        
+        # Find the row
+        target_row = None
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == management_number:
+                target_row = row
+                break
+        
+        if not target_row:
+            wb.close()
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # Update only provided fields
+        # Column 22 = 上長コメント, Column 23 = コメント返信欄
+        if comment.上長コメント is not None:
+            ws.cell(row=target_row, column=22, value=comment.上長コメント)
+        if comment.コメント返信欄 is not None:
+            ws.cell(row=target_row, column=23, value=comment.コメント返信欄)
+        
+        # 安全な保存: 一時ファイルに保存してから置き換え
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f"temp_{filename}")
+        
+        try:
+            wb.save(temp_file)
+            wb.close()
+            
+            # 一時ファイルが正常か確認
+            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
+            test_wb.close()
+            
+            # 元のファイルを置き換え
+            shutil.copy2(temp_file, excel_file)
+        finally:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+        
+        # Clear cache
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
+        # Create backup in background
+        background_tasks.add_task(create_backup, excel_file)
+        
+        return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logging.error(f"update_report_comment: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

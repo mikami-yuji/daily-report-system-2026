@@ -129,7 +129,7 @@ export default function ReportsPage() {
                         <RefreshCw size={16} />
                     </button>
                     <button
-                        onClick={() => setShowNewReportModal(true)}
+                        onClick={() => router.push('/reports/batch')}
                         className="bg-sf-light-blue text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 shadow-sm flex items-center gap-1 transition-colors"
                     >
                         <Plus size={16} />

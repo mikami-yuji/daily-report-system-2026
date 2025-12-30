@@ -64,7 +64,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     }, [hasNext, hasPrev, onNext, onPrev, onClose]);
 
     const handleApprovalChange = async (field: keyof typeof approvals) => {
-        const newValue = approvals[field] === '済' ? '' : '済';
+        const newValue = approvals[field] === '✓' ? '' : '✓';
         setApprovals(prev => ({ ...prev, [field]: newValue }));
 
         setSaving(true);

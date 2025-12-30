@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Report } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
@@ -14,6 +15,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 
 export default function ReportsPage() {
+    const router = useRouter();
     const { files, selectedFile, setSelectedFile } = useFile();
     const queryClient = useQueryClient();
 

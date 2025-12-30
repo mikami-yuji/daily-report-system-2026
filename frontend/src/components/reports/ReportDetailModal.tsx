@@ -33,9 +33,9 @@ function InfoRow({ label, value }: { label: string; value: any }) {
 
 export default function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, onEdit, onUpdate }: ReportDetailModalProps) {
     const { selectedFile } = useFile();
-    // Excelの「済」をUIでは「✓」として表示
+    // Excelの「済」または「ü」をUIでは「✓」として表示
     const convertToDisplay = (value: string | undefined): string => {
-        if (value === '済') return '✓';
+        if (value === '済' || value === 'ü') return '✓';
         return value || '';
     };
     const [approvals, setApprovals] = useState({
@@ -69,10 +69,10 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     }, [hasNext, hasPrev, onNext, onPrev, onClose]);
 
     const handleApprovalChange = async (field: keyof typeof approvals) => {
-        // UIでは✓表示、Excelには「済」を書き込む
-        const isChecked = approvals[field] === '✓' || approvals[field] === '済';
+        // UIでは✓表示、Excelには「ü」を書き込む（Wingdingsフォントでチェックマーク）
+        const isChecked = approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü';
         const newDisplayValue = isChecked ? '' : '✓';  // UI表示用
-        const newExcelValue = isChecked ? '' : '済';   // Excel書き込み用
+        const newExcelValue = isChecked ? '' : 'ü';    // Excel書き込み用
         setApprovals(prev => ({ ...prev, [field]: newDisplayValue }));
 
         setSaving(true);
@@ -260,7 +260,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                         <div key={field} className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"
-                                                checked={approvals[field] === '✓' || approvals[field] === '済'}
+                                                checked={approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü'}
                                                 onChange={() => handleApprovalChange(field)}
                                                 disabled={saving}
                                                 className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer"
@@ -272,7 +272,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                         <div className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"
-                                                checked={approvals.既読チェック === '✓' || approvals.既読チェック === '済'}
+                                                checked={approvals.既読チェック === '✓' || approvals.既読チェック === '済' || approvals.既読チェック === 'ü'}
                                                 onChange={() => handleApprovalChange('既読チェック')}
                                                 disabled={saving}
                                                 className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer"

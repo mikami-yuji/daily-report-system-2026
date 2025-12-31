@@ -80,7 +80,7 @@ export const processCustomers = (data: Report[]): CustomerSummary[] => {
         if (report.行動内容 && report.行動内容.includes('訪問')) target.visits++;
         if (report.行動内容 && report.行動内容.includes('電話')) target.calls++;
         const designNo = report['システム確認用デザインNo.'];
-        if (designNo && !isNaN(Number(designNo))) {
+        if (designNo && !isNaN(Number(designNo)) && target.designNos) {
             target.designNos.add(String(designNo));
         }
         const reportDate = String(report.日付 || '');
@@ -98,7 +98,7 @@ export const processCustomers = (data: Report[]): CustomerSummary[] => {
             parent.totalActivities++;
             if (report.行動内容 && report.行動内容.includes('訪問')) parent.visits++;
             if (report.行動内容 && report.行動内容.includes('電話')) parent.calls++;
-            if (designNo && !isNaN(Number(designNo))) {
+            if (designNo && !isNaN(Number(designNo)) && parent.designNos) {
                 parent.designNos.add(String(designNo));
             }
             if (!parent.lastActivity || reportDate > parent.lastActivity) parent.lastActivity = reportDate;
@@ -109,7 +109,7 @@ export const processCustomers = (data: Report[]): CustomerSummary[] => {
     return Array.from(customerMap.values())
         .map(customer => ({
             ...customer,
-            designRequests: customer.designNos.size,
+            designRequests: customer.designNos?.size || 0,
             subItems: customer.subItems?.map(sub => ({
                 ...sub,
                 designRequests: sub.designNos?.size || 0

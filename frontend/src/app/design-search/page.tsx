@@ -28,9 +28,10 @@ export default function DesignSearchPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [selectedType, setSelectedType] = useState<string>('');
-    const [selectedProgress, setSelectedProgress] = useState<string>('');
+    const [selectedProgress, setSelectedProgress] = useState<string[]>([]);
     const [filteredRequests, setFilteredRequests] = useState<DesignRequest[]>([]);
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+    const [showProgressFilter, setShowProgressFilter] = useState(false); // 進捗フィルターの表示状態
 
     // Image Search State
     const [searchingImage, setSearchingImage] = useState(false);
@@ -205,9 +206,9 @@ export default function DesignSearchPage() {
             filtered = filtered.filter(req => req.designType === selectedType);
         }
 
-        // 進捗状況フィルター
-        if (selectedProgress) {
-            filtered = filtered.filter(req => req.designProgress === selectedProgress);
+        // 進捗状況フィルター（複数選択対応）
+        if (selectedProgress.length > 0) {
+            filtered = filtered.filter(req => selectedProgress.includes(req.designProgress));
         }
 
         // キーワード検索
@@ -246,18 +247,33 @@ export default function DesignSearchPage() {
     };
 
     const getProgressBadge = (progress: string) => {
+        if (!progress || progress === '-') return null;
+
+        // 進捗状況に応じた色分け（実際のプルダウン選択肢に対応）
         const colorMap: Record<string, string> = {
-            '完了': 'bg-green-100 text-green-800',
-            '進行中': 'bg-blue-100 text-blue-800',
+            // 完了系 - 緑
+            '出稿': 'bg-green-100 text-green-800',
+
+            // 進行中 - 青（進捗度合いで濃淡）
+            '新規': 'bg-blue-50 text-blue-700',
+            '50％未満': 'bg-blue-100 text-blue-800',
+            '80％未満': 'bg-blue-200 text-blue-900',
+            '80％以上': 'bg-blue-300 text-blue-950',
+
+            // 保留・待機 - 黄色
             '保留': 'bg-yellow-100 text-yellow-800',
-            '未着手': 'bg-gray-100 text-gray-800',
+
+            // 不採用 - 赤
+            '不採用（コンペ負け）': 'bg-red-100 text-red-800',
+            '不採用（企画倒れ）': 'bg-red-100 text-red-800',
         };
+
         const color = colorMap[progress] || 'bg-gray-100 text-gray-800';
-        return progress ? (
+        return (
             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${color}`}>
                 {progress}
             </span>
-        ) : null;
+        );
     };
 
     return (
@@ -315,21 +331,59 @@ export default function DesignSearchPage() {
                         </select>
                     </div>
 
-                    {/* 進捗状況フィルター */}
+                    {/* 進捗状況フィルター（複数選択） */}
                     <div className="relative">
-                        <TrendingUp className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <select
-                            value={selectedProgress}
-                            onChange={(e) => setSelectedProgress(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                        <div
+                            className="flex items-center justify-between gap-2 px-3 py-2 border border-sf-border rounded bg-white cursor-pointer hover:bg-gray-50 transition-colors"
+                            onClick={() => setShowProgressFilter(!showProgressFilter)}
                         >
-                            <option value="">すべての進捗状況</option>
-                            {availableProgress.map(progress => (
-                                <option key={progress} value={progress}>
-                                    {progress}
-                                </option>
-                            ))}
-                        </select>
+                            <div className="flex items-center gap-2">
+                                <TrendingUp className="text-gray-400" size={20} />
+                                <span className="text-sm font-medium text-sf-text">
+                                    進捗状況 {selectedProgress.length > 0 && `(${selectedProgress.length})`}
+                                </span>
+                            </div>
+                            <ChevronDown
+                                size={16}
+                                className={`text-gray-400 transition-transform ${showProgressFilter ? 'rotate-180' : ''}`}
+                            />
+                        </div>
+                        {showProgressFilter && (
+                            <div className="absolute z-10 mt-2 w-full p-3 border border-sf-border rounded bg-white shadow-lg max-h-72 overflow-y-auto">
+                                <div className="space-y-2">
+                                    {availableProgress.map(progress => (
+                                        <label key={progress} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedProgress.includes(progress)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedProgress([...selectedProgress, progress]);
+                                                    } else {
+                                                        setSelectedProgress(selectedProgress.filter(p => p !== progress));
+                                                    }
+                                                }}
+                                                className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue"
+                                            />
+                                            <span className="text-sm text-sf-text flex-1">
+                                                {getProgressBadge(progress) || progress}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {selectedProgress.length > 0 && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedProgress([]);
+                                        }}
+                                        className="mt-2 text-xs text-sf-light-blue hover:underline"
+                                    >
+                                        すべてクリア
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -277,13 +277,18 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
     const isOuting = formData.行動内容 === '外出時間';
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
-                    <h2 className="text-xl font-bold text-sf-text">新規日報作成</h2>
+                    <h2 className="text-xl font-bold text-sf-text">
+                        新規日報作成
+                        {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
+                    </h2>
                     <button
                         onClick={onClose}
-                        className="text-sf-text-weak hover:text-sf-text"
+                        disabled={submitting}
+                        className="text-sf-text-weak hover:text-sf-text disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={submitting ? "処理が完了するまでお待ちください" : ""}
                     >
                         <X size={24} />
                     </button>
@@ -666,16 +671,22 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                         <button
                             type="button"
                             onClick={onClose}
-                            className="px-4 py-2 border border-sf-border rounded text-sf-text hover:bg-gray-50"
+                            disabled={submitting}
+                            className="px-4 py-2 border border-sf-border rounded text-sf-text hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             キャンセル
                         </button>
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="px-4 py-2 bg-sf-light-blue text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                            className="px-4 py-2 bg-sf-light-blue text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                         >
-                            {submitting ? '作成中...' : '作成'}
+                            {submitting ? (
+                                <>
+                                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    作成中...
+                                </>
+                            ) : '作成'}
                         </button>
                     </div>
                 </form>

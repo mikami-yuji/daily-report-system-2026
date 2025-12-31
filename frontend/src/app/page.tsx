@@ -10,6 +10,7 @@ import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as
 import EditReportModal from '../components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Check } from 'lucide-react';
 import Link from 'next/link';
+import toast from 'react-hot-toast';
 import {
   BarChart,
   Bar,
@@ -53,6 +54,7 @@ export default function Home() {
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);  // 通知一覧の展開状態
+  const [processingNotifications, setProcessingNotifications] = useState<Set<number>>(new Set()); // 処理中の通知ID
 
   // 画像読み込み
   useEffect(() => {
@@ -74,27 +76,47 @@ export default function Home() {
   const handleSubmitReply = async (report: Report) => {
     if (!replyText.trim()) return;
 
-    setReplyingTo(null);
     const replyContent = replyText.trim();
+    setReplyingTo(null);
     setReplyText('');
 
-    // API呼び出し後にキャッシュを更新
+    // 処理中状態を追加
+    setProcessingNotifications(prev => new Set(prev).add(report.管理番号));
+
     try {
       await updateReportReply(report.管理番号, replyContent, selectedFile);
-      queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
+      toast.success('返信を送信しました');
     } catch (error) {
       console.error('Failed to submit reply:', error);
+      toast.error('返信の送信に失敗しました');
+    } finally {
+      setProcessingNotifications(prev => {
+        const next = new Set(prev);
+        next.delete(report.管理番号);
+        return next;
+      });
     }
   };
 
   // 通知を既読にする
   const handleDismissNotification = async (report: Report) => {
-    // API呼び出し後にキャッシュを更新
+    // 処理中状態を追加
+    setProcessingNotifications(prev => new Set(prev).add(report.管理番号));
+
     try {
       await updateReportReply(report.管理番号, '確認済み', selectedFile);
-      queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
+      toast.success('既読にしました');
     } catch (error) {
       console.error('Failed to dismiss notification:', error);
+      toast.error('既読処理に失敗しました');
+    } finally {
+      setProcessingNotifications(prev => {
+        const next = new Set(prev);
+        next.delete(report.管理番号);
+        return next;
+      });
     }
   };
 
@@ -107,7 +129,7 @@ export default function Home() {
     const kidoku = r.既読チェック ? String(r.既読チェック).trim() : '';
 
     // 上長コメントがあり、コメント返信欄と既読チェックの両方が空欄の場合のみ通知
-    return supervisorComment !== '' && (replyComment === '' || kidoku === '');
+    return supervisorComment !== '' && replyComment === '' && kidoku === '';
   });
 
   // 統計計算
@@ -260,18 +282,28 @@ export default function Home() {
                       <>
                         <button
                           onClick={(e) => { e.stopPropagation(); setReplyingTo(report.管理番号); setReplyText(''); }}
-                          className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200 flex items-center gap-1"
+                          disabled={processingNotifications.has(report.管理番号)}
+                          className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Send size={12} />
                           返信
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDismissNotification(report); }}
-                          disabled={submittingReply}
-                          className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold hover:bg-green-200 flex items-center gap-1 disabled:opacity-50"
+                          disabled={processingNotifications.has(report.管理番号)}
+                          className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold hover:bg-green-200 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Check size={12} />
-                          既読
+                          {processingNotifications.has(report.管理番号) ? (
+                            <>
+                              <span className="inline-block w-3 h-3 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
+                              処理中
+                            </>
+                          ) : (
+                            <>
+                              <Check size={12} />
+                              既読
+                            </>
+                          )}
                         </button>
                       </>
                     )}
@@ -300,11 +332,20 @@ export default function Home() {
                       />
                       <button
                         onClick={() => handleSubmitReply(report)}
-                        disabled={submittingReply || !replyText.trim()}
-                        className="px-4 py-2 bg-red-500 text-white text-sm rounded font-bold hover:bg-red-600 disabled:opacity-50 flex items-center gap-1"
+                        disabled={processingNotifications.has(report.管理番号) || !replyText.trim()}
+                        className="px-4 py-2 bg-red-500 text-white text-sm rounded font-bold hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                       >
-                        <Send size={14} />
-                        送信
+                        {processingNotifications.has(report.管理番号) ? (
+                          <>
+                            <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            送信中
+                          </>
+                        ) : (
+                          <>
+                            <Send size={14} />
+                            送信
+                          </>
+                        )}
                       </button>
                       <button
                         onClick={() => { setReplyingTo(null); setReplyText(''); }}

@@ -1,13 +1,22 @@
 ﻿'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useFile } from '@/context/FileContext';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+
+// バリデーションエラーの型
+type ValidationErrors = {
+    [visitId: string]: {
+        得意先CD?: string;
+        行動内容?: string;
+        外出時間?: string;
+    };
+};
 
 // 訪問ブロックのデータ型
 type VisitEntry = {
@@ -110,6 +119,10 @@ export default function BatchReportPage() {
 
     // 送信中フラグ
     const [submitting, setSubmitting] = useState(false);
+
+    // バリデーションエラー状態
+    const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+    const [showErrors, setShowErrors] = useState(false); // エラー表示フラグ
 
     // 検索用state
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
@@ -281,13 +294,71 @@ export default function BatchReportPage() {
         ));
     };
 
+    // バリデーション関数
+    const validateVisits = useCallback((): { isValid: boolean; errors: ValidationErrors } => {
+        const errors: ValidationErrors = {};
+        let hasError = false;
+
+        visits.forEach(visit => {
+            const visitErrors: ValidationErrors[string] = {};
+
+            // 得意先CDチェック（行動内容が社内・量販店調査以外の場合は必須）
+            const isInternalAction = ['社内（半日）', '社内（１日）', '量販店調査'].includes(visit.行動内容);
+            if (!isInternalAction && !visit.得意先CD) {
+                visitErrors.得意先CD = '得意先を選択してください';
+                hasError = true;
+            }
+
+            // 行動内容チェック（必須）
+            if (!visit.行動内容 || visit.行動内容 === '-') {
+                visitErrors.行動内容 = '行動内容を選択してください';
+                hasError = true;
+            }
+
+            // 外出時間の場合、開始・終了時刻チェック
+            if (visit.行動内容 === '外出時間') {
+                if (!visit.outingStartTime || !visit.outingEndTime) {
+                    visitErrors.外出時間 = '外出時間の開始・終了時刻を入力してください';
+                    hasError = true;
+                }
+            }
+
+            if (Object.keys(visitErrors).length > 0) {
+                errors[visit.id] = visitErrors;
+            }
+        });
+
+        return { isValid: !hasError, errors };
+    }, [visits]);
+
     // 一括保存
     const handleSubmit = async (): Promise<void> => {
-        // バリデーション
-        const validVisits = visits.filter(v => v.得意先CD && v.行動内容);
+        // バリデーション実行
+        const { isValid, errors } = validateVisits();
+        setValidationErrors(errors);
+        setShowErrors(true);
+
+        if (!isValid) {
+            // エラーがある訪問の数をカウント
+            const errorCount = Object.keys(errors).length;
+            toast.error(
+                <div className="flex items-center gap-2">
+                    <AlertCircle size={18} />
+                    <span>{errorCount}件の入力エラーがあります。赤枠の項目を確認してください</span>
+                </div>,
+                { duration: 4000 }
+            );
+            return;
+        }
+
+        // 有効なデータのみ抽出（社内・量販店調査は得意先不要）
+        const validVisits = visits.filter(v => {
+            const isInternalAction = ['社内（半日）', '社内（１日）', '量販店調査'].includes(v.行動内容);
+            return (isInternalAction || v.得意先CD) && v.行動内容 && v.行動内容 !== '-';
+        });
 
         if (validVisits.length === 0) {
-            toast.error('得意先CDと行動内容を入力してください');
+            toast.error('保存するデータがありません');
             return;
         }
 
@@ -454,7 +525,22 @@ export default function BatchReportPage() {
                                                 <span className="text-sm text-sf-text">{visit.訪問先名}</span>
                                                 <button
                                                     type="button"
-                                                    onClick={() => updateVisit(visit.id, '得意先CD', '')}
+                                                    onClick={() => {
+                                                        updateVisit(visit.id, '得意先CD', '');
+                                                        // エラーをクリア
+                                                        if (validationErrors[visit.id]?.得意先CD) {
+                                                            setValidationErrors(prev => {
+                                                                const newErrors = { ...prev };
+                                                                if (newErrors[visit.id]) {
+                                                                    delete newErrors[visit.id].得意先CD;
+                                                                    if (Object.keys(newErrors[visit.id]).length === 0) {
+                                                                        delete newErrors[visit.id];
+                                                                    }
+                                                                }
+                                                                return newErrors;
+                                                            });
+                                                        }
+                                                    }}
                                                     className="ml-auto text-gray-400 hover:text-red-500"
                                                 >
                                                     ×
@@ -473,29 +559,38 @@ export default function BatchReportPage() {
                                                         }}
                                                         onFocus={() => setShowSuggestions({ ...showSuggestions, [visit.id]: true })}
                                                         placeholder="得意先CD、名前、カナで検索..."
-                                                        className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                                        className={`w-full pl-9 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${showErrors && validationErrors[visit.id]?.得意先CD
+                                                            ? 'border-red-500 bg-red-50'
+                                                            : 'border-sf-border'
+                                                            }`}
                                                     />
                                                 </div>
-                                                {showSuggestions[visit.id] && searchTerms[visit.id] && (
-                                                    <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
-                                                        {filterCustomers(searchTerms[visit.id]).map(c => (
-                                                            <div
-                                                                key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
-                                                                className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                                                                onClick={() => selectCustomer(visit.id, c)}
-                                                            >
-                                                                <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
-                                                                {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}
-                                                            </div>
-                                                        ))}
-                                                        {filterCustomers(searchTerms[visit.id]).length === 0 && (
-                                                            <div className="px-3 py-2 text-sm text-gray-400">
-                                                                該当する得意先がありません
-                                                            </div>
-                                                        )}
+                                                {showErrors && validationErrors[visit.id]?.得意先CD && (
+                                                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                                        <AlertCircle size={12} />
+                                                        <span>{validationErrors[visit.id].得意先CD}</span>
                                                     </div>
                                                 )}
                                             </>
+                                        )}
+                                        {showSuggestions[visit.id] && searchTerms[visit.id] && (
+                                            <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                {filterCustomers(searchTerms[visit.id]).map(c => (
+                                                    <div
+                                                        key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
+                                                        className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                        onClick={() => selectCustomer(visit.id, c)}
+                                                    >
+                                                        <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
+                                                        {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}
+                                                    </div>
+                                                ))}
+                                                {filterCustomers(searchTerms[visit.id]).length === 0 && (
+                                                    <div className="px-3 py-2 text-sm text-gray-400">
+                                                        該当する得意先がありません
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
 
@@ -505,8 +600,26 @@ export default function BatchReportPage() {
                                         </label>
                                         <select
                                             value={visit.行動内容}
-                                            onChange={(e) => updateVisit(visit.id, '行動内容', e.target.value)}
-                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                            onChange={(e) => {
+                                                updateVisit(visit.id, '行動内容', e.target.value);
+                                                // エラーをクリア
+                                                if (validationErrors[visit.id]?.行動内容) {
+                                                    setValidationErrors(prev => {
+                                                        const newErrors = { ...prev };
+                                                        if (newErrors[visit.id]) {
+                                                            delete newErrors[visit.id].行動内容;
+                                                            if (Object.keys(newErrors[visit.id]).length === 0) {
+                                                                delete newErrors[visit.id];
+                                                            }
+                                                        }
+                                                        return newErrors;
+                                                    });
+                                                }
+                                            }}
+                                            className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${showErrors && validationErrors[visit.id]?.行動内容
+                                                    ? 'border-red-500 bg-red-50'
+                                                    : 'border-sf-border'
+                                                }`}
                                         >
                                             <option value="">選択してください</option>
                                             {actionOptions
@@ -522,6 +635,12 @@ export default function BatchReportPage() {
                                                 ))
                                             }
                                         </select>
+                                        {showErrors && validationErrors[visit.id]?.行動内容 && (
+                                            <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                                <AlertCircle size={12} />
+                                                <span>{validationErrors[visit.id].行動内容}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 

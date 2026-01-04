@@ -9,6 +9,12 @@ export interface CalendarDay {
         action: string;
         managementNumber: number;
         hasDesign: boolean;
+        // 追加フィールド
+        interviewer?: string;
+        stayTime?: string;
+        commercialContent?: string;
+        designType?: string;
+        designName?: string;
     }[];
 }
 
@@ -122,7 +128,13 @@ export function generateMonthCalendar(year: number, month: number, reports: Repo
                 customerName: report.訪問先名 || '不明',
                 action: String(report.行動内容 || ''),
                 managementNumber: report.管理番号 || 0,
-                hasDesign: report.デザイン提案有無 === 'あり'
+                hasDesign: report.デザイン提案有無 === 'あり',
+                // 追加フィールド
+                interviewer: report.面談者 || '',
+                stayTime: report.滞在時間 || '',
+                commercialContent: report.商談内容 || '',
+                designType: report.デザイン種別 || '',
+                designName: report.デザイン名 || ''
             }));
 
         days.push({

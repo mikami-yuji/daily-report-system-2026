@@ -3,7 +3,7 @@ import { Report, updateReport, deleteReport, updateReportComment, updateReportAp
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info } from 'lucide-react';
+import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface ReportDetailModalProps {
@@ -50,6 +50,8 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         コメント返信欄: report.コメント返信欄 || ''
     });
     const [saving, setSaving] = useState(false);
+    const [processingApproval, setProcessingApproval] = useState<string | null>(null); // 処理中の承認フィールド
+    const [processingComment, setProcessingComment] = useState<string | null>(null); // 処理中のコメントフィールド
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
     // キーボードイベントのハンドリング
@@ -76,9 +78,11 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         setApprovals(prev => ({ ...prev, [field]: newDisplayValue }));
 
         setSaving(true);
+        setProcessingApproval(field); // 処理中のフィールドを㔵2録
         try {
             // 承認専用エンドポイントを使用（バリデーションエラー回避）
             await updateReportApproval(report.管理番号, { [field]: newExcelValue }, selectedFile);
+            toast.success(`${field}の承認を更新しました`);
             if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Failed to update approval:', error);
@@ -87,6 +91,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             toast.error('承認ステータスの更新に失敗しました');
         } finally {
             setSaving(false);
+            setProcessingApproval(null);
         }
     };
 
@@ -94,6 +99,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         if (comments[field] === (report[field] || '')) return; // No change
 
         setSaving(true);
+        setProcessingComment(field); // 処理中のコメントフィールドを記録
         try {
             // コメント専用エンドポイントを使用（バリデーションエラー回避）
             await updateReportComment(report.管理番号, { [field]: comments[field] }, selectedFile);
@@ -104,6 +110,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             toast.error('コメントの保存に失敗しました');
         } finally {
             setSaving(false);
+            setProcessingComment(null);
         }
     };
 
@@ -258,26 +265,40 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                 <div className="space-y-3">
                                     {(['上長', '山澄常務', '岡本常務', '中野次長'] as const).map(field => (
                                         <div key={field} className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü'}
-                                                onChange={() => handleApprovalChange(field)}
-                                                disabled={saving}
-                                                className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer"
-                                            />
-                                            <span className="text-sm text-sf-text">{field}</span>
+                                            {processingApproval === field ? (
+                                                <Loader2 size={16} className="animate-spin text-sf-light-blue" />
+                                            ) : (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü'}
+                                                    onChange={() => handleApprovalChange(field)}
+                                                    disabled={saving}
+                                                    className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer disabled:opacity-50"
+                                                />
+                                            )}
+                                            <span className={`text-sm ${processingApproval === field ? 'text-sf-light-blue' : 'text-sf-text'}`}>
+                                                {field}
+                                                {processingApproval === field && <span className="ml-1 text-xs">処理中...</span>}
+                                            </span>
                                         </div>
                                     ))}
                                     <div className="pt-2 border-t border-gray-200">
                                         <div className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={approvals.既読チェック === '✓' || approvals.既読チェック === '済' || approvals.既読チェック === 'ü'}
-                                                onChange={() => handleApprovalChange('既読チェック')}
-                                                disabled={saving}
-                                                className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer"
-                                            />
-                                            <span className="text-sm text-sf-text">既読</span>
+                                            {processingApproval === '既読チェック' ? (
+                                                <Loader2 size={16} className="animate-spin text-sf-light-blue" />
+                                            ) : (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={approvals.既読チェック === '✓' || approvals.既読チェック === '済' || approvals.既読チェック === 'ü'}
+                                                    onChange={() => handleApprovalChange('既読チェック')}
+                                                    disabled={saving}
+                                                    className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer disabled:opacity-50"
+                                                />
+                                            )}
+                                            <span className={`text-sm ${processingApproval === '既読チェック' ? 'text-sf-light-blue' : 'text-sf-text'}`}>
+                                                既読
+                                                {processingApproval === '既読チェック' && <span className="ml-1 text-xs">処理中...</span>}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -288,10 +309,17 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                 <div>
                                     <h3 className="font-bold text-lg text-sf-text mb-4 border-b border-sf-border pb-2">コメント</h3>
                                     <div className="space-y-4">
-                                        <div className="bg-yellow-50 p-5 rounded-lg border border-yellow-100">
+                                        <div className={`bg-yellow-50 p-5 rounded-lg border ${processingComment === '上長コメント' ? 'border-yellow-400' : 'border-yellow-100'}`}>
                                             <div className="text-sm font-bold text-yellow-800 mb-2 flex items-center gap-2">
-                                                <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                                                {processingComment === '上長コメント' ? (
+                                                    <Loader2 size={14} className="animate-spin text-yellow-600" />
+                                                ) : (
+                                                    <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                                                )}
                                                 上長コメント
+                                                {processingComment === '上長コメント' && (
+                                                    <span className="text-xs font-normal text-yellow-600 ml-2">保存中...</span>
+                                                )}
                                             </div>
                                             {/* 商談内容の参照表示 */}
                                             {report.商談内容 && (
@@ -305,21 +333,28 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                                 onChange={(e) => setComments(prev => ({ ...prev, 上長コメント: e.target.value }))}
                                                 onBlur={() => handleCommentBlur('上長コメント')}
                                                 disabled={saving}
-                                                className="w-full min-h-[100px] p-3 text-sf-text bg-white border border-yellow-200 rounded focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y"
+                                                className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y disabled:opacity-60 ${processingComment === '上長コメント' ? 'border-yellow-400' : 'border-yellow-200'}`}
                                                 placeholder="コメントを入力..."
                                             />
                                         </div>
-                                        <div className="bg-green-50 p-5 rounded-lg border border-green-100">
+                                        <div className={`bg-green-50 p-5 rounded-lg border ${processingComment === 'コメント返信欄' ? 'border-green-400' : 'border-green-100'}`}>
                                             <div className="text-sm font-bold text-green-800 mb-2 flex items-center gap-2">
-                                                <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                                                {processingComment === 'コメント返信欄' ? (
+                                                    <Loader2 size={14} className="animate-spin text-green-600" />
+                                                ) : (
+                                                    <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                                                )}
                                                 コメント返信欄
+                                                {processingComment === 'コメント返信欄' && (
+                                                    <span className="text-xs font-normal text-green-600 ml-2">保存中...</span>
+                                                )}
                                             </div>
                                             <textarea
                                                 value={comments.コメント返信欄}
                                                 onChange={(e) => setComments(prev => ({ ...prev, コメント返信欄: e.target.value }))}
                                                 onBlur={() => handleCommentBlur('コメント返信欄')}
                                                 disabled={saving}
-                                                className="w-full min-h-[100px] p-3 text-sf-text bg-white border border-green-200 rounded focus:outline-none focus:ring-2 focus:ring-green-400 resize-y"
+                                                className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-green-400 resize-y disabled:opacity-60 ${processingComment === 'コメント返信欄' ? 'border-green-400' : 'border-green-200'}`}
                                                 placeholder="返信を入力..."
                                             />
                                         </div>

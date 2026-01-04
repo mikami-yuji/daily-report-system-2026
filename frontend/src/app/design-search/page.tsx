@@ -26,11 +26,13 @@ export default function DesignSearchPage() {
     const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-    const [selectedType, setSelectedType] = useState<string>('');
+    const [selectedCustomer, setSelectedCustomer] = useState<string[]>([]);
+    const [selectedType, setSelectedType] = useState<string[]>([]);
     const [selectedProgress, setSelectedProgress] = useState<string[]>([]);
     const [filteredRequests, setFilteredRequests] = useState<DesignRequest[]>([]);
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+    const [showCustomerFilter, setShowCustomerFilter] = useState(false); // 得意先フィルターの表示状態
+    const [showTypeFilter, setShowTypeFilter] = useState(false); // 種別フィルターの表示状態
     const [showProgressFilter, setShowProgressFilter] = useState(false); // 進捗フィルターの表示状態
 
     // Image Search State
@@ -152,9 +154,9 @@ export default function DesignSearchPage() {
     const availableTypes = useMemo(() => {
         let requestsToCheck = designRequests;
 
-        // 得意先でフィルター
-        if (selectedCustomer) {
-            requestsToCheck = requestsToCheck.filter(req => req.customerCode === selectedCustomer);
+        // 得意先でフィルター（複数選択対応）
+        if (selectedCustomer.length > 0) {
+            requestsToCheck = requestsToCheck.filter(req => selectedCustomer.includes(req.customerCode));
         }
 
         // 種別を抽出
@@ -172,14 +174,14 @@ export default function DesignSearchPage() {
     const availableProgress = useMemo(() => {
         let requestsToCheck = designRequests;
 
-        // 得意先でフィルター
-        if (selectedCustomer) {
-            requestsToCheck = requestsToCheck.filter(req => req.customerCode === selectedCustomer);
+        // 得意先でフィルター（複数選択対応）
+        if (selectedCustomer.length > 0) {
+            requestsToCheck = requestsToCheck.filter(req => selectedCustomer.includes(req.customerCode));
         }
 
-        // 種別でフィルター
-        if (selectedType) {
-            requestsToCheck = requestsToCheck.filter(req => req.designType === selectedType);
+        // 種別でフィルター（複数選択対応）
+        if (selectedType.length > 0) {
+            requestsToCheck = requestsToCheck.filter(req => selectedType.includes(req.designType));
         }
 
         // 進捗状況を抽出
@@ -196,14 +198,14 @@ export default function DesignSearchPage() {
     useEffect(() => {
         let filtered = designRequests;
 
-        // 得意先フィルター
-        if (selectedCustomer) {
-            filtered = filtered.filter(req => req.customerCode === selectedCustomer);
+        // 得意先フィルター（複数選択対応）
+        if (selectedCustomer.length > 0) {
+            filtered = filtered.filter(req => selectedCustomer.includes(req.customerCode));
         }
 
-        // 種別フィルター
-        if (selectedType) {
-            filtered = filtered.filter(req => req.designType === selectedType);
+        // 種別フィルター（複数選択対応）
+        if (selectedType.length > 0) {
+            filtered = filtered.filter(req => selectedType.includes(req.designType));
         }
 
         // 進捗状況フィルター（複数選択対応）
@@ -226,15 +228,7 @@ export default function DesignSearchPage() {
         setFilteredRequests(filtered);
     }, [searchTerm, selectedCustomer, selectedType, selectedProgress, designRequests]);
 
-    // 得意先が変更されたら種別フィルターをリセット（利用可能な種別リストにない場合）
-    useEffect(() => {
-        setSelectedType(prev => {
-            if (prev && !availableTypes.includes(prev)) {
-                return '';
-            }
-            return prev;
-        });
-    }, [availableTypes]);
+
 
     const toggleRow = (designNo: string) => {
         const newExpanded = new Set(expandedRows);
@@ -297,38 +291,114 @@ export default function DesignSearchPage() {
                         />
                     </div>
 
-                    {/* 得意先フィルター */}
+                    {/* 得意先フィルター（複数選択） */}
                     <div className="relative">
-                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <select
-                            value={selectedCustomer}
-                            onChange={(e) => setSelectedCustomer(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                        <div
+                            className="flex items-center justify-between gap-2 px-3 py-2 border border-sf-border rounded bg-white cursor-pointer hover:bg-gray-50 transition-colors"
+                            onClick={() => setShowCustomerFilter(!showCustomerFilter)}
                         >
-                            <option value="">すべての得意先</option>
-                            {customers.map(customer => (
-                                <option key={customer.code} value={customer.code}>
-                                    {customer.code} - {customer.name}
-                                </option>
-                            ))}
-                        </select>
+                            <div className="flex items-center gap-2">
+                                <Filter className="text-gray-400" size={20} />
+                                <span className="text-sm font-medium text-sf-text">
+                                    得意先 {selectedCustomer.length > 0 && `(${selectedCustomer.length})`}
+                                </span>
+                            </div>
+                            <ChevronDown
+                                size={16}
+                                className={`text-gray-400 transition-transform ${showCustomerFilter ? 'rotate-180' : ''}`}
+                            />
+                        </div>
+                        {showCustomerFilter && (
+                            <div className="absolute z-10 mt-2 w-full p-3 border border-sf-border rounded bg-white shadow-lg max-h-72 overflow-y-auto">
+                                <div className="space-y-2">
+                                    {customers.map(customer => (
+                                        <label key={customer.code} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedCustomer.includes(customer.code)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedCustomer([...selectedCustomer, customer.code]);
+                                                    } else {
+                                                        setSelectedCustomer(selectedCustomer.filter(c => c !== customer.code));
+                                                    }
+                                                }}
+                                                className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue"
+                                            />
+                                            <span className="text-sm text-sf-text flex-1">
+                                                {customer.code} - {customer.name}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {selectedCustomer.length > 0 && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedCustomer([]);
+                                        }}
+                                        className="mt-2 text-xs text-sf-light-blue hover:underline"
+                                    >
+                                        すべてクリア
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
 
-                    {/* 種別フィルター */}
+                    {/* 種別フィルター（複数選択） */}
                     <div className="relative">
-                        <Layers className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <select
-                            value={selectedType}
-                            onChange={(e) => setSelectedType(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent appearance-none bg-white"
+                        <div
+                            className="flex items-center justify-between gap-2 px-3 py-2 border border-sf-border rounded bg-white cursor-pointer hover:bg-gray-50 transition-colors"
+                            onClick={() => setShowTypeFilter(!showTypeFilter)}
                         >
-                            <option value="">すべての種別</option>
-                            {availableTypes.map(type => (
-                                <option key={type} value={type}>
-                                    {type}
-                                </option>
-                            ))}
-                        </select>
+                            <div className="flex items-center gap-2">
+                                <Layers className="text-gray-400" size={20} />
+                                <span className="text-sm font-medium text-sf-text">
+                                    種別 {selectedType.length > 0 && `(${selectedType.length})`}
+                                </span>
+                            </div>
+                            <ChevronDown
+                                size={16}
+                                className={`text-gray-400 transition-transform ${showTypeFilter ? 'rotate-180' : ''}`}
+                            />
+                        </div>
+                        {showTypeFilter && (
+                            <div className="absolute z-10 mt-2 w-full p-3 border border-sf-border rounded bg-white shadow-lg max-h-72 overflow-y-auto">
+                                <div className="space-y-2">
+                                    {availableTypes.map(type => (
+                                        <label key={type} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedType.includes(type)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedType([...selectedType, type]);
+                                                    } else {
+                                                        setSelectedType(selectedType.filter(t => t !== type));
+                                                    }
+                                                }}
+                                                className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue"
+                                            />
+                                            <span className="text-sm text-sf-text flex-1">
+                                                {type}
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {selectedType.length > 0 && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedType([]);
+                                        }}
+                                        className="mt-2 text-xs text-sf-light-blue hover:underline"
+                                    >
+                                        すべてクリア
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* 進捗状況フィルター（複数選択） */}

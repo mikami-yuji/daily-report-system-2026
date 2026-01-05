@@ -512,88 +512,92 @@ export default function BatchReportPage() {
                         {/* 訪問詳細フォーム */}
                         {visit.isExpanded && (
                             <div className="p-4 space-y-4">
-                                {/* 得意先検索 */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="relative">
-                                        <label className="block text-xs font-medium text-sf-text-weak mb-1">
-                                            得意先CD / 訪問先名 <span className="text-red-500">*</span>
-                                        </label>
-                                        {visit.得意先CD ? (
-                                            <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-sf-border rounded">
-                                                <Building2 size={16} className="text-gray-400" />
-                                                <span className="font-mono text-sm">{visit.得意先CD}</span>
-                                                <span className="text-sm text-sf-text">{visit.訪問先名}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        updateVisit(visit.id, '得意先CD', '');
-                                                        // エラーをクリア
-                                                        if (validationErrors[visit.id]?.得意先CD) {
-                                                            setValidationErrors(prev => {
-                                                                const newErrors = { ...prev };
-                                                                if (newErrors[visit.id]) {
-                                                                    delete newErrors[visit.id].得意先CD;
-                                                                    if (Object.keys(newErrors[visit.id]).length === 0) {
-                                                                        delete newErrors[visit.id];
+                                {/* 得意先検索（社内業務・外出時間以外のみ表示） */}
+                                {!['社内（半日）', '社内（１日）', '外出時間'].includes(visit.行動内容) && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="relative">
+                                            <label className="block text-xs font-medium text-sf-text-weak mb-1">
+                                                得意先CD / 訪問先名 <span className="text-red-500">*</span>
+                                            </label>
+                                            {visit.得意先CD ? (
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-sf-border rounded">
+                                                    <Building2 size={16} className="text-gray-400" />
+                                                    <span className="font-mono text-sm">{visit.得意先CD}</span>
+                                                    <span className="text-sm text-sf-text">{visit.訪問先名}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            updateVisit(visit.id, '得意先CD', '');
+                                                            // エラーをクリア
+                                                            if (validationErrors[visit.id]?.得意先CD) {
+                                                                setValidationErrors(prev => {
+                                                                    const newErrors = { ...prev };
+                                                                    if (newErrors[visit.id]) {
+                                                                        delete newErrors[visit.id].得意先CD;
+                                                                        if (Object.keys(newErrors[visit.id]).length === 0) {
+                                                                            delete newErrors[visit.id];
+                                                                        }
                                                                     }
-                                                                }
-                                                                return newErrors;
-                                                            });
-                                                        }
-                                                    }}
-                                                    className="ml-auto text-gray-400 hover:text-red-500"
-                                                >
-                                                    ×
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="relative">
-                                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                                    <input
-                                                        type="text"
-                                                        value={searchTerms[visit.id] || ''}
-                                                        onChange={(e) => {
-                                                            setSearchTerms({ ...searchTerms, [visit.id]: e.target.value });
-                                                            setShowSuggestions({ ...showSuggestions, [visit.id]: true });
+                                                                    return newErrors;
+                                                                });
+                                                            }
                                                         }}
-                                                        onFocus={() => setShowSuggestions({ ...showSuggestions, [visit.id]: true })}
-                                                        placeholder="得意先CD、名前、カナで検索..."
-                                                        className={`w-full pl-9 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${showErrors && validationErrors[visit.id]?.得意先CD
-                                                            ? 'border-red-500 bg-red-50'
-                                                            : 'border-sf-border'
-                                                            }`}
-                                                    />
-                                                </div>
-                                                {showErrors && validationErrors[visit.id]?.得意先CD && (
-                                                    <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                                                        <AlertCircle size={12} />
-                                                        <span>{validationErrors[visit.id].得意先CD}</span>
-                                                    </div>
-                                                )}
-                                            </>
-                                        )}
-                                        {showSuggestions[visit.id] && searchTerms[visit.id] && (
-                                            <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
-                                                {filterCustomers(searchTerms[visit.id]).map(c => (
-                                                    <div
-                                                        key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
-                                                        className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                                                        onClick={() => selectCustomer(visit.id, c)}
+                                                        className="ml-auto text-gray-400 hover:text-red-500"
                                                     >
-                                                        <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
-                                                        {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="relative">
+                                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                        <input
+                                                            type="text"
+                                                            value={searchTerms[visit.id] || ''}
+                                                            onChange={(e) => {
+                                                                setSearchTerms({ ...searchTerms, [visit.id]: e.target.value });
+                                                                setShowSuggestions({ ...showSuggestions, [visit.id]: true });
+                                                            }}
+                                                            onFocus={() => setShowSuggestions({ ...showSuggestions, [visit.id]: true })}
+                                                            placeholder="得意先CD、名前、カナで検索..."
+                                                            className={`w-full pl-9 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${showErrors && validationErrors[visit.id]?.得意先CD
+                                                                ? 'border-red-500 bg-red-50'
+                                                                : 'border-sf-border'
+                                                                }`}
+                                                        />
                                                     </div>
-                                                ))}
-                                                {filterCustomers(searchTerms[visit.id]).length === 0 && (
-                                                    <div className="px-3 py-2 text-sm text-gray-400">
-                                                        該当する得意先がありません
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
+                                                    {showErrors && validationErrors[visit.id]?.得意先CD && (
+                                                        <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
+                                                            <AlertCircle size={12} />
+                                                            <span>{validationErrors[visit.id].得意先CD}</span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                            {showSuggestions[visit.id] && searchTerms[visit.id] && (
+                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                    {filterCustomers(searchTerms[visit.id]).map(c => (
+                                                        <div
+                                                            key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
+                                                            className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                            onClick={() => selectCustomer(visit.id, c)}
+                                                        >
+                                                            <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
+                                                            {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}
+                                                        </div>
+                                                    ))}
+                                                    {filterCustomers(searchTerms[visit.id]).length === 0 && (
+                                                        <div className="px-3 py-2 text-sm text-gray-400">
+                                                            該当する得意先がありません
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
+                                )}
 
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-medium text-sf-text-weak mb-1">
                                             行動内容 <span className="text-red-500">*</span>
@@ -644,8 +648,8 @@ export default function BatchReportPage() {
                                     </div>
                                 </div>
 
-                                {/* 面談者・滞在時間（社内・量販店調査・外出時間以外のみ表示） */}
-                                {!["社内（１日）", "社内（半日）", "量販店調査", "外出時間"].includes(visit.行動内容) && (
+                                {/* 面談者・滞在時間（社内・外出時間以外のみ表示） */}
+                                {!["社内（１日）", "社内（半日）", "外出時間"].includes(visit.行動内容) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">面談者</label>

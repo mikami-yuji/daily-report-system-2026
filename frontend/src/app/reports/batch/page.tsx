@@ -735,6 +735,24 @@ export default function BatchReportPage() {
                                     </div>
                                 )}
 
+                                {/* 商談内容（社内・量販店調査・外出時間用） */}
+                                {["社内（１日）", "社内（半日）", "量販店調査", "外出時間"].includes(visit.行動内容) && (
+                                    <div className="border-t border-gray-200 pt-4 mt-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-sf-text-weak mb-1">商談内容・メモ</label>
+                                            <textarea
+                                                value={visit.商談内容}
+                                                onChange={(e) => updateVisit(visit.id, '商談内容', e.target.value)}
+                                                rows={3}
+                                                onFocus={(e) => e.currentTarget.rows = 6}
+                                                onBlur={(e) => e.currentTarget.rows = 3}
+                                                placeholder="商談内容やメモを入力（任意）..."
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent resize-none transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* デザイン提案セクション（社内・量販店調査・外出時間以外のみ表示） */}
                                 {!["社内（１日）", "社内（半日）", "量販店調査", "外出時間"].includes(visit.行動内容) && (
                                     <div className="border-t border-gray-200 pt-4 mt-4">

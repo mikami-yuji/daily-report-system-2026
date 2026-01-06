@@ -120,22 +120,26 @@ export function generateMonthCalendar(year: number, month: number, reports: Repo
                 return formatDate(reportDate) === dateString;
             })
             .filter(report => {
-                // Only include reports with visit action
+                // Only include reports with visit action or internal work
                 const action = String(report.行動内容 || '');
-                return action.includes('訪問');
+                return action.includes('訪問') || action === '社内（半日）' || action === '社内（１日）';
             })
-            .map(report => ({
-                customerName: report.訪問先名 || '不明',
-                action: String(report.行動内容 || ''),
-                managementNumber: report.管理番号 || 0,
-                hasDesign: report.デザイン提案有無 === 'あり',
-                // 追加フィールド
-                interviewer: report.面談者 || '',
-                stayTime: report.滞在時間 || '',
-                commercialContent: report.商談内容 || '',
-                designType: report.デザイン種別 || '',
-                designName: report.デザイン名 || ''
-            }));
+            .map(report => {
+                const action = String(report.行動内容 || '');
+                const isInternal = action === '社内（半日）' || action === '社内（１日）';
+                return {
+                    customerName: isInternal ? action : (report.訪問先名 || '不明'),
+                    action: action,
+                    managementNumber: report.管理番号 || 0,
+                    hasDesign: report.デザイン提案有無 === 'あり',
+                    // 追加フィールド
+                    interviewer: report.面談者 || '',
+                    stayTime: report.滞在時間 || '',
+                    commercialContent: report.商談内容 || '',
+                    designType: report.デザイン種別 || '',
+                    designName: report.デザイン名 || ''
+                };
+            });
 
         days.push({
             date,

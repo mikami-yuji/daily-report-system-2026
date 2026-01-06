@@ -101,6 +101,9 @@ export default function BatchReportPage() {
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '/').slice(2);
     const [date, setDate] = useState(today);
 
+    // レポート取得（量販店調査履歴用）
+    const { data: reports = [] } = useReports(selectedFile);
+
     // 訪問リスト（クライアント側でのみ初期化）
     const [visits, setVisits] = useState<VisitEntry[]>([]);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -127,6 +130,19 @@ export default function BatchReportPage() {
     // 検索用state
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
     const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
+
+    // 量販店調査入力用state
+    const [retailerSearchTerms, setRetailerSearchTerms] = useState<{ [key: string]: string }>({});
+    const [showRetailerSuggestions, setShowRetailerSuggestions] = useState<{ [key: string]: boolean }>({});
+
+    // 過去の量販店調査訪問名履歴（reportsから抽出）
+    const retailerHistory = useMemo(() => {
+        const historySet = new Set<string>();
+        reports
+            .filter(r => r.行動内容 === '量販店調査' && r.訪問先名)
+            .forEach(r => historySet.add(String(r.訪問先名)));
+        return Array.from(historySet).sort();
+    }, [reports]);
 
     // 得意先リスト取得
     useEffect(() => {
@@ -512,8 +528,8 @@ export default function BatchReportPage() {
                         {/* 訪問詳細フォーム */}
                         {visit.isExpanded && (
                             <div className="p-4 space-y-4">
-                                {/* 得意先検索（社内業務・外出時間以外のみ表示） */}
-                                {!['社内（半日）', '社内（１日）', '外出時間'].includes(visit.行動内容) && (
+                                {/* 得意先検索（社内業務・外出時間・量販店調査以外のみ表示） */}
+                                {!['社内（半日）', '社内（１日）', '外出時間', '量販店調査'].includes(visit.行動内容) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="relative">
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">
@@ -597,6 +613,57 @@ export default function BatchReportPage() {
                                     </div>
                                 )}
 
+                                {/* 量販店調査用：訪問先フリーテキスト入力（履歴サジェスト付き） */}
+                                {visit.行動内容 === '量販店調査' && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="relative">
+                                            <label className="block text-xs font-medium text-sf-text-weak mb-1">
+                                                訪問先名（店舗名）
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={retailerSearchTerms[visit.id] || visit.訪問先名 || ''}
+                                                onChange={(e) => {
+                                                    setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: e.target.value });
+                                                    updateVisit(visit.id, '訪問先名', e.target.value);
+                                                    setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: true });
+                                                }}
+                                                onFocus={() => setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: true })}
+                                                onBlur={() => setTimeout(() => setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false }), 200)}
+                                                placeholder="店舗名を入力（過去履歴から検索可）..."
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                            />
+                                            {/* 履歴サジェスト */}
+                                            {showRetailerSuggestions[visit.id] && (retailerSearchTerms[visit.id] || visit.訪問先名) && (
+                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                    {retailerHistory
+                                                        .filter(name => name.toLowerCase().includes((retailerSearchTerms[visit.id] || visit.訪問先名 || '').toLowerCase()))
+                                                        .slice(0, 10)
+                                                        .map(name => (
+                                                            <div
+                                                                key={name}
+                                                                className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                                onMouseDown={() => {
+                                                                    updateVisit(visit.id, '訪問先名', name);
+                                                                    setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: name });
+                                                                    setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false });
+                                                                }}
+                                                            >
+                                                                {name}
+                                                            </div>
+                                                        ))
+                                                    }
+                                                    {retailerHistory.filter(name => name.toLowerCase().includes((retailerSearchTerms[visit.id] || visit.訪問先名 || '').toLowerCase())).length === 0 && (
+                                                        <div className="px-3 py-2 text-sm text-gray-400">
+                                                            新規入力（履歴なし）
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-medium text-sf-text-weak mb-1">
@@ -648,8 +715,8 @@ export default function BatchReportPage() {
                                     </div>
                                 </div>
 
-                                {/* 面談者・滞在時間（社内・外出時間以外のみ表示） */}
-                                {!["社内（１日）", "社内（半日）", "外出時間"].includes(visit.行動内容) && (
+                                {/* 面談者・滞在時間（社内・外出時間・量販店調査以外のみ表示） */}
+                                {!["社内（１日）", "社内（半日）", "外出時間", "量販店調査"].includes(visit.行動内容) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">面談者</label>

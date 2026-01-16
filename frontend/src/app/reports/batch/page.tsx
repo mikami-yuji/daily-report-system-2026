@@ -47,6 +47,7 @@ type VisitEntry = {
     outingStartTime?: string;
     outingEndTime?: string;
     interviewers: string[]; // 得意先ごとの面談者リスト
+    currentTarget?: string;  // 現目標
 };
 
 // 空の訪問ブロックを作成
@@ -77,6 +78,7 @@ const createEmptyVisit = (): VisitEntry => ({
     outingStartTime: '',
     outingEndTime: '',
     interviewers: [],
+    currentTarget: '',
 });
 
 export default function BatchReportPage() {
@@ -252,6 +254,7 @@ export default function BatchReportPage() {
                     ランク: customer.ランク || '',
                     重点顧客: customer.重点顧客 || '',
                     designs: [], // 初期化
+                    currentTarget: customer['現目標'] || '',  // 現目標を取得
                 };
             }
             return v;
@@ -610,6 +613,14 @@ export default function BatchReportPage() {
                                                 </div>
                                             )}
                                         </div>
+                                    </div>
+                                )}
+
+                                {/* 現目標バナー（得意先選択時に表示） */}
+                                {visit.currentTarget && (
+                                    <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 rounded-lg">
+                                        <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-0.5 rounded">目標</span>
+                                        <span className="text-sm font-semibold text-blue-900">{visit.currentTarget}</span>
                                     </div>
                                 )}
 

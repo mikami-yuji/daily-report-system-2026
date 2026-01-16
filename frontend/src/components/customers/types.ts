@@ -12,9 +12,11 @@ export interface CustomerSummary {
     isPriority: boolean;
     lastActivity: string;
     rank: string;
+    currentTarget?: string;  // 得意先_Listの「現目標」(カラムJ)
     // Shared fields for Direct Delivery
     isDirectDelivery?: boolean;
     directDeliveryCode?: string;
     directDeliveryName?: string;
     subItems?: CustomerSummary[];
 }
+

@@ -2,25 +2,35 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
-import { useReports } from '@/hooks/useQueryHooks';
+import { useReports, useCustomers } from '@/hooks/useQueryHooks';
 import CustomerFilters from '@/components/customers/CustomerFilters';
 import CustomerList from '@/components/customers/CustomerList';
 import CustomerStats from '@/components/customers/CustomerStats';
 import { CustomerSummary } from '@/components/customers/types';
-import { processCustomers } from '@/components/customers/utils';
+import { processCustomers, createCustomerTargetMap } from '@/components/customers/utils';
 import toast from 'react-hot-toast';
 
 export default function CustomersPage() {
     const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）
-    const { data: reports, isLoading, error } = useReports(selectedFile || undefined);
+    const { data: reports, isLoading: reportsLoading, error: reportsError } = useReports(selectedFile || undefined);
+    const { data: customerMaster, isLoading: customerMasterLoading } = useCustomers(selectedFile || undefined);
 
-    // 顧客データを加工
+    const isLoading = reportsLoading || customerMasterLoading;
+    const error = reportsError;
+
+    // 得意先マスタから現目標マップを作成
+    const customerTargetMap = useMemo(() => {
+        if (!customerMaster) return undefined;
+        return createCustomerTargetMap(customerMaster);
+    }, [customerMaster]);
+
+    // 顧客データを加工（現目標を含む）
     const customers = useMemo(() => {
         if (!reports) return [];
-        return processCustomers(reports);
-    }, [reports]);
+        return processCustomers(reports, customerTargetMap);
+    }, [reports, customerTargetMap]);
 
     const [filteredCustomers, setFilteredCustomers] = useState<CustomerSummary[]>([]);
     const [searchTerm, setSearchTerm] = useState('');

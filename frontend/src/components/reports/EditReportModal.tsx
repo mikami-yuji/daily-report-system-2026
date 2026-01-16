@@ -264,6 +264,15 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                                     required={!isMinimalUI}
                                     className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                                 />
+                                {/* 得意先目標バナー */}
+                                {report.得意先目標 && (
+                                    <div className="mt-2 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">得意先目標</span>
+                                            <span className="text-sm font-medium text-blue-800">{report.得意先目標}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 

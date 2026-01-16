@@ -44,6 +44,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
     const [designs, setDesigns] = useState<Design[]>([]);
     const [startOutTime, setStartOutTime] = useState('');
     const [endOutTime, setEndOutTime] = useState('');
+    const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
 
 
 
@@ -139,6 +140,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             ランク: customer.ランク || ''
         }));
         setShowSuggestions(false);
+
+        // 現目標を設定
+        setCurrentTarget(customer['現目標'] || '');
 
         // Fetch interviewers for this customer
         if (customer.得意先CD) {
@@ -271,6 +275,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             訪問先名: '',
         }));
         filterCustomers('');
+        setCurrentTarget('');  // 現目標もクリア
     };
 
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
@@ -416,12 +421,24 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                                                     {customer.得意先名}
                                                     {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">(直送先: {customer.直送先名})</span>}
                                                 </div>
-                                                <div className="text-xs text-sf-text-weak">
-                                                    {customer.得意先CD} - {customer.エリア}
+                                                <div className="text-xs text-sf-text-weak flex justify-between">
+                                                    <span>{customer.得意先CD} - {customer.エリア}</span>
+                                                    {customer['現目標'] && (
+                                                        <span className="text-blue-600 font-medium">目標: {customer['現目標']}</span>
+                                                    )}
                                                 </div>
                                             </li>
                                         ))}
                                     </ul>
+                                )}
+                                {/* 現目標バナー */}
+                                {formData.得意先CD && currentTarget && (
+                                    <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">現目標</span>
+                                            <span className="text-sm font-medium text-blue-800">{currentTarget}</span>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         )}

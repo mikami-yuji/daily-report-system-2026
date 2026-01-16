@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { getReports, Report } from '@/lib/api';
+import { getReports, getCustomers, Report, Customer } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import {
     User,
@@ -63,6 +63,7 @@ function CustomerDetailContent() {
     const [designRequests, setDesignRequests] = useState<DesignRequest[]>([]);
     const [selectedInterviewer, setSelectedInterviewer] = useState<string>('');
     const [salesData, setSalesData] = useState<SalesData | null>(null);
+    const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
 
     // Fetch sales data when tab is active
     useEffect(() => {
@@ -108,6 +109,26 @@ function CustomerDetailContent() {
             }).catch(err => {
                 console.error(err);
                 setLoading(false);
+            });
+        }
+    }, [customerCode, ddCode, selectedFile]);
+
+    // 得意先マスタから現目標を取得
+    useEffect(() => {
+        if (customerCode && selectedFile) {
+            getCustomers(selectedFile).then(customers => {
+                // 得意先CDでマッチする顧客を検索
+                const matchedCustomer = customers.find(c => {
+                    const custCD = String(c.得意先CD || '').trim();
+                    const ddCD = String(c.直送先CD || '').trim();
+                    return custCD === customerCode && (!ddCode || ddCD === ddCode);
+                });
+
+                if (matchedCustomer && matchedCustomer['現目標']) {
+                    setCurrentTarget(String(matchedCustomer['現目標']));
+                }
+            }).catch(err => {
+                console.error('Failed to fetch customers for target:', err);
             });
         }
     }, [customerCode, ddCode, selectedFile]);
@@ -270,6 +291,13 @@ function CustomerDetailContent() {
                                         <span>エリア: {reports[0].エリア}</span>
                                     </div>
                                 )}
+                            </div>
+                        )}
+                        {/* 現目標バナー */}
+                        {currentTarget && (
+                            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 rounded-lg">
+                                <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-0.5 rounded">目標</span>
+                                <span className="text-sm font-semibold text-blue-900">{currentTarget}</span>
                             </div>
                         )}
                     </div>

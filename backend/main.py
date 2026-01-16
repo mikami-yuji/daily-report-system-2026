@@ -33,11 +33,14 @@ try:
 except ImportError:
     pass
 
-# Setup logging
+# Setup logging - ファイルとコンソール両方に出力
 logging.basicConfig(
-    filename='server_debug.log',
     level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('server_debug.log'),
+        logging.StreamHandler()  # コンソール出力
+    ]
 )
 logging.info("Server starting up...")
 logging.info(f"DEBUG PATHS: BASE_DIR={BASE_DIR}")
@@ -81,7 +84,8 @@ async def strip_api_prefix(request: Request, call_next):
 # Load configuration
 def load_config():
     config_path = os.path.join(BASE_DIR, 'config.json')
-    default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
+    # 2026年度版のデフォルトパス
+    default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度'
     
     if os.path.exists(config_path):
         try:
@@ -95,9 +99,6 @@ def load_config():
             logging.info(f"Using default path: {default_path}")
             return default_path
     
-    logging.info(f"config.json not found. Using default path: {default_path}")
-    return default_path
-
     logging.info(f"config.json not found. Using default path: {default_path}")
     return default_path
 
@@ -336,6 +337,16 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         # Clean up column names
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
         
+        # デバッグログ: カラム名を出力
+        logging.info(f"得意先_List columns: {list(df.columns)}")
+        
+        # 現目標カラムの存在確認
+        target_col = None
+        for col in df.columns:
+            if '現目標' in col or '目標' in col:
+                target_col = col
+                logging.info(f"Found target column: '{col}'")
+        
         # Rename specific columns
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
@@ -347,6 +358,15 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         
         # Convert to dict
         records = df.to_dict(orient="records")
+        
+        # デバッグ: 最初のレコードの現目標値を確認
+        if records and len(records) > 0:
+            sample = records[0]
+            logging.info(f"Sample record keys: {list(sample.keys())}")
+            if '現目標' in sample:
+                logging.info(f"Sample 現目標 value: '{sample.get('現目標')}'")
+            else:
+                logging.warning("現目標 column not found in record!")
         
         # Clean the records
         import math
@@ -781,6 +801,53 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
         wb = openpyxl.load_workbook(excel_file, keep_vba=True)
         ws = wb['営業日報']
         
+        # 得意先_Listから現目標を取得
+        current_target = ""
+        if report.得意先CD and '得意先_List' in wb.sheetnames:
+            customer_ws = wb['得意先_List']
+            customer_cd = str(report.得意先CD).strip()
+            direct_delivery_cd = str(report.直送先CD).strip() if report.直送先CD else ""
+            
+            # 得意先_Listの構造: A=得意先CD, B=直送先CD, ..., J=現目標
+            for row in range(2, customer_ws.max_row + 1):
+                cell_customer_cd = customer_ws.cell(row=row, column=1).value
+                cell_dd_cd = customer_ws.cell(row=row, column=2).value
+                
+                if cell_customer_cd is not None:
+                    # 得意先CDを文字列に変換（floatの場合は整数に）
+                    if isinstance(cell_customer_cd, float):
+                        cell_customer_cd = str(int(cell_customer_cd))
+                    else:
+                        cell_customer_cd = str(cell_customer_cd).strip()
+                    
+                    # 直送先CDも同様に処理
+                    if cell_dd_cd is not None:
+                        if isinstance(cell_dd_cd, float):
+                            cell_dd_cd = str(int(cell_dd_cd))
+                        else:
+                            cell_dd_cd = str(cell_dd_cd).strip()
+                    else:
+                        cell_dd_cd = ""
+                    
+                    # マッチング条件: 得意先CDが一致 AND (直送先CDが一致 OR 両方空)
+                    if cell_customer_cd == customer_cd:
+                        if direct_delivery_cd:
+                            # 直送先が指定されている場合は直送先CDも一致する必要がある
+                            if cell_dd_cd == direct_delivery_cd:
+                                target_value = customer_ws.cell(row=row, column=10).value  # J列=現目標
+                                if target_value:
+                                    current_target = str(target_value).strip()
+                                break
+                        else:
+                            # 直送先が指定されていない場合は、直送先CDが空の行を探す
+                            if not cell_dd_cd:
+                                target_value = customer_ws.cell(row=row, column=10).value  # J列=現目標
+                                if target_value:
+                                    current_target = str(target_value).strip()
+                                break
+            
+            logging.debug(f"Found current_target for {customer_cd}: {current_target}")
+        
         # Find the maximum management number and its row by scanning all rows
         max_mgmt_num = 0
         max_mgmt_row = 1  # Default to header row if no data found
@@ -820,30 +887,32 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
                 target_cell.alignment = copy(source_cell.alignment)
 
         # Define the columns to write to and their values
+        # 2026年度版カラム構造（K列に「得意先目標」が追加）
         columns_to_write = {
-            1: new_mgmt_num, # 管理番号
-            2: report.日付, # 日付
-            3: report.行動内容, # 行動内容
-            4: report.エリア, # エリア
-            5: report.得意先CD, # 得意先CD.
-            6: report.直送先CD, # 直送先CD.
-            7: report.訪問先名, # 訪問先名\n得意先名
-            8: report.直送先名, # 直送先名
-            9: report.重点顧客, # 重点顧客
-            10: report.ランク, # ランク
-            11: report.面談者, # 面談者 (Corrected from 12)
-            12: report.滞在時間, # 滞在\n時間 (Corrected from 13)
-            13: report.デザイン提案有無, # デザイン提案有無 (Corrected from 14)
-            14: report.デザイン種別, # デザイン種別 (Corrected from 15)
-            15: report.デザイン名, # デザイン名 (Corrected from 16)
-            16: report.デザイン進捗状況, # デザイン進捗状況 (Corrected from 17)
-            17: report.デザイン依頼No, # デザイン依頼No. (Corrected from 18)
-            18: report.商談内容, # 商談内容 (Corrected from 19)
-            19: report.提案物, # 提案物 (Corrected from 20)
-            20: report.次回プラン, # 次回プラン (Corrected from 21)
-            21: report.競合他社情報, # 競合他社情報 (New)
-            22: report.上長コメント, # コメント (Column 22)
-            23: report.コメント返信欄  # コメント返信欄 (Column 23)
+            1: new_mgmt_num,        # A: 管理番号
+            2: report.日付,          # B: 日付
+            3: report.行動内容,       # C: 行動内容
+            4: report.エリア,         # D: エリア
+            5: report.得意先CD,       # E: 得意先CD.
+            6: report.直送先CD,       # F: 直送先CD.
+            7: report.訪問先名,       # G: 訪問先名/得意先名
+            8: report.直送先名,       # H: 直送先名
+            9: report.重点顧客,       # I: 重点顧客
+            10: report.ランク,        # J: ランク
+            11: current_target,       # K: 得意先目標（得意先_Listから自動取得）
+            12: report.面談者,        # L: 面談者
+            13: report.滞在時間,      # M: 滞在時間
+            14: report.デザイン提案有無,  # N: デザイン提案有無
+            15: report.デザイン種別,   # O: デザイン種別
+            16: report.デザイン名,     # P: デザイン名
+            17: report.デザイン進捗状況, # Q: デザイン進捗状況
+            18: report.デザイン依頼No,  # R: デザイン依頼No.
+            19: report.商談内容,       # S: 商談内容
+            20: report.提案物,         # T: 提案物
+            21: report.次回プラン,     # U: 次回プラン
+            22: report.競合他社情報,   # V: 競合他社情報
+            23: report.上長コメント,   # W: 上長コメント
+            24: report.コメント返信欄  # X: コメント返信欄
         }
 
         for col_idx, value in columns_to_write.items():
@@ -855,6 +924,7 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
             if max_mgmt_row >= 2:
                 source_cell = ws.cell(row=max_mgmt_row, column=col_idx)
                 copy_style(source_cell, target_cell)
+
 
         
         # Save the workbook (Critical path - blocking)
@@ -931,8 +1001,8 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
             wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
-        # Column 23 = コメント返信欄
-        ws.cell(row=target_row, column=23, value=reply.コメント返信欄)
+        # 2026年度版: X列(24) = コメント返信欄
+        ws.cell(row=target_row, column=24, value=reply.コメント返信欄)
         logging.debug("cell set, saving to temp file...")
         
         # 安全な保存: 一時ファイルに保存してから置き換え
@@ -1004,11 +1074,11 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
         # Update only provided fields
-        # Column 22 = 上長コメント, Column 23 = コメント返信欄
+        # 2026年度版: W列(23) = 上長コメント, X列(24) = コメント返信欄
         if comment.上長コメント is not None:
-            ws.cell(row=target_row, column=22, value=comment.上長コメント)
+            ws.cell(row=target_row, column=23, value=comment.上長コメント)
         if comment.コメント返信欄 is not None:
-            ws.cell(row=target_row, column=23, value=comment.コメント返信欄)
+            ws.cell(row=target_row, column=24, value=comment.コメント返信欄)
         
         # 安全な保存: 一時ファイルに保存してから置き換え
         temp_dir = tempfile.gettempdir()
@@ -1076,13 +1146,13 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
         # Update only provided fields
-        # Column mapping: 24=上長, 25=山澄常務, 26=岡本常務, 27=中野次長, 28=既読チェック
+        # 2026年度版カラムマッピング: Y=上長(25), Z=山澄常務(26), AA=岡本常務(27), AB=中野次長(28), AC=既読チェック(29)
         column_mapping = {
-            '上長': 24,
-            '山澄常務': 25,
-            '岡本常務': 26,
-            '中野次長': 27,
-            '既読チェック': 28
+            '上長': 25,           # Y列
+            '山澄常務': 26,        # Z列
+            '岡本常務': 27,        # AA列
+            '中野次長': 28,        # AB列
+            '既読チェック': 29     # AC列
         }
         
         if approval.上長 is not None:
@@ -1192,30 +1262,31 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
                 )
         # --------------------------------
         
-        # Update all fields (same column mapping as add_report)
+        # Update all fields (2026年度版カラム構造 - K列に得意先目標が追加)
         columns_to_write = {
-            2: report.日付,
-            3: report.行動内容,
-            4: report.エリア,
-            5: report.得意先CD,
-            6: report.直送先CD,
-            7: report.訪問先名,
-            8: report.直送先名,
-            9: report.重点顧客,
-            10: report.ランク,
-            11: report.面談者,
-            12: report.滞在時間,
-            13: report.デザイン提案有無,
-            14: report.デザイン種別,
-            15: report.デザイン名,
-            16: report.デザイン進捗状況,
-            17: report.デザイン依頼No,
-            18: report.商談内容,
-            19: report.提案物,
-            20: report.次回プラン,
-            21: report.競合他社情報,
-            22: report.上長コメント, # コメント (Column 22)
-            23: report.コメント返信欄  # コメント返信欄 (Column 23)
+            2: report.日付,              # B: 日付
+            3: report.行動内容,           # C: 行動内容
+            4: report.エリア,             # D: エリア
+            5: report.得意先CD,           # E: 得意先CD.
+            6: report.直送先CD,           # F: 直送先CD.
+            7: report.訪問先名,           # G: 訪問先名/得意先名
+            8: report.直送先名,           # H: 直送先名
+            9: report.重点顧客,           # I: 重点顧客
+            10: report.ランク,            # J: ランク
+            # 11: 得意先目標 (K) - 手動入力のため省略
+            12: report.面談者,            # L: 面談者
+            13: report.滞在時間,          # M: 滞在時間
+            14: report.デザイン提案有無,   # N: デザイン提案有無
+            15: report.デザイン種別,       # O: デザイン種別
+            16: report.デザイン名,         # P: デザイン名
+            17: report.デザイン進捗状況,   # Q: デザイン進捗状況
+            18: report.デザイン依頼No,     # R: デザイン依頼No.
+            19: report.商談内容,           # S: 商談内容
+            20: report.提案物,             # T: 提案物
+            21: report.次回プラン,         # U: 次回プラン
+            22: report.競合他社情報,       # V: 競合他社情報
+            23: report.上長コメント,       # W: 上長コメント
+            24: report.コメント返信欄      # X: コメント返信欄
         }
 
         for col_idx, value in columns_to_write.items():

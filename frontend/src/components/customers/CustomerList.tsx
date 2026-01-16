@@ -31,6 +31,7 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                         <th className="px-4 py-3 text-left font-medium">エリア</th>
                         <th className="px-4 py-3 text-center font-medium">ランク</th>
                         <th className="px-4 py-3 text-center font-medium">重点</th>
+                        <th className="px-4 py-3 text-left font-medium">現目標</th>
                         <th className="px-4 py-3 text-center font-medium">総活動数</th>
                         <th className="px-4 py-3 text-center font-medium">訪問</th>
                         <th className="px-4 py-3 text-center font-medium">電話</th>
@@ -81,6 +82,9 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                                             重点
                                         </span>
                                     )}
+                                </td>
+                                <td className="px-4 py-3 text-sf-text text-sm max-w-32 truncate" title={customer.currentTarget || ''}>
+                                    {customer.currentTarget || '-'}
                                 </td>
                                 <td className="px-4 py-3 text-center font-semibold text-sf-text">
                                     {customer.totalActivities}
@@ -133,6 +137,9 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                                                 重点
                                             </span>
                                         )}
+                                    </td>
+                                    <td className="px-4 py-3 text-sf-text-weak text-xs max-w-32 truncate" title={sub.currentTarget || ''}>
+                                        {sub.currentTarget || '-'}
                                     </td>
                                     <td className="px-4 py-3 text-center text-xs text-sf-text-weak">
                                         {sub.totalActivities}

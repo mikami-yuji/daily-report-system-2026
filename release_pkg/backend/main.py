@@ -1,17 +1,51 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field, field_validator
 import pandas as pd
 import openpyxl
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import shutil
 import json
-from typing import Optional
+import pickle
+import hashlib
+from typing import Optional, List, Dict, Any
 
+
+import logging
+import sys
+import os
+
+def get_base_path():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+BASE_DIR = get_base_path()
+
+# Ensure multipart libraries are bundled by PyInstaller
+try:
+    import python_multipart
+    import multipart
+except ImportError:
+    pass
+
+# Setup logging
+logging.basicConfig(
+    filename='server_debug.log',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logging.info("Server starting up...")
+logging.info(f"DEBUG PATHS: BASE_DIR={BASE_DIR}")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+logging.info(f"DEBUG PATHS: STATIC_DIR={STATIC_DIR}")
+logging.info(f"DEBUG PATHS: Static Exists={os.path.exists(STATIC_DIR)}")
+
+logging.info(f"Loaded python_multipart: {python_multipart.__file__ if 'python_multipart' in locals() else 'Not found'}")
 
 app = FastAPI()
 
@@ -24,10 +58,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# バリデーションエラーの詳細をログ出力
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logging.error(f"Validation error on {request.url.path}: {exc.errors()}")
+    logging.error(f"Request body: {exc.body}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": str(exc.body)[:500]}
+    )
+
+from fastapi import Request
+
+@app.middleware("http")
+async def strip_api_prefix(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        request.scope["path"] = request.url.path[4:]
+    response = await call_next(request)
+    return response
+
 
 # Load configuration
 def load_config():
-    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    config_path = os.path.join(BASE_DIR, 'config.json')
     default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
     
     if os.path.exists(config_path):
@@ -35,18 +88,61 @@ def load_config():
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 path = config.get('excel_dir', default_path)
-                print(f"INFO: Successfully loaded config. Excel Path: {path}")
+                logging.info(f"Successfully loaded config. Excel Path: {path}")
                 return path
         except Exception as e:
-            print(f"Warning: Failed to load config.json: {e}")
-            print(f"INFO: Using default path: {default_path}")
+            logging.warning(f"Failed to load config.json: {e}")
+            logging.info(f"Using default path: {default_path}")
             return default_path
     
-    print(f"INFO: config.json not found. Using default path: {default_path}")
+    logging.info(f"config.json not found. Using default path: {default_path}")
+    return default_path
+
+    logging.info(f"config.json not found. Using default path: {default_path}")
     return default_path
 
 EXCEL_DIR = load_config()
-print(f"STARTUP: Working with EXCEL_DIR: {EXCEL_DIR}")
+logging.info(f"STARTUP: Working with EXCEL_DIR: {EXCEL_DIR}")
+
+# --- Global Sales Data Storage ---
+DATA_DIR = os.path.join(BASE_DIR, 'data')
+SALES_CSV_PATH = os.path.join(DATA_DIR, 'sales_data.csv')
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# Global DataFrame to hold sales data
+global_sales_df = None
+
+def load_sales_data():
+    """Loads sales data from CSV into global DataFrame."""
+    global global_sales_df
+    if not os.path.exists(SALES_CSV_PATH):
+        logging.info("No existing sales data found.")
+        return
+
+    try:
+        logging.info("Loading sales data from disk...")
+        # Try cp932 first
+        try:
+            df = pd.read_csv(SALES_CSV_PATH, encoding='cp932')
+        except:
+            df = pd.read_csv(SALES_CSV_PATH, encoding='utf-8')
+        
+        # Clean columns
+        df.columns = [str(col).strip() for col in df.columns]
+        
+        # Ensure customer code exists
+        if '得意先コード' in df.columns:
+            # Normalize customer code (remove decimals, convert to string)
+            df['得意先コード'] = df['得意先コード'].astype(str).str.split('.').str[0]
+            global_sales_df = df
+            logging.info(f"Sales data loaded successfully. {len(df)} rows.")
+        else:
+            logging.error("Sales CSV missing '得意先コード' column.")
+    except Exception as e:
+        logging.error(f"Failed to load sales data: {e}")
+
+# Load on startup
+load_sales_data()
 
 # Find a default Excel file dynamically
 DEFAULT_EXCEL_FILE = "daily_report_template.xlsm" # Fallback
@@ -54,20 +150,20 @@ if os.path.exists(EXCEL_DIR):
     files = [f for f in os.listdir(EXCEL_DIR) if f.endswith('.xlsm') and not f.startswith('~$')]
     if files:
         DEFAULT_EXCEL_FILE = files[0]
-        print(f"INFO: Set default Excel file to: {DEFAULT_EXCEL_FILE}")
+        logging.info(f"Set default Excel file to: {DEFAULT_EXCEL_FILE}")
     else:
-        print("WARN: No .xlsm files found in directory. Using fallback default.")
+        logging.warning("No .xlsm files found in directory. Using fallback default.")
 
 
 class ReportInput(BaseModel):
-    model_config = {"populate_by_name": True}
+    model_config = {"populate_by_name": True, "extra": "ignore"}  # 余分なフィールドを無視
     
-    日付: str
-    行動内容: str
+    日付: str = ""
+    行動内容: str = ""
     エリア: str = ""
     得意先CD: str = ""
     直送先CD: str = ""
-    訪問先名: str
+    訪問先名: str = ""
     直送先名: str = ""
     重点顧客: str = ""
     ランク: str = ""
@@ -105,9 +201,9 @@ def read_root():
 @app.get("/files")
 def list_excel_files():
     """List all Excel files in the directory"""
-    print(f"DEBUG: Listing files in {EXCEL_DIR}")
+    logging.debug(f"Listing files in {EXCEL_DIR}")
     if not os.path.exists(EXCEL_DIR):
-         print(f"ERROR: Directory not found: {EXCEL_DIR}")
+         logging.error(f"Directory not found: {EXCEL_DIR}")
          raise HTTPException(status_code=500, detail=f"Excel Directory not found: {EXCEL_DIR}")
          
     try:
@@ -116,7 +212,7 @@ def list_excel_files():
         # listing network drive can appear to hang.
         
         items = os.listdir(EXCEL_DIR)
-        print(f"DEBUG: Found {len(items)} items in directory")
+        logging.debug(f"Found {len(items)} items in directory")
         
         for file in items:
             if file.endswith(('.xlsx', '.xlsm')):
@@ -130,12 +226,12 @@ def list_excel_files():
                         "modified": datetime.fromtimestamp(file_mtime).isoformat()
                     })
                 except Exception as file_err:
-                    print(f"WARN: Error processing file {file}: {file_err}")
+                    logging.warning(f"Error processing file {file}: {file_err}")
                     continue
                     
         return {"files": files, "default": DEFAULT_EXCEL_FILE}
     except Exception as e:
-        print(f"CRITICAL ERROR in list_excel_files: {str(e)}")
+        logging.critical(f"CRITICAL ERROR in list_excel_files: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
@@ -157,9 +253,9 @@ def create_backup(file_path):
         backup_path = os.path.join(backup_dir, backup_filename)
         
         shutil.copy2(file_path, backup_path)
-        print(f"Backup created: {backup_path}")
+        logging.info(f"Backup created: {backup_path}")
     except Exception as e:
-        print(f"Warning: Failed to create backup: {e}")
+        logging.warning(f"Failed to create backup: {e}")
 
 
 def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
@@ -169,45 +265,70 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
     excel_file = os.path.join(EXCEL_DIR, filename)
     
     if not os.path.exists(excel_file):
-        print(f"ERROR: File not found: {excel_file}")
+        logging.error(f"File not found: {excel_file}")
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found at {excel_file}")
     
     current_mtime = os.path.getmtime(excel_file)
     cache_key = (filename, sheet_name)
     
+    # --- In-Memory Cache Check ---
     if cache_key in CACHE:
         cached_data = CACHE[cache_key]
         if cached_data['mtime'] == current_mtime:
             return cached_data['df'].copy() # Return copy to prevent mutation of cached data
-            
-    # Read from file
+
+    # --- Disk Cache Check ---
+    # Create cache directory if needed
+    CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+        
+    # Create unique cache filename based on file path and sheet
+    cache_id = hashlib.md5(f"{filename}_{sheet_name}".encode('utf-8')).hexdigest()
+    cache_path = os.path.join(CACHE_DIR, f"{cache_id}.pkl")
+    
     try:
-        print(f"DEBUG: Reading Excel {excel_file}, sheet={sheet_name}")
+        if os.path.exists(cache_path):
+            with open(cache_path, 'rb') as f:
+                disk_cache = pickle.load(f)
+            
+            # Use disk cache if timestamp matches
+            if disk_cache.get('mtime') == current_mtime:
+                logging.debug(f"Loaded {filename} ({sheet_name}) from disk cache")
+                df = disk_cache['df']
+                # Update in-memory cache
+                CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
+                return df.copy()
+    except Exception as e:
+        logging.warning(f"Failed to load from disk cache: {e}")
+
+    # --- Read from Excel (Expensive Operation) ---
+    try:
+        logging.debug(f"Reading Excel {excel_file}, sheet={sheet_name}")
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
+        
+        # Update in-memory cache
         CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
+        
+        # Update disk cache
+        try:
+            with open(cache_path, 'wb') as f:
+                pickle.dump({'mtime': current_mtime, 'df': df}, f)
+            logging.debug(f"Saved {filename} ({sheet_name}) to disk cache")
+        except Exception as e:
+            logging.warning(f"Failed to save disk cache: {e}")
+            
         return df.copy()
     except Exception as e:
-        print(f"ERROR: Reading Excel failed: {e}")
+        logging.error(f"Reading Excel failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
 
 
 @app.get("/customers")
-def get_customers(request: Request, filename: str = DEFAULT_EXCEL_FILE):
+def get_customers(filename: str = DEFAULT_EXCEL_FILE):
     """Get customer list from the Excel file"""
-    # Check if request is for HTML (SPA page)
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept:
-        STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-        html_path = os.path.join(STATIC_DIR, "customers.html")
-        if os.path.exists(html_path):
-            return FileResponse(html_path)
-        # Fallback to SPA root index
-        root_index = os.path.join(STATIC_DIR, "index.html")
-        if os.path.exists(root_index):
-             return FileResponse(root_index)
-
     try:
         # Get dataframe from cache
         df = get_cached_dataframe(filename, '得意先_List')
@@ -252,7 +373,89 @@ def get_customers(request: Request, filename: str = DEFAULT_EXCEL_FILE):
         return cleaned_records
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/priority-customers")
+def get_priority_customers(filename: str = DEFAULT_EXCEL_FILE):
+    """得意先_Listからカラム H (重点顧客) が「重点」の顧客を取得。カラム I の担当者情報も含める"""
+    try:
+        # 得意先_Listを読み込み
+        df = get_cached_dataframe(filename, '得意先_List')
         
+        # カラム名をクリーンアップ
+        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        
+        # カラム名を保存
+        col_customer_cd = df.columns[0]  # 得意先CD
+        col_customer_name = df.columns[1] if len(df.columns) > 1 else None  # 得意先名
+        col_priority = df.columns[7] if len(df.columns) > 7 else None  # カラムH: 重点顧客
+        col_staff = df.columns[8] if len(df.columns) > 8 else None  # カラムI: 担当者
+        
+        # 得意先CDがある行のみ抽出（ヘッダー行や空行を除外）
+        df = df.dropna(subset=[col_customer_cd])
+        
+        # カラム H の名前を特定
+        priority_col = col_priority
+        if not priority_col:
+            # フォールバック: 「重点顧客」という名前のカラムを探す
+            for col in df.columns:
+                if '重点' in str(col):
+                    priority_col = col
+                    break
+            if not priority_col:
+                logging.warning(f"Priority column not found. Columns: {list(df.columns)}")
+                return []
+        
+        logging.info(f"Priority column: {priority_col}, Staff column: {col_staff}")
+        
+        # 「重点」と記載されている行のみ抽出
+        priority_df = df[df[priority_col].astype(str).str.contains('重点', na=False)]
+        
+        logging.info(f"Found {len(priority_df)} priority customers")
+        
+        # レコードを作成
+        records = []
+        for _, row in priority_df.iterrows():
+            customer_cd = row[col_customer_cd]
+            customer_name = row[col_customer_name] if col_customer_name else ''
+            staff = row[col_staff] if col_staff else ''
+            
+            # CDをクリーンアップ
+            if isinstance(customer_cd, float):
+                import math
+                if math.isnan(customer_cd):
+                    continue
+                customer_cd = str(int(customer_cd))
+            else:
+                customer_cd = str(customer_cd).strip()
+            
+            if not customer_cd:
+                continue
+            
+            # 担当者をクリーンアップ
+            if isinstance(staff, float):
+                import math
+                if math.isnan(staff):
+                    staff = ''
+                else:
+                    staff = str(staff)
+            else:
+                staff = str(staff).strip() if staff else ''
+                
+            records.append({
+                '得意先CD': customer_cd,
+                '得意先名': str(customer_name).strip() if customer_name else '',
+                '担当者': staff
+            })
+        
+        return records
+    except Exception as e:
+        logging.error(f"Error in get_priority_customers: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.get("/interviewers")
 def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
@@ -284,49 +487,9 @@ def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/reports/batch")
-async def serve_reports_batch():
-    """Serve the batch reports static page"""
-    STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-    # Try multiple possible file locations
-    possible_paths = [
-        os.path.join(STATIC_DIR, "reports", "batch.html"),
-        os.path.join(STATIC_DIR, "reports", "batch", "index.html"),
-    ]
-    for path in possible_paths:
-        if os.path.exists(path):
-            return FileResponse(path)
-    # Fallback to index.html for SPA routing
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="Batch page not found")
-
-@app.get("/reports/batch.txt")
-async def serve_reports_batch_txt():
-    """Provide empty JSON for Next.js data request"""
-    return JSONResponse(content={})
-
-@app.get("/reports/{path:path}.txt")
-def serve_reports_data_files(path: str):
-    """Serve Next.js data files for reports to prevent 422 errors on API routes"""
-    STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-    target_path = os.path.join(STATIC_DIR, "reports", f"{path}.txt")
-    if os.path.exists(target_path):
-        return FileResponse(target_path)
-    return JSONResponse(content={})
-
 @app.get("/reports/{management_number}")
-def get_report_by_id(management_number: int, request: Request, filename: str = DEFAULT_EXCEL_FILE):
+def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を取得"""
-    # Check if request is for HTML (SPA page) - for /reports/1 etc.
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept:
-        STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-        root_index = os.path.join(STATIC_DIR, "index.html")
-        if os.path.exists(root_index):
-             return FileResponse(root_index)
-
     try:
         # Get dataframe from cache
         df = get_cached_dataframe(filename, '営業日報')
@@ -337,7 +500,9 @@ def get_report_by_id(management_number: int, request: Request, filename: str = D
         # Rename specific columns
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
-            '訪問先名得意先名': '訪問先名'
+            '訪問先名得意先名': '訪問先名',
+            'コメント': '上長コメント',  # Excel uses 'コメント' for manager comment
+            'コメント返信欄': 'コメント返信欄'  # Keep as-is for reply field
         })
         
         # Filter by management number
@@ -377,26 +542,9 @@ def get_report_by_id(management_number: int, request: Request, filename: str = D
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/reports")
-def get_reports(request: Request, filename: str = DEFAULT_EXCEL_FILE):
-    # Check if request is for HTML (SPA page)
-    accept = request.headers.get("accept", "")
-    if "text/html" in accept:
-        STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-        # Try reports.html first (Next.js export)
-        html_path = os.path.join(STATIC_DIR, "reports.html")
-        if os.path.exists(html_path):
-            return FileResponse(html_path)
-        # Fallback to reports/index.html
-        index_path = os.path.join(STATIC_DIR, "reports", "index.html")
-        if os.path.exists(index_path):
-             return FileResponse(index_path)
-        # Fallback to SPA root index
-        root_index = os.path.join(STATIC_DIR, "index.html")
-        if os.path.exists(root_index):
-             return FileResponse(root_index)
-
+def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     try:
-        print(f"DEBUG: Fetching reports for {filename} from {EXCEL_DIR}")
+        logging.debug(f"Fetching reports for {filename} from {EXCEL_DIR}")
         # Get dataframe from cache
         df = get_cached_dataframe(filename, '営業日報')
         
@@ -408,7 +556,9 @@ def get_reports(request: Request, filename: str = DEFAULT_EXCEL_FILE):
             '得意先CD.': '得意先CD',
             '訪問先名得意先名': '訪問先名',
             '直送先CD.': '直送先CD',
-            '直送先名.': '直送先名'
+            '直送先名.': '直送先名',
+            'コメント': '上長コメント',  # Excel uses 'コメント' for manager comment
+            'コメント返信欄': 'コメント返信欄'  # Keep as-is for reply field
         })
         
         # Replace all NaN, infinity, and null values with None
@@ -542,13 +692,15 @@ def get_interviewers(
         
         return {"customer_cd": customer_cd, "interviewers": interviewers}
     except Exception as e:
-        print(f"Error in get_interviewers: {str(e)}") # Add logging
+        logging.error(f"Error in get_interviewers: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/designs/{customer_cd}")
-def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
-    """Get list of design requests for a specific customer"""
+def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename: str = DEFAULT_EXCEL_FILE):
+    """Get list of design requests for a specific customer (optionally filtered by delivery destination)"""
     try:
+        logging.info(f"get_designs called: customer_cd={customer_cd}, delivery_name={delivery_name}")
+        
         # Get dataframe from cache
         df = get_cached_dataframe(filename, '営業日報')
         
@@ -558,7 +710,10 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         # Rename specific columns
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
+            '直送先名.': '直送先名'
         })
+        
+        logging.info(f"Columns in dataframe: {list(df.columns)[:20]}...")  # Log first 20 columns
         
         # Convert customer_cd to float for matching
         try:
@@ -568,9 +723,19 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
         
         # Filter by customer code
         customer_reports = df[df['得意先CD'] == customer_cd_float].copy()
+        logging.info(f"After customer filter: {len(customer_reports)} rows")
+        
+        # Filter by delivery destination if provided
+        if delivery_name and '直送先名' in customer_reports.columns:
+            before_count = len(customer_reports)
+            customer_reports = customer_reports[customer_reports['直送先名'] == delivery_name]
+            logging.info(f"After delivery_name filter ({delivery_name}): {len(customer_reports)} rows (was {before_count})")
+        else:
+            logging.info(f"Skipping delivery_name filter: delivery_name={delivery_name}, has_column={'直送先名' in customer_reports.columns}")
         
         # Filter for records with design request number
         design_reports = customer_reports[customer_reports['デザイン依頼No.'].notna()]
+        logging.info(f"After design no filter: {len(design_reports)} rows")
         
         # Get unique design request numbers
         unique_design_nos = design_reports['デザイン依頼No.'].unique()
@@ -604,6 +769,7 @@ def get_designs(customer_cd: str, filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/reports")
 def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     excel_file = os.path.join(EXCEL_DIR, filename)
@@ -629,14 +795,14 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
             except (ValueError, TypeError):
                 continue
         
-        print(f"DEBUG: Max Mgmt Num: {max_mgmt_num}, Max Mgmt Row: {max_mgmt_row}")
+        logging.debug(f"Max Mgmt Num: {max_mgmt_num}, Max Mgmt Row: {max_mgmt_row}")
 
         # Increment to get new management number
         new_mgmt_num = max_mgmt_num + 1
         
         # Insert at the row immediately after the last management number
         next_row = max_mgmt_row + 1
-        print(f"DEBUG: Writing to Row: {next_row}")
+        logging.debug(f"Writing to Row: {next_row}")
         
         # Prepare the data to write
         # Adjust column indices based on actual Excel structure (251113_2026-_-_008.xlsm)
@@ -717,9 +883,259 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# コメント更新専用エンドポイント（楽観的ロックなし）
+class CommentInput(BaseModel):
+    上長コメント: Optional[str] = None
+    コメント返信欄: Optional[str] = None
+
+# 承認チェック更新専用
+class ApprovalInput(BaseModel):
+    上長: Optional[str] = None
+    山澄常務: Optional[str] = None
+    岡本常務: Optional[str] = None
+    中野次長: Optional[str] = None
+    既読チェック: Optional[str] = None
+
+# 後方互換性のため
+class ReplyInput(BaseModel):
+    コメント返信欄: str
+
+@app.patch("/reports/{management_number}/reply")
+def update_report_reply(management_number: int, reply: ReplyInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    """コメント返信欄のみを更新（安全な保存）"""
+    import tempfile
+    import shutil
+    
+    logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
+    try:
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        logging.debug(f"excel_file: {excel_file}")
+        
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        logging.debug("workbook loaded")
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+        
+        ws = wb['営業日報']
+        logging.debug(f"worksheet max_row: {ws.max_row}")
+        
+        # Find the row
+        target_row = None
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == management_number:
+                target_row = row
+                break
+        
+        logging.debug(f"target_row: {target_row}")
+        if not target_row:
+            wb.close()
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # Column 23 = コメント返信欄
+        ws.cell(row=target_row, column=23, value=reply.コメント返信欄)
+        logging.debug("cell set, saving to temp file...")
+        
+        # 安全な保存: 一時ファイルに保存してから置き換え
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f"temp_{filename}")
+        
+        try:
+            # 一時ファイルに保存
+            wb.save(temp_file)
+            wb.close()
+            logging.debug(f"saved to temp: {temp_file}")
+            
+            # 一時ファイルが正常か確認（読み込みテスト）
+            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
+            test_wb.close()
+            logging.debug("temp file verified")
+            
+            # 元のファイルを一時ファイルで置き換え
+            shutil.copy2(temp_file, excel_file)
+            logging.debug("replaced original file")
+            
+        finally:
+            # 一時ファイルを削除
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+        
+        # Clear cache
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
+        return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logging.error(f"update_report_reply: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/reports/{management_number}/comment")
+def update_report_comment(management_number: int, comment: CommentInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    """上長コメントとコメント返信欄を個別に更新（安全な保存）"""
+    import tempfile
+    import shutil
+    
+    logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
+    try:
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+        
+        ws = wb['営業日報']
+        
+        # Find the row
+        target_row = None
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == management_number:
+                target_row = row
+                break
+        
+        if not target_row:
+            wb.close()
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # Update only provided fields
+        # Column 22 = 上長コメント, Column 23 = コメント返信欄
+        if comment.上長コメント is not None:
+            ws.cell(row=target_row, column=22, value=comment.上長コメント)
+        if comment.コメント返信欄 is not None:
+            ws.cell(row=target_row, column=23, value=comment.コメント返信欄)
+        
+        # 安全な保存: 一時ファイルに保存してから置き換え
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f"temp_{filename}")
+        
+        try:
+            wb.save(temp_file)
+            wb.close()
+            
+            # 一時ファイルが正常か確認
+            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
+            test_wb.close()
+            
+            # 元のファイルを置き換え
+            shutil.copy2(temp_file, excel_file)
+        finally:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+        
+        # Clear cache
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
+        # Create backup in background
+        background_tasks.add_task(create_backup, excel_file)
+        
+        return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logging.error(f"update_report_comment: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/reports/{management_number}/approval")
+def update_report_approval(management_number: int, approval: ApprovalInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    """承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）を個別に更新"""
+    import tempfile
+    import shutil
+    
+    logging.debug(f"update_report_approval: management_number={management_number}")
+    try:
+        excel_file = os.path.join(EXCEL_DIR, filename)
+        
+        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+        if '営業日報' not in wb.sheetnames:
+            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
+        
+        ws = wb['営業日報']
+        
+        # Find the row
+        target_row = None
+        for row in range(2, ws.max_row + 1):
+            if ws.cell(row=row, column=1).value == management_number:
+                target_row = row
+                break
+        
+        if not target_row:
+            wb.close()
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # Update only provided fields
+        # Column mapping: 24=上長, 25=山澄常務, 26=岡本常務, 27=中野次長, 28=既読チェック
+        column_mapping = {
+            '上長': 24,
+            '山澄常務': 25,
+            '岡本常務': 26,
+            '中野次長': 27,
+            '既読チェック': 28
+        }
+        
+        if approval.上長 is not None:
+            ws.cell(row=target_row, column=column_mapping['上長'], value=approval.上長)
+        if approval.山澄常務 is not None:
+            ws.cell(row=target_row, column=column_mapping['山澄常務'], value=approval.山澄常務)
+        if approval.岡本常務 is not None:
+            ws.cell(row=target_row, column=column_mapping['岡本常務'], value=approval.岡本常務)
+        if approval.中野次長 is not None:
+            ws.cell(row=target_row, column=column_mapping['中野次長'], value=approval.中野次長)
+        if approval.既読チェック is not None:
+            ws.cell(row=target_row, column=column_mapping['既読チェック'], value=approval.既読チェック)
+        
+        # 安全な保存
+        temp_dir = tempfile.gettempdir()
+        temp_file = os.path.join(temp_dir, f"temp_{filename}")
+        
+        try:
+            wb.save(temp_file)
+            wb.close()
+            
+            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
+            test_wb.close()
+            
+            shutil.copy2(temp_file, excel_file)
+        finally:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+        
+        # Clear cache
+        cache_key = (filename, '営業日報')
+        if cache_key in CACHE:
+            del CACHE[cache_key]
+        
+        # Create backup in background
+        background_tasks.add_task(create_backup, excel_file)
+        
+        return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        logging.error(f"update_report_approval: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/reports/{management_number}")
 def update_report(management_number: int, report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """既存の日報を更新（全項目対応）"""
+    logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
         
@@ -743,7 +1159,7 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
 
         # --- Optimistic Locking Check ---
         if report.original_values:
-            print(f"DEBUG: Performing conflict check for Report {management_number}")
+            logging.debug(f"Performing conflict check for Report {management_number}")
             
             # Fields to check for conflicts (critical text fields)
             check_fields = {
@@ -765,7 +1181,7 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
                 original_str = original_str.replace('\r\n', '\n').replace('\r', '\n').strip()
                 
                 if current_str != original_str:
-                    print(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
+                    logging.warning(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
                     conflicts.append(field_name)
             
             if conflicts:
@@ -971,7 +1387,7 @@ def get_design_images(filename: str):
             stripped_target = re.sub(r'(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', normalized_target, flags=re.IGNORECASE)
             logging.info(f"Stripped target: {stripped_target}")
 
-            print(f"DEBUG: Searching for folder containing '{target_name}' (Norm: {normalized_target}) in {DESIGN_DIR}")
+            logging.debug(f"Searching for folder containing '{target_name}' (Norm: {normalized_target}) in {DESIGN_DIR}")
             
             if not os.path.exists(DESIGN_DIR):
                  logging.error(f"Design directory not found: {DESIGN_DIR}")
@@ -1055,12 +1471,12 @@ def get_design_images(filename: str):
 
     except Exception as e:
         logging.exception("Error in get_design_images")
-        print(f"Error listing images: {e}")
+        logging.error(f"Error listing images: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/images/content")
 def serve_design_image(path: str):
-    r"""
+    """
     Serve the image file content.
     path: Relative path from DESIGN_DIR (e.g., "大阪本社　09：沖本\image.jpg")
     """
@@ -1148,11 +1564,11 @@ def search_design_images(query: str, filename: Optional[str] = None):
                                 break
 
                 if found_folder:
-                    print(f"DEBUG: Search target set to: {found_folder}")
+                    logging.debug(f"Search target set to: {found_folder}")
                     search_roots = [found_folder]
             except Exception as e:
                 logging.error(f"Failed to optimize search folder: {e}")
-                print(f"Warning: Failed to optimize search folder: {e}")
+                logging.warning(f"Failed to optimize search folder: {e}")
                 
         
         if found_folder:
@@ -1179,7 +1595,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
                 # Use listdir instead of scandir/walk to avoid hanging
                 items = os.listdir(directory)
             except Exception as e:
-                print(f"WARN: Failed to listdir {directory}: {e}")
+                logging.warning(f"Failed to listdir {directory}: {e}")
                 return results
 
             dirs_to_visit = []
@@ -1284,7 +1700,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
         # Main search loop
         try:
             for search_root in search_roots:
-                print(f"DEBUG: Searching root: {search_root}", flush=True)
+                logging.debug(f"Searching root: {search_root}")
                 # Use custom walker
                 # Initial parent_matches logic:
                 # If the search_root ITSELF matches query (e.g. we targeted a specific user folder matched by filename, but query is DesignNo),
@@ -1296,7 +1712,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
                     image_files = image_files[:MAX_RESULTS]
                     break
         except Exception as e:
-            print(f"ERROR: Search loop failed: {e}", flush=True)
+            logging.error(f"Search loop failed: {e}")
             # Return whatever we found so far instead of 500
             pass
             
@@ -1317,13 +1733,167 @@ def search_design_images(query: str, filename: Optional[str] = None):
         raise HTTPException(status_code=500, detail=error_msg)
 
 
+# --- Sales Data Integration ---
+# --- Sales Data Integration (Global) ---
+DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+SALES_CSV_PATH = os.path.join(DATA_DIR, 'sales_data.csv')
+os.makedirs(DATA_DIR, exist_ok=True)
+
+global_sales_df = None
+
+def load_sales_data():
+    """Loads sales data from CSV into global DataFrame."""
+    global global_sales_df
+    if not os.path.exists(SALES_CSV_PATH):
+        logging.info("No existing sales data found.")
+        return
+
+    try:
+        logging.info("Loading sales data from disk...")
+        try:
+            df = pd.read_csv(SALES_CSV_PATH, encoding='cp932')
+        except:
+            df = pd.read_csv(SALES_CSV_PATH, encoding='utf-8')
+        
+        df.columns = [str(col).strip() for col in df.columns]
+        
+        if '得意先コード' in df.columns:
+            df['得意先コード'] = df['得意先コード'].astype(str).str.split('.').str[0]
+            global_sales_df = df
+            logging.info(f"Sales data loaded successfully. {len(df)} rows.")
+        else:
+            logging.error("Sales CSV missing '得意先コード' column.")
+    except Exception as e:
+        logging.error(f"Failed to load sales data: {e}")
+
+# Load on startup
+load_sales_data()
+
+@app.post("/sales/upload")
+async def upload_sales_csv(file: UploadFile = File(...)):
+    """
+    Uploads a global sales data CSV file, saves it, and unloads it into memory.
+    """
+    try:
+        logging.info(f"Receiving sales CSV: {file.filename}")
+        contents = await file.read()
+        
+        import io
+        try:
+            pd.read_csv(io.BytesIO(contents), encoding='cp932')
+        except:
+            try:
+                pd.read_csv(io.BytesIO(contents), encoding='utf-8')
+            except Exception as e:
+                raise HTTPException(status_code=400, detail="Invalid CSV format. Please use Shift-JIS or UTF-8.")
+
+        with open(SALES_CSV_PATH, "wb") as f:
+            f.write(contents)
+        
+        logging.info("Sales CSV saved to disk.")
+        load_sales_data()
+        
+        return {"message": "Sales data uploaded and processed successfully."}
+
+    except Exception as e:
+        logging.error(f"Error uploading sales CSV: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.get("/sales/all")
+async def get_all_sales_data():
+    """
+    Retrieves ALL sales data as a list.
+    """
+    if global_sales_df is None:
+        return []
+
+    try:
+        # Convert NaN to None for JSON compliance
+        df_clean = global_sales_df.where(pd.notnull(global_sales_df), None)
+        
+        # Select relevant columns and rename for consistency
+        records = []
+        for _, row in df_clean.iterrows():
+            records.append({
+                "rank": row.get('順位'),
+                "rank_class": row.get('ランク'),
+                "customer_code": row.get('得意先コード'),
+                "customer_name": row.get('得意先名称'),
+                "sales_amount": row.get('売上金額'),
+                "gross_profit": row.get('粗利金額'),
+                "sales_yoy": row.get('前年対比率'),
+                "sales_last_year": row.get('前年売上'),
+                "profit_last_year": row.get('前年粗利'),
+                "sales_2y_ago": row.get('前々年売上'),
+                "profit_2y_ago": row.get('前々年粗利'),
+                # Attempt to get area from '地域名称' or '地域' or Column M (index 12)
+                "area": row.get('地域名称') or row.get('地域') or (row.iloc[12] if len(row) > 12 else None),
+                # 担当者 from Column I (index 8)
+                "sales_rep": row.get('担当者') or (row.iloc[8] if len(row) > 8 else None),
+            })
+            
+        return records
+
+    except Exception as e:
+        logging.error(f"Error retrieving all sales data: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+
+
+@app.get("/sales/{customer_code}")
+async def get_sales_data(customer_code: str):
+    """
+    Retrieves sales data for a specific customer from the global dataset.
+    """
+    if global_sales_df is None:
+        return {"found": False, "message": "Sales data not yet uploaded."}
+    
+    try:
+        target_code = str(customer_code).split('.')[0]
+        matched_row = global_sales_df[global_sales_df['得意先コード'] == target_code]
+        
+        if matched_row.empty:
+            return {"found": False, "message": "Customer not found in sales data."}
+        
+        row = matched_row.iloc[0]
+        
+        def get_val(col):
+            val = row.get(col)
+            if pd.isna(val):
+                return None
+            if hasattr(val, 'item'): 
+                return val.item() 
+            return val
+
+        from datetime import datetime
+        data = {
+            "found": True,
+            "rank": get_val('順位'),
+            "rank_class": get_val('ランク'),
+            "sales_amount": get_val('売上金額'),
+            "gross_profit": get_val('粗利金額'),
+            "sales_yoy": get_val('前年対比率'),
+            "sales_last_year": get_val('前年売上'),
+            "profit_last_year": get_val('前年粗利'),
+            "sales_2y_ago": get_val('前々年売上'),
+            "profit_2y_ago": get_val('前々年粗利'),
+            "customer_name": get_val('得意先名称'),
+            "updated_at": datetime.now().isoformat()
+        }
+        return data
+
+    except Exception as e:
+        logging.error(f"Error retrieving sales data: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+
+
 # --- Static File Serving for Standalone App ---
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 if os.path.exists(STATIC_DIR):
     # Mount _next directory for Next.js assets
     # Check if _next exists inside static to avoid error
-    if os.path.join(STATIC_DIR, "_next"):
+    if os.path.exists(os.path.join(STATIC_DIR, "_next")):
          app.mount("/_next", StaticFiles(directory=os.path.join(STATIC_DIR, "_next")), name="next_assets")
 
     @app.get("/")
@@ -1335,26 +1905,26 @@ if os.path.exists(STATIC_DIR):
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Check if file exists in static dir (exact match)
+        # Check if file exists in static dir
         file_path = os.path.join(STATIC_DIR, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-            
-        # Check if it maps to a .html file (e.g. /calendar -> /calendar.html)
-        html_path = os.path.join(STATIC_DIR, f"{full_path}.html")
-        if os.path.isfile(html_path):
-             return FileResponse(html_path)
-             
-        # Check if it maps to a directory index (e.g. /calendar -> /calendar/index.html)
-        dir_index_path = os.path.join(STATIC_DIR, full_path, "index.html")
-        if os.path.isfile(dir_index_path):
-             return FileResponse(dir_index_path)
         
-        # If not found, and path doesn't look like api, return index.html for SPA routing
+        # Check if it maps to a .html file (e.g. /design-search -> design-search.html)
+        html_path = file_path + ".html"
+        if os.path.isfile(html_path):
+            return FileResponse(html_path)
+            
+        # Check if it's a directory with index.html
+        index_path = os.path.join(file_path, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path)
+        
+        # If not found, return index.html for SPA routing
         # (API routes are already handled by precedence)
-        index_path = os.path.join(STATIC_DIR, "index.html")
-        if os.path.exists(index_path):
-             return FileResponse(index_path)
+        spa_index = os.path.join(STATIC_DIR, "index.html")
+        if os.path.exists(spa_index):
+             return FileResponse(spa_index)
         
         return {"detail": "Not Found"}
 # ----------------------------------------------

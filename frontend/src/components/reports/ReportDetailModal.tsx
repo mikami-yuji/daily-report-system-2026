@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval } from '@/lib/api';
+import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval, getCustomers } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
@@ -53,6 +53,30 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     const [processingApproval, setProcessingApproval] = useState<string | null>(null); // 処理中の承認フィールド
     const [processingComment, setProcessingComment] = useState<string | null>(null); // 処理中のコメントフィールド
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
+
+    // 得意先マスタから現目標を取得
+    useEffect(() => {
+        if (report.得意先CD && selectedFile) {
+            getCustomers(selectedFile).then(customers => {
+                const customerCode = String(report.得意先CD || '').trim();
+                const ddCode = String(report.直送先CD || '').trim();
+
+                // 得意先CDでマッチする顧客を検索
+                const matchedCustomer = customers.find(c => {
+                    const custCD = String(c.得意先CD || '').trim();
+                    const custDDCD = String(c.直送先CD || '').trim();
+                    return custCD === customerCode && (!ddCode || custDDCD === ddCode);
+                });
+
+                if (matchedCustomer && matchedCustomer['現目標']) {
+                    setCurrentTarget(String(matchedCustomer['現目標']));
+                }
+            }).catch(err => {
+                console.error('Failed to fetch customers for target:', err);
+            });
+        }
+    }, [report.得意先CD, report.直送先CD, selectedFile]);
 
     // キーボードイベントのハンドリング
     useEffect(() => {
@@ -167,6 +191,13 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                 {report.エリア}
                             </span>
                         </div>
+                        {/* 現目標バナー（得意先_Listから取得した値を優先） */}
+                        {(currentTarget || report.得意先目標) && (
+                            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 rounded-lg">
+                                <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-0.5 rounded">目標</span>
+                                <span className="text-sm font-semibold text-blue-900">{currentTarget || report.得意先目標}</span>
+                            </div>
+                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         <button

@@ -1,28 +1,49 @@
-import { Report } from '@/lib/api';
+import { Report, Customer } from '@/lib/api';
 import { CustomerSummary } from './types';
 
-export const processCustomers = (data: Report[]): CustomerSummary[] => {
+// 得意先マスタから現目標を取得するためのマップを作成
+export const createCustomerTargetMap = (customers: Customer[]): Map<string, string> => {
+    const map = new Map<string, string>();
+    customers.forEach(customer => {
+        const code = String(customer.得意先CD || '');
+        const ddCode = customer.直送先CD ? String(customer.直送先CD) : '';
+        const target = String(customer['現目標'] || '');
+
+        if (code && target) {
+            // 直送先コードがある場合は得意先CD-直送先CDをキーにする
+            const key = ddCode ? `${code}-${ddCode}` : code;
+            map.set(key, target);
+        }
+    });
+    return map;
+};
+
+export const processCustomers = (data: Report[], customerTargetMap?: Map<string, string>): CustomerSummary[] => {
     const customerMap = new Map<string, CustomerSummary>();
 
     // Create base stats object
-    const createStats = (code: string, name: string, area: string, rank: string, isPriority: boolean, isDD: boolean = false, ddCode: string = '', ddName: string = '') => ({
-        id: isDD ? `${code}-${ddCode}` : code,
-        code,
-        name,
-        area,
-        totalActivities: 0,
-        visits: 0,
-        calls: 0,
-        designRequests: 0,
-        designNos: new Set<string>(),  // ユニークなデザインNo.を追跡
-        isPriority: isPriority,
-        lastActivity: '',
-        rank,
-        isDirectDelivery: isDD,
-        directDeliveryCode: ddCode,
-        directDeliveryName: ddName,
-        subItems: isDD ? undefined : []
-    });
+    const createStats = (code: string, name: string, area: string, rank: string, isPriority: boolean, isDD: boolean = false, ddCode: string = '', ddName: string = '') => {
+        const key = isDD ? `${code}-${ddCode}` : code;
+        return {
+            id: key,
+            code,
+            name,
+            area,
+            totalActivities: 0,
+            visits: 0,
+            calls: 0,
+            designRequests: 0,
+            designNos: new Set<string>(),  // ユニークなデザインNo.を追跡
+            isPriority: isPriority,
+            lastActivity: '',
+            rank,
+            currentTarget: customerTargetMap?.get(key) || '',  // 得意先マスタから現目標を取得
+            isDirectDelivery: isDD,
+            directDeliveryCode: ddCode,
+            directDeliveryName: ddName,
+            subItems: isDD ? undefined : []
+        };
+    };
 
     data.forEach(report => {
         const code = String(report.得意先CD || '');

@@ -33,11 +33,14 @@ try:
 except ImportError:
     pass
 
-# Setup logging
+# Setup logging - ファイルとコンソール両方に出力
 logging.basicConfig(
-    filename='server_debug.log',
     level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('server_debug.log'),
+        logging.StreamHandler()  # コンソール出力
+    ]
 )
 logging.info("Server starting up...")
 logging.info(f"DEBUG PATHS: BASE_DIR={BASE_DIR}")
@@ -70,18 +73,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 from fastapi import Request
 
-@app.middleware("http")
-async def strip_api_prefix(request: Request, call_next):
-    if request.url.path.startswith("/api/"):
-        request.scope["path"] = request.url.path[4:]
-    response = await call_next(request)
-    return response
+# ミドルウェアは削除済み - APIエンドポイントは直接 /api/ プレフィックス付きで定義されている
 
 
 # Load configuration
 def load_config():
     config_path = os.path.join(BASE_DIR, 'config.json')
-    default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2025年度'
+    # 2026年度版のデフォルトパス
+    default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度'
     
     if os.path.exists(config_path):
         try:
@@ -95,9 +94,6 @@ def load_config():
             logging.info(f"Using default path: {default_path}")
             return default_path
     
-    logging.info(f"config.json not found. Using default path: {default_path}")
-    return default_path
-
     logging.info(f"config.json not found. Using default path: {default_path}")
     return default_path
 
@@ -194,11 +190,11 @@ class ReportInput(BaseModel):
             return ""
         return str(v)
 
-@app.get("/health")
+@app.get("/api/health")
 def read_root():
     return {"message": "Daily Report API is running", "excel_dir": EXCEL_DIR}
 
-@app.get("/files")
+@app.get("/api/files")
 def list_excel_files():
     """List all Excel files in the directory"""
     logging.debug(f"Listing files in {EXCEL_DIR}")
@@ -326,7 +322,7 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
 
 
-@app.get("/customers")
+@app.get("/api/customers")
 def get_customers(filename: str = DEFAULT_EXCEL_FILE):
     """Get customer list from the Excel file"""
     try:
@@ -335,6 +331,16 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        
+        # デバッグログ: カラム名を出力
+        logging.info(f"得意先_List columns: {list(df.columns)}")
+        
+        # 現目標カラムの存在確認
+        target_col = None
+        for col in df.columns:
+            if '現目標' in col or '目標' in col:
+                target_col = col
+                logging.info(f"Found target column: '{col}'")
         
         # Rename specific columns
         df = df.rename(columns={
@@ -347,6 +353,15 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         
         # Convert to dict
         records = df.to_dict(orient="records")
+        
+        # デバッグ: 最初のレコードの現目標値を確認
+        if records and len(records) > 0:
+            sample = records[0]
+            logging.info(f"Sample record keys: {list(sample.keys())}")
+            if '現目標' in sample:
+                logging.info(f"Sample 現目標 value: '{sample.get('現目標')}'")
+            else:
+                logging.warning("現目標 column not found in record!")
         
         # Clean the records
         import math
@@ -375,7 +390,7 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/priority-customers")
+@app.get("/api/priority-customers")
 def get_priority_customers(filename: str = DEFAULT_EXCEL_FILE):
     """得意先_Listからカラム H (重点顧客) が「重点」の顧客を取得。カラム I の担当者情報も含める"""
     try:
@@ -457,7 +472,7 @@ def get_priority_customers(filename: str = DEFAULT_EXCEL_FILE):
 
 
 
-@app.get("/interviewers")
+@app.get("/api/interviewers")
 def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of interviewers for a specific customer"""
     excel_file = os.path.join(EXCEL_DIR, filename)
@@ -487,7 +502,7 @@ def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/reports/{management_number}")
+@app.get("/api/reports/{management_number}")
 def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を取得"""
     try:
@@ -541,7 +556,7 @@ def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/reports")
+@app.get("/api/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     try:
         logging.debug(f"Fetching reports for {filename} from {EXCEL_DIR}")
@@ -602,7 +617,7 @@ def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/interviewers/{customer_cd}")
+@app.get("/api/interviewers/{customer_cd}")
 def get_interviewers(
     customer_cd: str, 
     filename: str = DEFAULT_EXCEL_FILE,
@@ -695,7 +710,7 @@ def get_interviewers(
         logging.error(f"Error in get_interviewers: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/designs/{customer_cd}")
+@app.get("/api/designs/{customer_cd}")
 def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of design requests for a specific customer (optionally filtered by delivery destination)"""
     try:
@@ -770,7 +785,7 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/reports")
+@app.post("/api/reports")
 def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     excel_file = os.path.join(EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
@@ -780,6 +795,53 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
         # Load workbook with openpyxl to preserve formulas and macros
         wb = openpyxl.load_workbook(excel_file, keep_vba=True)
         ws = wb['営業日報']
+        
+        # 得意先_Listから現目標を取得
+        current_target = ""
+        if report.得意先CD and '得意先_List' in wb.sheetnames:
+            customer_ws = wb['得意先_List']
+            customer_cd = str(report.得意先CD).strip()
+            direct_delivery_cd = str(report.直送先CD).strip() if report.直送先CD else ""
+            
+            # 得意先_Listの構造: A=得意先CD, B=直送先CD, ..., J=現目標
+            for row in range(2, customer_ws.max_row + 1):
+                cell_customer_cd = customer_ws.cell(row=row, column=1).value
+                cell_dd_cd = customer_ws.cell(row=row, column=2).value
+                
+                if cell_customer_cd is not None:
+                    # 得意先CDを文字列に変換（floatの場合は整数に）
+                    if isinstance(cell_customer_cd, float):
+                        cell_customer_cd = str(int(cell_customer_cd))
+                    else:
+                        cell_customer_cd = str(cell_customer_cd).strip()
+                    
+                    # 直送先CDも同様に処理
+                    if cell_dd_cd is not None:
+                        if isinstance(cell_dd_cd, float):
+                            cell_dd_cd = str(int(cell_dd_cd))
+                        else:
+                            cell_dd_cd = str(cell_dd_cd).strip()
+                    else:
+                        cell_dd_cd = ""
+                    
+                    # マッチング条件: 得意先CDが一致 AND (直送先CDが一致 OR 両方空)
+                    if cell_customer_cd == customer_cd:
+                        if direct_delivery_cd:
+                            # 直送先が指定されている場合は直送先CDも一致する必要がある
+                            if cell_dd_cd == direct_delivery_cd:
+                                target_value = customer_ws.cell(row=row, column=10).value  # J列=現目標
+                                if target_value:
+                                    current_target = str(target_value).strip()
+                                break
+                        else:
+                            # 直送先が指定されていない場合は、直送先CDが空の行を探す
+                            if not cell_dd_cd:
+                                target_value = customer_ws.cell(row=row, column=10).value  # J列=現目標
+                                if target_value:
+                                    current_target = str(target_value).strip()
+                                break
+            
+            logging.debug(f"Found current_target for {customer_cd}: {current_target}")
         
         # Find the maximum management number and its row by scanning all rows
         max_mgmt_num = 0
@@ -820,30 +882,32 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
                 target_cell.alignment = copy(source_cell.alignment)
 
         # Define the columns to write to and their values
+        # 2026年度版カラム構造（K列に「得意先目標」が追加）
         columns_to_write = {
-            1: new_mgmt_num, # 管理番号
-            2: report.日付, # 日付
-            3: report.行動内容, # 行動内容
-            4: report.エリア, # エリア
-            5: report.得意先CD, # 得意先CD.
-            6: report.直送先CD, # 直送先CD.
-            7: report.訪問先名, # 訪問先名\n得意先名
-            8: report.直送先名, # 直送先名
-            9: report.重点顧客, # 重点顧客
-            10: report.ランク, # ランク
-            11: report.面談者, # 面談者 (Corrected from 12)
-            12: report.滞在時間, # 滞在\n時間 (Corrected from 13)
-            13: report.デザイン提案有無, # デザイン提案有無 (Corrected from 14)
-            14: report.デザイン種別, # デザイン種別 (Corrected from 15)
-            15: report.デザイン名, # デザイン名 (Corrected from 16)
-            16: report.デザイン進捗状況, # デザイン進捗状況 (Corrected from 17)
-            17: report.デザイン依頼No, # デザイン依頼No. (Corrected from 18)
-            18: report.商談内容, # 商談内容 (Corrected from 19)
-            19: report.提案物, # 提案物 (Corrected from 20)
-            20: report.次回プラン, # 次回プラン (Corrected from 21)
-            21: report.競合他社情報, # 競合他社情報 (New)
-            22: report.上長コメント, # コメント (Column 22)
-            23: report.コメント返信欄  # コメント返信欄 (Column 23)
+            1: new_mgmt_num,        # A: 管理番号
+            2: report.日付,          # B: 日付
+            3: report.行動内容,       # C: 行動内容
+            4: report.エリア,         # D: エリア
+            5: report.得意先CD,       # E: 得意先CD.
+            6: report.直送先CD,       # F: 直送先CD.
+            7: report.訪問先名,       # G: 訪問先名/得意先名
+            8: report.直送先名,       # H: 直送先名
+            9: report.重点顧客,       # I: 重点顧客
+            10: report.ランク,        # J: ランク
+            11: current_target,       # K: 得意先目標（得意先_Listから自動取得）
+            12: report.面談者,        # L: 面談者
+            13: report.滞在時間,      # M: 滞在時間
+            14: report.デザイン提案有無,  # N: デザイン提案有無
+            15: report.デザイン種別,   # O: デザイン種別
+            16: report.デザイン名,     # P: デザイン名
+            17: report.デザイン進捗状況, # Q: デザイン進捗状況
+            18: report.デザイン依頼No,  # R: デザイン依頼No.
+            19: report.商談内容,       # S: 商談内容
+            20: report.提案物,         # T: 提案物
+            21: report.次回プラン,     # U: 次回プラン
+            22: report.競合他社情報,   # V: 競合他社情報
+            23: report.上長コメント,   # W: 上長コメント
+            24: report.コメント返信欄  # X: コメント返信欄
         }
 
         for col_idx, value in columns_to_write.items():
@@ -855,6 +919,7 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
             if max_mgmt_row >= 2:
                 source_cell = ws.cell(row=max_mgmt_row, column=col_idx)
                 copy_style(source_cell, target_cell)
+
 
         
         # Save the workbook (Critical path - blocking)
@@ -900,7 +965,7 @@ class ApprovalInput(BaseModel):
 class ReplyInput(BaseModel):
     コメント返信欄: str
 
-@app.patch("/reports/{management_number}/reply")
+@app.patch("/api/reports/{management_number}/reply")
 def update_report_reply(management_number: int, reply: ReplyInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """コメント返信欄のみを更新（安全な保存）"""
     import tempfile
@@ -931,8 +996,8 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
             wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
-        # Column 23 = コメント返信欄
-        ws.cell(row=target_row, column=23, value=reply.コメント返信欄)
+        # 2026年度版: X列(24) = コメント返信欄
+        ws.cell(row=target_row, column=24, value=reply.コメント返信欄)
         logging.debug("cell set, saving to temp file...")
         
         # 安全な保存: 一時ファイルに保存してから置き換え
@@ -976,7 +1041,7 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/reports/{management_number}/comment")
+@app.patch("/api/reports/{management_number}/comment")
 def update_report_comment(management_number: int, comment: CommentInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """上長コメントとコメント返信欄を個別に更新（安全な保存）"""
     import tempfile
@@ -1004,11 +1069,11 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
         # Update only provided fields
-        # Column 22 = 上長コメント, Column 23 = コメント返信欄
+        # 2026年度版: W列(23) = 上長コメント, X列(24) = コメント返信欄
         if comment.上長コメント is not None:
-            ws.cell(row=target_row, column=22, value=comment.上長コメント)
+            ws.cell(row=target_row, column=23, value=comment.上長コメント)
         if comment.コメント返信欄 is not None:
-            ws.cell(row=target_row, column=23, value=comment.コメント返信欄)
+            ws.cell(row=target_row, column=24, value=comment.コメント返信欄)
         
         # 安全な保存: 一時ファイルに保存してから置き換え
         temp_dir = tempfile.gettempdir()
@@ -1048,7 +1113,7 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/reports/{management_number}/approval")
+@app.patch("/api/reports/{management_number}/approval")
 def update_report_approval(management_number: int, approval: ApprovalInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）を個別に更新"""
     import tempfile
@@ -1076,13 +1141,13 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
         # Update only provided fields
-        # Column mapping: 24=上長, 25=山澄常務, 26=岡本常務, 27=中野次長, 28=既読チェック
+        # 2026年度版カラムマッピング: Y=上長(25), Z=山澄常務(26), AA=岡本常務(27), AB=中野次長(28), AC=既読チェック(29)
         column_mapping = {
-            '上長': 24,
-            '山澄常務': 25,
-            '岡本常務': 26,
-            '中野次長': 27,
-            '既読チェック': 28
+            '上長': 25,           # Y列
+            '山澄常務': 26,        # Z列
+            '岡本常務': 27,        # AA列
+            '中野次長': 28,        # AB列
+            '既読チェック': 29     # AC列
         }
         
         if approval.上長 is not None:
@@ -1132,7 +1197,7 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/reports/{management_number}")
+@app.post("/api/reports/{management_number}")
 def update_report(management_number: int, report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """既存の日報を更新（全項目対応）"""
     logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
@@ -1192,30 +1257,31 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
                 )
         # --------------------------------
         
-        # Update all fields (same column mapping as add_report)
+        # Update all fields (2026年度版カラム構造 - K列に得意先目標が追加)
         columns_to_write = {
-            2: report.日付,
-            3: report.行動内容,
-            4: report.エリア,
-            5: report.得意先CD,
-            6: report.直送先CD,
-            7: report.訪問先名,
-            8: report.直送先名,
-            9: report.重点顧客,
-            10: report.ランク,
-            11: report.面談者,
-            12: report.滞在時間,
-            13: report.デザイン提案有無,
-            14: report.デザイン種別,
-            15: report.デザイン名,
-            16: report.デザイン進捗状況,
-            17: report.デザイン依頼No,
-            18: report.商談内容,
-            19: report.提案物,
-            20: report.次回プラン,
-            21: report.競合他社情報,
-            22: report.上長コメント, # コメント (Column 22)
-            23: report.コメント返信欄  # コメント返信欄 (Column 23)
+            2: report.日付,              # B: 日付
+            3: report.行動内容,           # C: 行動内容
+            4: report.エリア,             # D: エリア
+            5: report.得意先CD,           # E: 得意先CD.
+            6: report.直送先CD,           # F: 直送先CD.
+            7: report.訪問先名,           # G: 訪問先名/得意先名
+            8: report.直送先名,           # H: 直送先名
+            9: report.重点顧客,           # I: 重点顧客
+            10: report.ランク,            # J: ランク
+            # 11: 得意先目標 (K) - 手動入力のため省略
+            12: report.面談者,            # L: 面談者
+            13: report.滞在時間,          # M: 滞在時間
+            14: report.デザイン提案有無,   # N: デザイン提案有無
+            15: report.デザイン種別,       # O: デザイン種別
+            16: report.デザイン名,         # P: デザイン名
+            17: report.デザイン進捗状況,   # Q: デザイン進捗状況
+            18: report.デザイン依頼No,     # R: デザイン依頼No.
+            19: report.商談内容,           # S: 商談内容
+            20: report.提案物,             # T: 提案物
+            21: report.次回プラン,         # U: 次回プラン
+            22: report.競合他社情報,       # V: 競合他社情報
+            23: report.上長コメント,       # W: 上長コメント
+            24: report.コメント返信欄      # X: コメント返信欄
         }
 
         for col_idx, value in columns_to_write.items():
@@ -1244,7 +1310,7 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/reports/{management_number}")
+@app.delete("/api/reports/{management_number}")
 def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を削除"""
     try:
@@ -1292,7 +1358,7 @@ def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload")
+@app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Upload an Excel file to the backend directory"""
     try:
@@ -1325,7 +1391,7 @@ logging.basicConfig(
     encoding='utf-8' # Ensure we can log Japanese characters
 )
 
-@app.get("/images/list")
+@app.get("/api/images/list")
 def get_design_images(filename: str):
     """
     Get list of images from the matching folder in Design Data directory.
@@ -1474,7 +1540,7 @@ def get_design_images(filename: str):
         logging.error(f"Error listing images: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/images/content")
+@app.get("/api/images/content")
 def serve_design_image(path: str):
     """
     Serve the image file content.
@@ -1499,7 +1565,7 @@ def serve_design_image(path: str):
     except Exception as e:
          raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/images/search")
+@app.get("/api/images/search")
 def search_design_images(query: str, filename: Optional[str] = None):
     """
     Search for images matching the query (Design No) in the Design Data directory.
@@ -1769,7 +1835,7 @@ def load_sales_data():
 # Load on startup
 load_sales_data()
 
-@app.post("/sales/upload")
+@app.post("/api/sales/upload")
 async def upload_sales_csv(file: UploadFile = File(...)):
     """
     Uploads a global sales data CSV file, saves it, and unloads it into memory.
@@ -1800,7 +1866,7 @@ async def upload_sales_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@app.get("/sales/all")
+@app.get("/api/sales/all")
 async def get_all_sales_data():
     """
     Retrieves ALL sales data as a list.
@@ -1840,7 +1906,7 @@ async def get_all_sales_data():
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
 
 
-@app.get("/sales/{customer_code}")
+@app.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
     Retrieves sales data for a specific customer from the global dataset.

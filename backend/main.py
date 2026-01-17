@@ -73,12 +73,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 from fastapi import Request
 
-@app.middleware("http")
-async def strip_api_prefix(request: Request, call_next):
-    if request.url.path.startswith("/api/"):
-        request.scope["path"] = request.url.path[4:]
-    response = await call_next(request)
-    return response
+# ミドルウェアは削除済み - APIエンドポイントは直接 /api/ プレフィックス付きで定義されている
 
 
 # Load configuration
@@ -195,11 +190,11 @@ class ReportInput(BaseModel):
             return ""
         return str(v)
 
-@app.get("/health")
+@app.get("/api/health")
 def read_root():
     return {"message": "Daily Report API is running", "excel_dir": EXCEL_DIR}
 
-@app.get("/files")
+@app.get("/api/files")
 def list_excel_files():
     """List all Excel files in the directory"""
     logging.debug(f"Listing files in {EXCEL_DIR}")
@@ -327,7 +322,7 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
 
 
-@app.get("/customers")
+@app.get("/api/customers")
 def get_customers(filename: str = DEFAULT_EXCEL_FILE):
     """Get customer list from the Excel file"""
     try:
@@ -395,7 +390,7 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/priority-customers")
+@app.get("/api/priority-customers")
 def get_priority_customers(filename: str = DEFAULT_EXCEL_FILE):
     """得意先_Listからカラム H (重点顧客) が「重点」の顧客を取得。カラム I の担当者情報も含める"""
     try:
@@ -477,7 +472,7 @@ def get_priority_customers(filename: str = DEFAULT_EXCEL_FILE):
 
 
 
-@app.get("/interviewers")
+@app.get("/api/interviewers")
 def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of interviewers for a specific customer"""
     excel_file = os.path.join(EXCEL_DIR, filename)
@@ -507,7 +502,7 @@ def get_interviewers(customer_code: str, filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/reports/{management_number}")
+@app.get("/api/reports/{management_number}")
 def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を取得"""
     try:
@@ -561,7 +556,7 @@ def get_report_by_id(management_number: int, filename: str = DEFAULT_EXCEL_FILE)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/reports")
+@app.get("/api/reports")
 def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     try:
         logging.debug(f"Fetching reports for {filename} from {EXCEL_DIR}")
@@ -622,7 +617,7 @@ def get_reports(filename: str = DEFAULT_EXCEL_FILE):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/interviewers/{customer_cd}")
+@app.get("/api/interviewers/{customer_cd}")
 def get_interviewers(
     customer_cd: str, 
     filename: str = DEFAULT_EXCEL_FILE,
@@ -715,7 +710,7 @@ def get_interviewers(
         logging.error(f"Error in get_interviewers: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/designs/{customer_cd}")
+@app.get("/api/designs/{customer_cd}")
 def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename: str = DEFAULT_EXCEL_FILE):
     """Get list of design requests for a specific customer (optionally filtered by delivery destination)"""
     try:
@@ -790,7 +785,7 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/reports")
+@app.post("/api/reports")
 def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     excel_file = os.path.join(EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
@@ -970,7 +965,7 @@ class ApprovalInput(BaseModel):
 class ReplyInput(BaseModel):
     コメント返信欄: str
 
-@app.patch("/reports/{management_number}/reply")
+@app.patch("/api/reports/{management_number}/reply")
 def update_report_reply(management_number: int, reply: ReplyInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """コメント返信欄のみを更新（安全な保存）"""
     import tempfile
@@ -1046,7 +1041,7 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/reports/{management_number}/comment")
+@app.patch("/api/reports/{management_number}/comment")
 def update_report_comment(management_number: int, comment: CommentInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """上長コメントとコメント返信欄を個別に更新（安全な保存）"""
     import tempfile
@@ -1118,7 +1113,7 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.patch("/reports/{management_number}/approval")
+@app.patch("/api/reports/{management_number}/approval")
 def update_report_approval(management_number: int, approval: ApprovalInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）を個別に更新"""
     import tempfile
@@ -1202,7 +1197,7 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/reports/{management_number}")
+@app.post("/api/reports/{management_number}")
 def update_report(management_number: int, report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """既存の日報を更新（全項目対応）"""
     logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
@@ -1315,7 +1310,7 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/reports/{management_number}")
+@app.delete("/api/reports/{management_number}")
 def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を削除"""
     try:
@@ -1363,7 +1358,7 @@ def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload")
+@app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Upload an Excel file to the backend directory"""
     try:
@@ -1396,7 +1391,7 @@ logging.basicConfig(
     encoding='utf-8' # Ensure we can log Japanese characters
 )
 
-@app.get("/images/list")
+@app.get("/api/images/list")
 def get_design_images(filename: str):
     """
     Get list of images from the matching folder in Design Data directory.
@@ -1545,7 +1540,7 @@ def get_design_images(filename: str):
         logging.error(f"Error listing images: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/images/content")
+@app.get("/api/images/content")
 def serve_design_image(path: str):
     """
     Serve the image file content.
@@ -1570,7 +1565,7 @@ def serve_design_image(path: str):
     except Exception as e:
          raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/images/search")
+@app.get("/api/images/search")
 def search_design_images(query: str, filename: Optional[str] = None):
     """
     Search for images matching the query (Design No) in the Design Data directory.
@@ -1840,7 +1835,7 @@ def load_sales_data():
 # Load on startup
 load_sales_data()
 
-@app.post("/sales/upload")
+@app.post("/api/sales/upload")
 async def upload_sales_csv(file: UploadFile = File(...)):
     """
     Uploads a global sales data CSV file, saves it, and unloads it into memory.
@@ -1871,7 +1866,7 @@ async def upload_sales_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@app.get("/sales/all")
+@app.get("/api/sales/all")
 async def get_all_sales_data():
     """
     Retrieves ALL sales data as a list.
@@ -1911,7 +1906,7 @@ async def get_all_sales_data():
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
 
 
-@app.get("/sales/{customer_code}")
+@app.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
     Retrieves sales data for a specific customer from the global dataset.

@@ -1060,6 +1060,6 @@ export default function BatchReportPage() {
                     </button>
                 </div>
             </div>
-        </div >
+        </div>
     );
 }

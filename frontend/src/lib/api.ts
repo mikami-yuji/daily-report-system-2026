@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = process.env.NODE_ENV === 'development' ? '/api' : '';
+// 常に/apiプレフィックスを使用（EXE版でのルート競合を防ぐため）
+const API_URL = '/api';
 
 // タイムアウト設定（ミリ秒）
 const DEFAULT_TIMEOUT = 30000; // 30秒

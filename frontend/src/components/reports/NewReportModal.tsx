@@ -44,7 +44,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
     const [designs, setDesigns] = useState<Design[]>([]);
     const [startOutTime, setStartOutTime] = useState('');
     const [endOutTime, setEndOutTime] = useState('');
-    const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
 
 
 
@@ -140,9 +139,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             ランク: customer.ランク || ''
         }));
         setShowSuggestions(false);
-
-        // 現目標を設定
-        setCurrentTarget(customer['現目標'] || '');
 
         // Fetch interviewers for this customer
         if (customer.得意先CD) {
@@ -253,9 +249,37 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                console.error('Server error details:', errorData);
-                throw new Error(`Failed to create report: ${JSON.stringify(errorData)}`);
+                const errorData = await response.json().catch(() => ({}));
+
+                if (response.status === 422) {
+                    // バリデーションエラー
+                    const details = errorData.detail || '入力内容を確認してください';
+                    toast.error(`入力エラー: ${details}`, {
+                        duration: 6000,
+                        style: {
+                            border: '1px solid #f59e0b',
+                            padding: '16px',
+                        }
+                    });
+                    throw new Error(`Validation error: ${details}`);
+                } else if (response.status === 409) {
+                    // コンフリクトエラー
+                    toast.error('データの競合が発生しました。ページを更新してください', {
+                        duration: 5000
+                    });
+                    throw new Error('Conflict error');
+                } else if (response.status >= 500) {
+                    // サーバーエラー
+                    toast.error('サーバーエラーが発生しました。しばらくしてからお試しください', {
+                        duration: 5000
+                    });
+                    throw new Error('Server error');
+                } else {
+                    // その他のHTTPエラー
+                    const message = errorData.detail || response.statusText;
+                    toast.error(`エラー (${response.status}): ${message}`);
+                    throw new Error(`HTTP ${response.status}: ${message}`);
+                }
             }
 
             const responseData = await response.json();
@@ -263,7 +287,27 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             onSuccess();
         } catch (error: any) {
             console.error('Error creating report:', error);
-            toast.error(`作成に失敗しました: ${error.message}`);
+
+            // ネットワークエラーのチェック
+            if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
+                toast.error('ネットワーク接続を確認してください', {
+                    duration: 5000,
+                    icon: '🌐'
+                });
+                return;
+            }
+
+            // 既にtoast.errorで表示済みのエラーは再表示しない
+            if (error.message?.includes('Validation error') ||
+                error.message?.includes('Conflict error') ||
+                error.message?.includes('Server error') ||
+                error.message?.includes('HTTP')) {
+                // 既に適切なエラーメッセージが表示されているので何もしない
+                return;
+            }
+
+            // その他の予期しないエラー
+            toast.error(`予期しないエラーが発生しました: ${error.message}`);
         } finally {
             setSubmitting(false);
         }
@@ -275,7 +319,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             訪問先名: '',
         }));
         filterCustomers('');
-        setCurrentTarget('');  // 現目標もクリア
     };
 
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
@@ -421,24 +464,12 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                                                     {customer.得意先名}
                                                     {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">(直送先: {customer.直送先名})</span>}
                                                 </div>
-                                                <div className="text-xs text-sf-text-weak flex justify-between">
-                                                    <span>{customer.得意先CD} - {customer.エリア}</span>
-                                                    {customer['現目標'] && (
-                                                        <span className="text-blue-600 font-medium">目標: {customer['現目標']}</span>
-                                                    )}
+                                                <div className="text-xs text-sf-text-weak">
+                                                    {customer.得意先CD} - {customer.エリア}
                                                 </div>
                                             </li>
                                         ))}
                                     </ul>
-                                )}
-                                {/* 現目標バナー */}
-                                {formData.得意先CD && currentTarget && (
-                                    <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">現目標</span>
-                                            <span className="text-sm font-medium text-blue-800">{currentTarget}</span>
-                                        </div>
-                                    </div>
                                 )}
                             </div>
                         )}

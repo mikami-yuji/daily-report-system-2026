@@ -87,6 +87,12 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     }, [hasNext, hasPrev, onNext, onPrev, onClose]);
 
     const handleApprovalChange = async (field: keyof typeof approvals) => {
+        // 管理番号の検証
+        if (!report.管理番号) {
+            toast.error('管理番号が無効です。日報を再読み込みしてください。');
+            return;
+        }
+
         // UIでは✓表示、Excelには「ü」を書き込む（Wingdingsフォントでチェックマーク）
         const isChecked = approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü';
         const newDisplayValue = isChecked ? '' : '✓';  // UI表示用
@@ -114,6 +120,12 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     const handleCommentBlur = async (field: keyof typeof comments) => {
         if (comments[field] === (report[field] || '')) return; // No change
 
+        // 管理番号の検証
+        if (!report.管理番号) {
+            toast.error('管理番号が無効です。日報を再読み込みしてください。');
+            return;
+        }
+
         setSaving(true);
         setProcessingComment(field); // 処理中のコメントフィールドを記録
         try {
@@ -135,6 +147,13 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     };
 
     const executeDelete = async () => {
+        // 管理番号の検証
+        if (!report.管理番号) {
+            toast.error('管理番号が無効です。日報を再読み込みしてください。');
+            setShowDeleteConfirm(false);
+            return;
+        }
+
         setSaving(true);
         try {
             await deleteReport(report.管理番号, selectedFile);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval, getCustomers } from '@/lib/api';
+import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
@@ -31,13 +31,14 @@ function InfoRow({ label, value }: { label: string; value: any }) {
 // It uses <div className="text-base text-sf-text whitespace-pre-wrap ..."> which is similar logic but inline.
 // I'll keep InfoRow as it IS used.
 
+// Excelの「済」または「ü」をUIでは「✓」として表示
+const convertToDisplay = (value: string | undefined): string => {
+    if (value === '済' || value === 'ü') return '✓';
+    return value || '';
+};
+
 export default function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, onEdit, onUpdate }: ReportDetailModalProps) {
     const { selectedFile } = useFile();
-    // Excelの「済」または「ü」をUIでは「✓」として表示
-    const convertToDisplay = (value: string | undefined): string => {
-        if (value === '済' || value === 'ü') return '✓';
-        return value || '';
-    };
     const [approvals, setApprovals] = useState({
         上長: convertToDisplay(report.上長),
         山澄常務: convertToDisplay(report.山澄常務),
@@ -53,30 +54,21 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     const [processingApproval, setProcessingApproval] = useState<string | null>(null); // 処理中の承認フィールド
     const [processingComment, setProcessingComment] = useState<string | null>(null); // 処理中のコメントフィールド
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
 
-    // 得意先マスタから現目標を取得
+    // レポート変更時にステートを更新
     useEffect(() => {
-        if (report.得意先CD && selectedFile) {
-            getCustomers(selectedFile).then(customers => {
-                const customerCode = String(report.得意先CD || '').trim();
-                const ddCode = String(report.直送先CD || '').trim();
-
-                // 得意先CDでマッチする顧客を検索
-                const matchedCustomer = customers.find(c => {
-                    const custCD = String(c.得意先CD || '').trim();
-                    const custDDCD = String(c.直送先CD || '').trim();
-                    return custCD === customerCode && (!ddCode || custDDCD === ddCode);
-                });
-
-                if (matchedCustomer && matchedCustomer['現目標']) {
-                    setCurrentTarget(String(matchedCustomer['現目標']));
-                }
-            }).catch(err => {
-                console.error('Failed to fetch customers for target:', err);
-            });
-        }
-    }, [report.得意先CD, report.直送先CD, selectedFile]);
+        setApprovals({
+            上長: convertToDisplay(report.上長),
+            山澄常務: convertToDisplay(report.山澄常務),
+            岡本常務: convertToDisplay(report.岡本常務),
+            中野次長: convertToDisplay(report.中野次長),
+            既読チェック: convertToDisplay(report.既読チェック)
+        });
+        setComments({
+            上長コメント: report.上長コメント || report.コメント || '',
+            コメント返信欄: report.コメント返信欄 || ''
+        });
+    }, [report]);
 
     // キーボードイベントのハンドリング
     useEffect(() => {
@@ -191,13 +183,6 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                 {report.エリア}
                             </span>
                         </div>
-                        {/* 現目標バナー（得意先_Listから取得した値を優先） */}
-                        {(currentTarget || report.得意先目標) && (
-                            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 rounded-lg">
-                                <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-0.5 rounded">目標</span>
-                                <span className="text-sm font-semibold text-blue-900">{currentTarget || report.得意先目標}</span>
-                            </div>
-                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         <button

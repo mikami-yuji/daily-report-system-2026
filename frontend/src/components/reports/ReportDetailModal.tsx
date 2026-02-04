@@ -168,7 +168,14 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         }
     };
 
-    const hasDesign = report.デザイン提案有無 === 'あり';
+    // デザイン情報の表示条件をグリッド表示と統一（いずれかのフィールドに値があれば表示）
+    const hasDesign = !!(
+        report.デザイン進捗状況 ||
+        report['デザイン依頼No.'] ||
+        report.デザイン種別 ||
+        report.デザイン名 ||
+        report.デザイン提案有無
+    );
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>

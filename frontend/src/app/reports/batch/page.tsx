@@ -47,7 +47,6 @@ type VisitEntry = {
     outingStartTime?: string;
     outingEndTime?: string;
     interviewers: string[]; // 得意先ごとの面談者リスト
-    currentTarget?: string;  // 現目標
 };
 
 // 空の訪問ブロックを作成
@@ -78,7 +77,6 @@ const createEmptyVisit = (): VisitEntry => ({
     outingStartTime: '',
     outingEndTime: '',
     interviewers: [],
-    currentTarget: '',
 });
 
 export default function BatchReportPage() {
@@ -254,7 +252,6 @@ export default function BatchReportPage() {
                     ランク: customer.ランク || '',
                     重点顧客: customer.重点顧客 || '',
                     designs: [], // 初期化
-                    currentTarget: customer['現目標'] || '',  // 現目標を取得
                 };
             }
             return v;
@@ -313,71 +310,21 @@ export default function BatchReportPage() {
         ));
     };
 
-    // バリデーション関数
+    // バリデーション関数（警告のみ、保存はブロックしない）
     const validateVisits = useCallback((): { isValid: boolean; errors: ValidationErrors } => {
-        const errors: ValidationErrors = {};
-        let hasError = false;
-
-        visits.forEach(visit => {
-            const visitErrors: ValidationErrors[string] = {};
-
-            // 得意先CDチェック（行動内容が社内・外出時間以外の場合は必須）
-            const isInternalAction = ['社内（半日）', '社内（１日）', '外出時間'].includes(visit.行動内容);
-            if (!isInternalAction && !visit.得意先CD) {
-                visitErrors.得意先CD = '得意先を選択してください';
-                hasError = true;
-            }
-
-            // 行動内容チェック（必須）
-            if (!visit.行動内容 || visit.行動内容 === '-') {
-                visitErrors.行動内容 = '行動内容を選択してください';
-                hasError = true;
-            }
-
-            // 外出時間の場合、開始・終了時刻チェック
-            if (visit.行動内容 === '外出時間') {
-                if (!visit.outingStartTime || !visit.outingEndTime) {
-                    visitErrors.外出時間 = '外出時間の開始・終了時刻を入力してください';
-                    hasError = true;
-                }
-            }
-
-            if (Object.keys(visitErrors).length > 0) {
-                errors[visit.id] = visitErrors;
-            }
-        });
-
-        return { isValid: !hasError, errors };
+        // どんな条件でも保存可能にするため、常にバリデーション通過
+        return { isValid: true, errors: {} };
     }, [visits]);
 
-    // 一括保存
+    // 一括保存（どんな条件でも保存可能）
     const handleSubmit = async (): Promise<void> => {
-        // バリデーション実行
-        const { isValid, errors } = validateVisits();
-        setValidationErrors(errors);
-        setShowErrors(true);
-
-        if (!isValid) {
-            // エラーがある訪問の数をカウント
-            const errorCount = Object.keys(errors).length;
-            toast.error(
-                <div className="flex items-center gap-2">
-                    <AlertCircle size={18} />
-                    <span>{errorCount}件の入力エラーがあります。赤枠の項目を確認してください</span>
-                </div>,
-                { duration: 4000 }
-            );
-            return;
-        }
-
-        // 有効なデータのみ抽出（社内・外出時間は得意先不要）
+        // 何かしらデータが入力されている訪問を抽出（完全に空のブロックはスキップ）
         const validVisits = visits.filter(v => {
-            const isInternalAction = ['社内（半日）', '社内（１日）', '外出時間'].includes(v.行動内容);
-            return (isInternalAction || v.得意先CD) && v.行動内容 && v.行動内容 !== '-';
+            return v.得意先CD || v.訪問先名 || v.行動内容 || v.商談内容 || v.面談者 || v.提案物 || v.次回プラン || v.競合他社情報;
         });
 
         if (validVisits.length === 0) {
-            toast.error('保存するデータがありません');
+            toast.error('保存するデータがありません。少なくとも1つの項目を入力してください');
             return;
         }
 
@@ -450,7 +397,8 @@ export default function BatchReportPage() {
     };
 
     // 有効な訪問数
-    const validCount = visits.filter(v => v.得意先CD && v.行動内容).length;
+    // 何かしらデータが入力されている訪問数をカウント
+    const validCount = visits.filter(v => v.得意先CD || v.訪問先名 || v.行動内容 || v.商談内容 || v.面談者).length;
 
     return (
         <div className="space-y-6">
@@ -536,7 +484,7 @@ export default function BatchReportPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="relative">
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">
-                                                得意先CD / 訪問先名 <span className="text-red-500">*</span>
+                                                得意先CD / 訪問先名
                                             </label>
                                             {visit.得意先CD ? (
                                                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-sf-border rounded">
@@ -616,14 +564,6 @@ export default function BatchReportPage() {
                                     </div>
                                 )}
 
-                                {/* 現目標バナー（得意先選択時に表示） */}
-                                {visit.currentTarget && (
-                                    <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 border border-blue-300 rounded-lg">
-                                        <span className="text-xs font-bold text-blue-700 bg-blue-200 px-2 py-0.5 rounded">目標</span>
-                                        <span className="text-sm font-semibold text-blue-900">{visit.currentTarget}</span>
-                                    </div>
-                                )}
-
                                 {/* 量販店調査用：訪問先フリーテキスト入力（履歴サジェスト付き） */}
                                 {visit.行動内容 === '量販店調査' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -678,7 +618,7 @@ export default function BatchReportPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs font-medium text-sf-text-weak mb-1">
-                                            行動内容 <span className="text-red-500">*</span>
+                                            行動内容
                                         </label>
                                         <select
                                             value={visit.行動内容}
@@ -1060,6 +1000,6 @@ export default function BatchReportPage() {
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

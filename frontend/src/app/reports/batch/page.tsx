@@ -479,7 +479,7 @@ export default function BatchReportPage() {
                         {/* 訪問詳細フォーム */}
                         {visit.isExpanded && (
                             <div className="p-4 space-y-4">
-                                {/* 得意先検索（社内業務・外出時間・量販店調査以外のみ表示） */}
+                                {/* 得意先検索・自由記載（社内業務・外出時間・量販店調査以外のみ表示） */}
                                 {!['社内（半日）', '社内（１日）', '外出時間', '量販店調査'].includes(visit.行動内容) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="relative">
@@ -495,19 +495,25 @@ export default function BatchReportPage() {
                                                         type="button"
                                                         onClick={() => {
                                                             updateVisit(visit.id, '得意先CD', '');
-                                                            // エラーをクリア
-                                                            if (validationErrors[visit.id]?.得意先CD) {
-                                                                setValidationErrors(prev => {
-                                                                    const newErrors = { ...prev };
-                                                                    if (newErrors[visit.id]) {
-                                                                        delete newErrors[visit.id].得意先CD;
-                                                                        if (Object.keys(newErrors[visit.id]).length === 0) {
-                                                                            delete newErrors[visit.id];
-                                                                        }
-                                                                    }
-                                                                    return newErrors;
-                                                                });
-                                                            }
+                                                            updateVisit(visit.id, '訪問先名', '');
+                                                            setSearchTerms({ ...searchTerms, [visit.id]: '' });
+                                                        }}
+                                                        className="ml-auto text-gray-400 hover:text-red-500"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ) : visit.訪問先名 && !searchTerms[visit.id] ? (
+                                                /* 自由記載で入力された訪問先名を表示 */
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded">
+                                                    <Building2 size={16} className="text-amber-500" />
+                                                    <span className="text-sm text-sf-text">{visit.訪問先名}</span>
+                                                    <span className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">自由記載</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            updateVisit(visit.id, '訪問先名', '');
+                                                            setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                         }}
                                                         className="ml-auto text-gray-400 hover:text-red-500"
                                                     >
@@ -526,19 +532,37 @@ export default function BatchReportPage() {
                                                                 setShowSuggestions({ ...showSuggestions, [visit.id]: true });
                                                             }}
                                                             onFocus={() => setShowSuggestions({ ...showSuggestions, [visit.id]: true })}
-                                                            placeholder="得意先CD、名前、カナで検索..."
-                                                            className={`w-full pl-9 pr-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${showErrors && validationErrors[visit.id]?.得意先CD
-                                                                ? 'border-red-500 bg-red-50'
-                                                                : 'border-sf-border'
-                                                                }`}
+                                                            onBlur={() => {
+                                                                // 候補選択のクリックを待つため遅延
+                                                                setTimeout(() => {
+                                                                    const term = searchTerms[visit.id]?.trim();
+                                                                    if (term && !visit.得意先CD) {
+                                                                        // 自由記載として訪問先名に設定
+                                                                        updateVisit(visit.id, '訪問先名', term);
+                                                                        setSearchTerms({ ...searchTerms, [visit.id]: '' });
+                                                                    }
+                                                                    setShowSuggestions({ ...showSuggestions, [visit.id]: false });
+                                                                }, 200);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    const term = searchTerms[visit.id]?.trim();
+                                                                    if (term) {
+                                                                        // Enterで自由記載として確定
+                                                                        updateVisit(visit.id, '訪問先名', term);
+                                                                        setSearchTerms({ ...searchTerms, [visit.id]: '' });
+                                                                        setShowSuggestions({ ...showSuggestions, [visit.id]: false });
+                                                                    }
+                                                                }
+                                                            }}
+                                                            placeholder="得意先を検索 or 自由記載してEnter..."
+                                                            className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
                                                         />
                                                     </div>
-                                                    {showErrors && validationErrors[visit.id]?.得意先CD && (
-                                                        <div className="flex items-center gap-1 mt-1 text-red-500 text-xs">
-                                                            <AlertCircle size={12} />
-                                                            <span>{validationErrors[visit.id].得意先CD}</span>
-                                                        </div>
-                                                    )}
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        得意先リストから選択、または名前を入力してEnterで自由記載
+                                                    </p>
                                                 </>
                                             )}
                                             {showSuggestions[visit.id] && searchTerms[visit.id] && (
@@ -554,8 +578,8 @@ export default function BatchReportPage() {
                                                         </div>
                                                     ))}
                                                     {filterCustomers(searchTerms[visit.id]).length === 0 && (
-                                                        <div className="px-3 py-2 text-sm text-gray-400">
-                                                            該当する得意先がありません
+                                                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
+                                                            該当する得意先がありません — Enterで「{searchTerms[visit.id]}」を自由記載
                                                         </div>
                                                     )}
                                                 </div>

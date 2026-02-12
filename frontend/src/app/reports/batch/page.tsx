@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
@@ -131,6 +131,9 @@ export default function BatchReportPage() {
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
     const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
 
+    // 得意先リスト選択時にonBlurの自由記載を抑制するためのフラグ
+    const justSelectedCustomerRef = useRef<boolean>(false);
+
     // 量販店調査入力用state
     const [retailerSearchTerms, setRetailerSearchTerms] = useState<{ [key: string]: string }>({});
     const [showRetailerSuggestions, setShowRetailerSuggestions] = useState<{ [key: string]: boolean }>({});
@@ -256,6 +259,8 @@ export default function BatchReportPage() {
             }
             return v;
         }));
+        // リスト選択フラグを立てて、onBlurでの自由記載上書きを防止
+        justSelectedCustomerRef.current = true;
         setShowSuggestions({ ...showSuggestions, [visitId]: false });
         setSearchTerms({ ...searchTerms, [visitId]: '' });
 
@@ -535,14 +540,20 @@ export default function BatchReportPage() {
                                                             onBlur={() => {
                                                                 // 候補選択のクリックを待つため遅延
                                                                 setTimeout(() => {
+                                                                    // リスト選択された場合は自由記載しない
+                                                                    if (justSelectedCustomerRef.current) {
+                                                                        justSelectedCustomerRef.current = false;
+                                                                        setShowSuggestions({ ...showSuggestions, [visit.id]: false });
+                                                                        return;
+                                                                    }
                                                                     const term = searchTerms[visit.id]?.trim();
-                                                                    if (term && !visit.得意先CD) {
+                                                                    if (term) {
                                                                         // 自由記載として訪問先名に設定
                                                                         updateVisit(visit.id, '訪問先名', term);
                                                                         setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                                     }
                                                                     setShowSuggestions({ ...showSuggestions, [visit.id]: false });
-                                                                }, 200);
+                                                                }, 250);
                                                             }}
                                                             onKeyDown={(e) => {
                                                                 if (e.key === 'Enter') {
@@ -571,7 +582,7 @@ export default function BatchReportPage() {
                                                         <div
                                                             key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
                                                             className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                                                            onClick={() => selectCustomer(visit.id, c)}
+                                                            onMouseDown={() => selectCustomer(visit.id, c)}
                                                         >
                                                             <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
                                                             {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}

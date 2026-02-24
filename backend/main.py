@@ -343,9 +343,11 @@ def get_customers(filename: str = DEFAULT_EXCEL_FILE):
                 logging.info(f"Found target column: '{col}'")
         
         # Rename specific columns
+        # 都道府県（カラムF）→ エリア: フロントエンドが c.エリア でアクセスするため
         df = df.rename(columns={
             '得意先CD.': '得意先CD',
             '直送先CD.': '直送先CD',
+            '都道府県': 'エリア',
         })
         
         # Fill NaN values with empty strings

@@ -119,6 +119,8 @@ export default function BatchReportPage() {
     // 得意先・面談者リスト
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [interviewers, setInterviewers] = useState<string[]>([]);
+    // 得意先リストからエリア一覧を動的に取得
+    const [areaOptions, setAreaOptions] = useState<string[]>([]);
 
     // 送信中フラグ
     const [submitting, setSubmitting] = useState(false);
@@ -150,7 +152,12 @@ export default function BatchReportPage() {
     // 得意先リスト取得
     useEffect(() => {
         if (selectedFile) {
-            getCustomers(selectedFile).then(setCustomers).catch(console.error);
+            getCustomers(selectedFile).then(data => {
+                setCustomers(data);
+                // エリア一覧を抽出（重複除去・ソート）
+                const areas = [...new Set(data.map(c => c.エリア).filter(Boolean))].sort();
+                setAreaOptions(areas);
+            }).catch(console.error);
         }
     }, [selectedFile]);
 
@@ -699,6 +706,27 @@ export default function BatchReportPage() {
                                             </div>
                                         )}
                                     </div>
+
+                                    {/* エリア選択ドロップダウン（行動内容の右側） */}
+                                    {!['社内（１日）', '社内（半日）', '外出時間'].includes(visit.行動内容) && (
+                                        <div>
+                                            <label className="block text-xs font-medium text-sf-text-weak mb-1">エリア</label>
+                                            <select
+                                                value={visit.エリア}
+                                                onChange={(e) => updateVisit(visit.id, 'エリア', e.target.value)}
+                                                className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${!visit.エリア && visit.訪問先名 ? 'border-amber-300 bg-amber-50' : 'border-sf-border'
+                                                    }`}
+                                            >
+                                                <option value="">エリアを選択</option>
+                                                {areaOptions.map(area => (
+                                                    <option key={area} value={area}>{area}</option>
+                                                ))}
+                                            </select>
+                                            {!visit.エリア && visit.訪問先名 && (
+                                                <p className="mt-1 text-xs text-amber-600">⚠ エリアが未選択です</p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* 面談者・滞在時間（社内・外出時間・量販店調査以外のみ表示） */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { aggregateAnalytics, getDateRange, AnalyticsData, aggregatePriorityMatrix, PriorityMatrixData } from '@/lib/analytics';
@@ -343,219 +343,319 @@ export default function AnalyticsPage() {
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
 
-            {activeTab === 'design' && (
-                <div className="space-y-8 animate-fadeIn">
-                    {/* Design KPIs */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                        <KPICard title="デザイン依頼" value={analytics.kpis.totalProposals} icon={FileText} color="blue" />
-                        <KPICard title="進行中案件" value={analytics.kpis.activeProjects} icon={Briefcase} color="purple" />
-                        <KPICard title="出稿" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="green" />
-                        <KPICard title="不採用" value={analytics.kpis.rejectedDesigns} icon={XCircle} color="red" />
-                        <KPICard title="出稿率" value={`${analytics.kpis.acceptanceRate}%`} icon={TrendingUp} color="orange" />
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Design Progress */}
-                        <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン進捗状況</h2>
-                            <div style={{ width: '100%', height: 300 }}>
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <BarChart data={analytics.designProgress} layout="vertical" margin={{ left: 40 }}>
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                        <XAxis type="number" />
-                                        <YAxis dataKey="status" type="category" width={100} tick={{ fontSize: 11 }} />
-                                        <Tooltip cursor={{ fill: 'transparent' }} />
-                                        <Bar dataKey="count" name="件数" fill="#8884d8" radius={[0, 4, 4, 0]}>
-                                            {analytics.designProgress.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
+                    {/* 月別エリア別活動統計テーブル */}
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                        <div className="px-6 py-4 border-b border-gray-200">
+                            <h2 className="text-xl font-bold text-gray-900">月別エリア別活動統計</h2>
+                            <p className="text-sm text-gray-500 mt-1">全期間の月ごと・エリアごとの訪問件数・電話件数を一覧表示</p>
                         </div>
-
-                        {/* Design Trends */}
-                        <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン依頼・出稿・不採用推移</h2>
-                            <div style={{ width: '100%', height: 300 }}>
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <ComposedChart data={analytics.trends}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                        <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                                        <YAxis />
-                                        <Tooltip />
-                                        <Legend />
-                                        <Bar dataKey="proposals" name="デザイン依頼" fill="#8884d8" barSize={20} radius={[4, 4, 0, 0]} />
-                                        <Line type="monotone" dataKey="completed" name="出稿数" stroke="#82ca9d" strokeWidth={3} />
-                                        <Line type="monotone" dataKey="rejected" name="不採用数" stroke="#ff8042" strokeWidth={3} />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'priority' && (
-                <div className="space-y-6 animate-fadeIn">
-                    {/* Priority KPIs */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                        <KPICard title="重点顧客数" value={matrixData?.customers.length || 0} icon={Star} color="yellow" />
-                        <KPICard title="訪問数" value={analytics.priority.totalVisits} icon={Users} color="blue" />
-                        <KPICard title="電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
-                        <KPICard title="デザイン依頼" value={analytics.priority.totalProposals} icon={FileText} color="purple" />
-                        <KPICard title="出稿" value={analytics.priority.completedDesigns} icon={CheckCircle} color="green" />
-                        <KPICard title="出稿率" value={`${analytics.priority.acceptanceRate}%`} icon={TrendingUp} color="red" />
-                    </div>
-
-                    {/* Matrix Controls */}
-                    <div className="bg-white rounded-lg shadow p-6">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                            <h2 className="text-xl font-bold text-gray-900">重点顧客 活動マトリクス</h2>
-
-                            <div className="flex flex-wrap gap-4">
-                                {/* Mode Toggle */}
-                                <div className="flex bg-gray-100 rounded-lg p-1">
-                                    <button
-                                        onClick={() => setMatrixMode('monthly')}
-                                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMode === 'monthly'
-                                            ? 'bg-white text-gray-900 shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        月別
-                                    </button>
-                                    <button
-                                        onClick={() => setMatrixMode('weekly')}
-                                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMode === 'weekly'
-                                            ? 'bg-white text-gray-900 shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        週別
-                                    </button>
-                                </div>
-
-                                {/* Metric Toggle */}
-                                <div className="flex bg-gray-100 rounded-lg p-1">
-                                    <button
-                                        onClick={() => setMatrixMetric('total')}
-                                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMetric === 'total'
-                                            ? 'bg-blue-500 text-white shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        合計
-                                    </button>
-                                    <button
-                                        onClick={() => setMatrixMetric('visits')}
-                                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMetric === 'visits'
-                                            ? 'bg-blue-500 text-white shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        訪問
-                                    </button>
-                                    <button
-                                        onClick={() => setMatrixMetric('calls')}
-                                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMetric === 'calls'
-                                            ? 'bg-blue-500 text-white shadow-sm'
-                                            : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                    >
-                                        電話
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Matrix Table */}
                         <div className="overflow-x-auto">
-                            {matrixData && matrixData.customers.length > 0 ? (
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="bg-gray-50">
-                                            <th className="px-4 py-3 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[180px]">
-                                                顧客名
-                                            </th>
-                                            {matrixData.periods.map((period, idx) => (
-                                                <th key={idx} className="px-2 py-3 text-center font-semibold text-gray-700 min-w-[60px]">
-                                                    {period}
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="px-4 py-3 font-semibold">月</th>
+                                        <th className="px-4 py-3 font-semibold">エリア</th>
+                                        <th className="px-4 py-3 font-semibold text-center">訪問件数</th>
+                                        <th className="px-4 py-3 font-semibold text-center">電話件数</th>
+                                        <th className="px-4 py-3 font-semibold text-center">合計</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        // 月別・エリア別の集計
+                                        type AreaCount = { visits: number; calls: number };
+                                        type MonthAreaData = { month: string; areas: Map<string, AreaCount>; totalVisits: number; totalCalls: number };
+                                        const monthAreaMap = new Map<string, MonthAreaData>();
+
+                                        reports.forEach(report => {
+                                            if (!report.日付) return;
+                                            const dateStr = String(report.日付);
+                                            let month = '';
+                                            if (dateStr.includes('/')) {
+                                                const parts = dateStr.split('/');
+                                                if (parts.length >= 2) month = `${parts[0]}/${parts[1]}`;
+                                            } else {
+                                                month = dateStr.slice(0, 7);
+                                            }
+                                            if (!month) return;
+
+                                            const isVisit = report.行動内容 && report.行動内容.includes('訪問');
+                                            const isCall = report.行動内容 && report.行動内容.includes('電話');
+                                            if (!isVisit && !isCall) return;
+
+                                            if (!monthAreaMap.has(month)) {
+                                                monthAreaMap.set(month, { month, areas: new Map(), totalVisits: 0, totalCalls: 0 });
+                                            }
+                                            const monthData = monthAreaMap.get(month)!;
+                                            const area = report.エリア && String(report.エリア).trim() ? String(report.エリア).trim() : '未設定';
+
+                                            if (!monthData.areas.has(area)) {
+                                                monthData.areas.set(area, { visits: 0, calls: 0 });
+                                            }
+                                            const areaStats = monthData.areas.get(area)!;
+                                            if (isVisit) { areaStats.visits++; monthData.totalVisits++; }
+                                            if (isCall) { areaStats.calls++; monthData.totalCalls++; }
+                                        });
+
+                                        const sortedMonthData = Array.from(monthAreaMap.values()).sort((a, b) => b.month.localeCompare(a.month));
+
+                                        return sortedMonthData.map((monthData) => {
+                                            const areas = Array.from(monthData.areas.entries()).sort((a, b) => {
+                                                if (a[0] === '未設定') return 1;
+                                                if (b[0] === '未設定') return -1;
+                                                return a[0].localeCompare(b[0]);
+                                            });
+                                            const rowCount = areas.length + 1;
+
+                                            return (
+                                                <React.Fragment key={`month-group-${monthData.month}`}>
+                                                    {areas.map(([area, areaStats]: [string, AreaCount], areaIdx: number) => (
+                                                        <tr key={`${monthData.month}-${area}`} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                                                            {areaIdx === 0 && (
+                                                                <td className="px-4 py-3 font-semibold text-gray-900 align-top border-r border-gray-200" rowSpan={rowCount}>
+                                                                    {monthData.month}
+                                                                </td>
+                                                            )}
+                                                            <td className="px-4 py-2 text-gray-700">{area}</td>
+                                                            <td className="px-4 py-2 text-center text-gray-700">{areaStats.visits}</td>
+                                                            <td className="px-4 py-2 text-center text-gray-700">{areaStats.calls}</td>
+                                                            <td className="px-4 py-2 text-center font-medium text-gray-900">{areaStats.visits + areaStats.calls}</td>
+                                                        </tr>
+                                                    ))}
+                                                    {/* 月合計行 */}
+                                                    <tr key={`${monthData.month}-total`} className="border-b-2 border-gray-300 bg-blue-50 font-semibold">
+                                                        <td className="px-4 py-2 text-gray-800 font-bold">合計</td>
+                                                        <td className="px-4 py-2 text-center text-gray-800">{monthData.totalVisits}</td>
+                                                        <td className="px-4 py-2 text-center text-gray-800">{monthData.totalCalls}</td>
+                                                        <td className="px-4 py-2 text-center font-bold text-gray-900">{monthData.totalVisits + monthData.totalCalls}</td>
+                                                    </tr>
+                                                </React.Fragment>
+                                            );
+                                        });
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )
+            }
+
+            {
+                activeTab === 'design' && (
+                    <div className="space-y-8 animate-fadeIn">
+                        {/* Design KPIs */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <KPICard title="デザイン依頼" value={analytics.kpis.totalProposals} icon={FileText} color="blue" />
+                            <KPICard title="進行中案件" value={analytics.kpis.activeProjects} icon={Briefcase} color="purple" />
+                            <KPICard title="出稿" value={analytics.kpis.completedDesigns} icon={CheckCircle} color="green" />
+                            <KPICard title="不採用" value={analytics.kpis.rejectedDesigns} icon={XCircle} color="red" />
+                            <KPICard title="出稿率" value={`${analytics.kpis.acceptanceRate}%`} icon={TrendingUp} color="orange" />
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Design Progress */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン進捗状況</h2>
+                                <div style={{ width: '100%', height: 300 }}>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <BarChart data={analytics.designProgress} layout="vertical" margin={{ left: 40 }}>
+                                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                            <XAxis type="number" />
+                                            <YAxis dataKey="status" type="category" width={100} tick={{ fontSize: 11 }} />
+                                            <Tooltip cursor={{ fill: 'transparent' }} />
+                                            <Bar dataKey="count" name="件数" fill="#8884d8" radius={[0, 4, 4, 0]}>
+                                                {analytics.designProgress.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Bar>
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+
+                            {/* Design Trends */}
+                            <div className="bg-white rounded-lg shadow p-6">
+                                <h2 className="text-xl font-bold text-gray-900 mb-4">デザイン依頼・出稿・不採用推移</h2>
+                                <div style={{ width: '100%', height: 300 }}>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <ComposedChart data={analytics.trends}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                                            <YAxis />
+                                            <Tooltip />
+                                            <Legend />
+                                            <Bar dataKey="proposals" name="デザイン依頼" fill="#8884d8" barSize={20} radius={[4, 4, 0, 0]} />
+                                            <Line type="monotone" dataKey="completed" name="出稿数" stroke="#82ca9d" strokeWidth={3} />
+                                            <Line type="monotone" dataKey="rejected" name="不採用数" stroke="#ff8042" strokeWidth={3} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {
+                activeTab === 'priority' && (
+                    <div className="space-y-6 animate-fadeIn">
+                        {/* Priority KPIs */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                            <KPICard title="重点顧客数" value={matrixData?.customers.length || 0} icon={Star} color="yellow" />
+                            <KPICard title="訪問数" value={analytics.priority.totalVisits} icon={Users} color="blue" />
+                            <KPICard title="電話数" value={analytics.priority.totalCalls} icon={Phone} color="orange" />
+                            <KPICard title="デザイン依頼" value={analytics.priority.totalProposals} icon={FileText} color="purple" />
+                            <KPICard title="出稿" value={analytics.priority.completedDesigns} icon={CheckCircle} color="green" />
+                            <KPICard title="出稿率" value={`${analytics.priority.acceptanceRate}%`} icon={TrendingUp} color="red" />
+                        </div>
+
+                        {/* Matrix Controls */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                                <h2 className="text-xl font-bold text-gray-900">重点顧客 活動マトリクス</h2>
+
+                                <div className="flex flex-wrap gap-4">
+                                    {/* Mode Toggle */}
+                                    <div className="flex bg-gray-100 rounded-lg p-1">
+                                        <button
+                                            onClick={() => setMatrixMode('monthly')}
+                                            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMode === 'monthly'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            月別
+                                        </button>
+                                        <button
+                                            onClick={() => setMatrixMode('weekly')}
+                                            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMode === 'weekly'
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            週別
+                                        </button>
+                                    </div>
+
+                                    {/* Metric Toggle */}
+                                    <div className="flex bg-gray-100 rounded-lg p-1">
+                                        <button
+                                            onClick={() => setMatrixMetric('total')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMetric === 'total'
+                                                ? 'bg-blue-500 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            合計
+                                        </button>
+                                        <button
+                                            onClick={() => setMatrixMetric('visits')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMetric === 'visits'
+                                                ? 'bg-blue-500 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            訪問
+                                        </button>
+                                        <button
+                                            onClick={() => setMatrixMetric('calls')}
+                                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${matrixMetric === 'calls'
+                                                ? 'bg-blue-500 text-white shadow-sm'
+                                                : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                        >
+                                            電話
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Matrix Table */}
+                            <div className="overflow-x-auto">
+                                {matrixData && matrixData.customers.length > 0 ? (
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="bg-gray-50">
+                                                <th className="px-4 py-3 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[180px]">
+                                                    顧客名
                                                 </th>
-                                            ))}
-                                            <th className="px-3 py-3 text-center font-bold text-gray-900 bg-gray-100 min-w-[60px]">
-                                                合計
-                                            </th>
-                                            <th className="px-3 py-3 text-right text-gray-700 min-w-[100px]">
-                                                最終活動
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {matrixData.customers.map((customer, idx) => (
-                                            <tr key={idx} className="border-b hover:bg-gray-50">
-                                                <td className="px-4 py-2 font-medium text-gray-900 sticky left-0 bg-white">
-                                                    <div className="min-w-[200px] max-w-[280px] text-sm leading-tight" title={customerNameMap.get(customer.code) || customer.name || customer.code}>
-                                                        {customerNameMap.get(customer.code)
-                                                            || (customer.name && customer.name !== 'nan' && customer.name !== 'undefined' ? customer.name : `得意先${customer.code}`)}
-                                                    </div>
-                                                </td>
-                                                {customer.values.map((value, vIdx) => (
-                                                    <td key={vIdx} className="px-2 py-3 text-center">
-                                                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-md text-xs font-bold ${getHeatmapColor(value)}`}>
-                                                            {value}
+                                                {matrixData.periods.map((period, idx) => (
+                                                    <th key={idx} className="px-2 py-3 text-center font-semibold text-gray-700 min-w-[60px]">
+                                                        {period}
+                                                    </th>
+                                                ))}
+                                                <th className="px-3 py-3 text-center font-bold text-gray-900 bg-gray-100 min-w-[60px]">
+                                                    合計
+                                                </th>
+                                                <th className="px-3 py-3 text-right text-gray-700 min-w-[100px]">
+                                                    最終活動
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {matrixData.customers.map((customer, idx) => (
+                                                <tr key={idx} className="border-b hover:bg-gray-50">
+                                                    <td className="px-4 py-2 font-medium text-gray-900 sticky left-0 bg-white">
+                                                        <div className="min-w-[200px] max-w-[280px] text-sm leading-tight" title={customerNameMap.get(customer.code) || customer.name || customer.code}>
+                                                            {customerNameMap.get(customer.code)
+                                                                || (customer.name && customer.name !== 'nan' && customer.name !== 'undefined' ? customer.name : `得意先${customer.code}`)}
+                                                        </div>
+                                                    </td>
+                                                    {customer.values.map((value, vIdx) => (
+                                                        <td key={vIdx} className="px-2 py-3 text-center">
+                                                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded-md text-xs font-bold ${getHeatmapColor(value)}`}>
+                                                                {value}
+                                                            </span>
+                                                        </td>
+                                                    ))}
+                                                    <td className="px-3 py-3 text-center bg-gray-50">
+                                                        <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-sm font-bold ${customer.total > 0 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                                                            }`}>
+                                                            {customer.total}
                                                         </span>
                                                     </td>
-                                                ))}
-                                                <td className="px-3 py-3 text-center bg-gray-50">
-                                                    <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-sm font-bold ${customer.total > 0 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
-                                                        }`}>
-                                                        {customer.total}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-3 text-right text-gray-500 text-xs">
-                                                    {customer.lastActivity || '-'}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                <div className="text-center py-8 text-gray-500">
-                                    {priorityCustomers.length === 0
-                                        ? '重点顧客マスタを読み込んでいます...'
-                                        : 'データがありません'}
-                                </div>
-                            )}
-                        </div>
+                                                    <td className="px-3 py-3 text-right text-gray-500 text-xs">
+                                                        {customer.lastActivity || '-'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                ) : (
+                                    <div className="text-center py-8 text-gray-500">
+                                        {priorityCustomers.length === 0
+                                            ? '重点顧客マスタを読み込んでいます...'
+                                            : 'データがありません'}
+                                    </div>
+                                )}
+                            </div>
 
-                        {/* Legend */}
-                        <div className="mt-4 flex items-center gap-4 text-xs text-gray-500 border-t pt-4">
-                            <span>凡例:</span>
-                            <div className="flex items-center gap-1">
-                                <span className="inline-block w-6 h-6 rounded bg-gray-100"></span>
-                                <span>0</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <span className="inline-block w-6 h-6 rounded bg-blue-100"></span>
-                                <span>1-2</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <span className="inline-block w-6 h-6 rounded bg-blue-300"></span>
-                                <span>3-5</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <span className="inline-block w-6 h-6 rounded bg-blue-500"></span>
-                                <span>6+</span>
+                            {/* Legend */}
+                            <div className="mt-4 flex items-center gap-4 text-xs text-gray-500 border-t pt-4">
+                                <span>凡例:</span>
+                                <div className="flex items-center gap-1">
+                                    <span className="inline-block w-6 h-6 rounded bg-gray-100"></span>
+                                    <span>0</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="inline-block w-6 h-6 rounded bg-blue-100"></span>
+                                    <span>1-2</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="inline-block w-6 h-6 rounded bg-blue-300"></span>
+                                    <span>3-5</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="inline-block w-6 h-6 rounded bg-blue-500"></span>
+                                    <span>6+</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

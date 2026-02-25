@@ -172,6 +172,7 @@ export default function Home() {
       .map(r => r.得意先CD)
   ).size;
 
+
   // 月別統計（エリア別内訳付き）
   const monthsMap = new Map<string, MonthlyStats>();
 
@@ -511,17 +512,19 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 月別統計テーブル（エリア別内訳付き） */}
+      {/* 今月のエリア別活動統計 */}
       <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex items-center gap-2">
-          <BarChart3 size={20} className="text-sf-light-blue" />
-          <h2 className="font-semibold text-sm text-sf-text">月別活動統計（エリア別）</h2>
+        <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={20} className="text-sf-light-blue" />
+            <h2 className="font-semibold text-sm text-sf-text">今月のエリア別活動統計（{currentMonthPrefix}）</h2>
+          </div>
+          <Link href="/analytics" className="text-xs text-sf-light-blue hover:underline">全月の詳細を見る →</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border">
               <tr>
-                <th className="px-4 py-3 font-medium">月</th>
                 <th className="px-4 py-3 font-medium">エリア</th>
                 <th className="px-4 py-3 font-medium text-center">訪問件数</th>
                 <th className="px-4 py-3 font-medium text-center">電話件数</th>
@@ -532,27 +535,24 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {sortedMonths.map((stat) => {
-                // エリア名でソート（「未設定」は最後に表示）
-                const areas = Array.from(stat.areaBreakdown.entries()).sort((a, b) => {
+              {(() => {
+                // 当月のデータのみ表示
+                const currentMonthData = sortedMonths.find(s => s.month === currentMonthPrefix);
+                if (!currentMonthData || currentMonthData.areaBreakdown.size === 0) {
+                  return (
+                    <tr><td colSpan={7} className="px-4 py-4 text-center text-sf-text-weak">今月のデータはまだありません</td></tr>
+                  );
+                }
+                const areas = Array.from(currentMonthData.areaBreakdown.entries()).sort((a, b) => {
                   if (a[0] === '未設定') return 1;
                   if (b[0] === '未設定') return -1;
                   return a[0].localeCompare(b[0]);
                 });
-                const rowCount = areas.length + 1; // エリア行 + 合計行
-
                 return (
                   <>
-                    {/* エリア別の行 */}
-                    {areas.map(([area, areaStats], areaIdx) => (
-                      <tr key={`${stat.month}-${area}`} className="border-b border-sf-border hover:bg-gray-50 transition-colors">
-                        {/* 月セルは最初の行にrowSpanでまとめる */}
-                        {areaIdx === 0 && (
-                          <td className="px-4 py-3 font-medium text-sf-text align-top border-r border-sf-border" rowSpan={rowCount}>
-                            {stat.month}
-                          </td>
-                        )}
-                        <td className="px-4 py-2 text-sf-text text-sm">{area}</td>
+                    {areas.map(([area, areaStats]) => (
+                      <tr key={area} className="border-b border-sf-border hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-2 text-sf-text font-medium">{area}</td>
                         <td className="px-4 py-2 text-center text-sf-text">{areaStats.visits}</td>
                         <td className="px-4 py-2 text-center text-sf-text">{areaStats.calls}</td>
                         <td className="px-4 py-2 text-center font-medium text-sf-text">{areaStats.visits + areaStats.calls}</td>
@@ -561,28 +561,19 @@ export default function Home() {
                         <td className="px-4 py-2 text-center font-medium text-yellow-700 bg-yellow-50/50">{areaStats.priorityVisits + areaStats.priorityCalls}</td>
                       </tr>
                     ))}
-                    {/* エリアがない場合の空行 + 月合計行 */}
-                    {areas.length === 0 && (
-                      <tr className="border-b border-sf-border">
-                        <td className="px-4 py-3 font-medium text-sf-text align-top border-r border-sf-border">{stat.month}</td>
-                        <td colSpan={7} className="px-4 py-2 text-center text-sf-text-weak">データなし</td>
-                      </tr>
-                    )}
                     {/* 月合計行 */}
-                    {areas.length > 0 && (
-                      <tr key={`${stat.month}-total`} className="border-b-2 border-sf-border bg-blue-50/60 font-semibold">
-                        <td className="px-4 py-2 text-sf-text text-sm font-bold">合計</td>
-                        <td className="px-4 py-2 text-center text-sf-text">{stat.visits}</td>
-                        <td className="px-4 py-2 text-center text-sf-text">{stat.calls}</td>
-                        <td className="px-4 py-2 text-center font-bold text-sf-text">{stat.visits + stat.calls}</td>
-                        <td className="px-4 py-2 text-center text-purple-700 border-l-2 border-yellow-200 bg-yellow-100/60">{stat.priorityVisits}</td>
-                        <td className="px-4 py-2 text-center text-orange-700 bg-yellow-100/60">{stat.priorityCalls}</td>
-                        <td className="px-4 py-2 text-center font-bold text-yellow-800 bg-yellow-100/60">{stat.priorityVisits + stat.priorityCalls}</td>
-                      </tr>
-                    )}
+                    <tr className="border-t-2 border-sf-border bg-blue-50/60 font-semibold">
+                      <td className="px-4 py-2 text-sf-text font-bold">合計</td>
+                      <td className="px-4 py-2 text-center text-sf-text">{currentMonthData.visits}</td>
+                      <td className="px-4 py-2 text-center text-sf-text">{currentMonthData.calls}</td>
+                      <td className="px-4 py-2 text-center font-bold text-sf-text">{currentMonthData.visits + currentMonthData.calls}</td>
+                      <td className="px-4 py-2 text-center text-purple-700 border-l-2 border-yellow-200 bg-yellow-100/60">{currentMonthData.priorityVisits}</td>
+                      <td className="px-4 py-2 text-center text-orange-700 bg-yellow-100/60">{currentMonthData.priorityCalls}</td>
+                      <td className="px-4 py-2 text-center font-bold text-yellow-800 bg-yellow-100/60">{currentMonthData.priorityVisits + currentMonthData.priorityCalls}</td>
+                    </tr>
                   </>
                 );
-              })}
+              })()}
             </tbody>
           </table>
         </div>

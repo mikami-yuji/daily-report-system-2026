@@ -2008,6 +2008,18 @@ if os.path.exists(STATIC_DIR):
 
 if __name__ == "__main__":
     import uvicorn
+    import webbrowser
+    import threading
+
+    def open_browser():
+        """サーバー起動後にブラウザを自動で開く"""
+        import time
+        time.sleep(2)  # サーバー起動を待つ
+        webbrowser.open("http://localhost:8001")
+
+    # ブラウザ自動起動（別スレッドで遅延実行）
+    threading.Thread(target=open_browser, daemon=True).start()
+
     uvicorn.run(app, host="0.0.0.0", port=8001)
 
 

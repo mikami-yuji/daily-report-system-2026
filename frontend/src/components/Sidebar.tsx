@@ -13,7 +13,8 @@ import {
     AlertTriangle,
     Calendar,
     Building2,
-    ClipboardList
+    ClipboardList,
+    FileBarChart2
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -68,6 +69,7 @@ export default function Sidebar() {
         { name: 'ホーム', href: '/', icon: LayoutDashboard },
         { name: '日報一覧', href: '/reports', icon: FileText },
         { name: '新規日報作成', href: '/reports/batch', icon: ClipboardList },
+        { name: '月次サマリー', href: '/reports/summary', icon: FileBarChart2 },
         { name: '得意先一覧', href: '/customers', icon: Users },
         { name: 'カレンダー', href: '/calendar', icon: Calendar },
         { name: 'デザイン検索', href: '/design-search', icon: Package },

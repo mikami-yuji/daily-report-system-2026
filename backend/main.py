@@ -20,11 +20,19 @@ import sys
 import os
 
 def get_base_path():
+    """EXEの実行ディレクトリ（config.json、ログ等の外部ファイル用）"""
     if getattr(sys, 'frozen', False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
+def get_bundle_path():
+    """バンドルデータのディレクトリ（PyInstaller展開先のstatic等用）"""
+    if getattr(sys, '_MEIPASS', None):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
 BASE_DIR = get_base_path()
+BUNDLE_DIR = get_bundle_path()
 
 # Ensure multipart libraries are bundled by PyInstaller
 try:
@@ -44,7 +52,8 @@ logging.basicConfig(
 )
 logging.info("Server starting up...")
 logging.info(f"DEBUG PATHS: BASE_DIR={BASE_DIR}")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+logging.info(f"DEBUG PATHS: BUNDLE_DIR={BUNDLE_DIR}")
+STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 logging.info(f"DEBUG PATHS: STATIC_DIR={STATIC_DIR}")
 logging.info(f"DEBUG PATHS: Static Exists={os.path.exists(STATIC_DIR)}")
 
@@ -1956,7 +1965,7 @@ async def get_sales_data(customer_code: str):
 
 
 # --- Static File Serving for Standalone App ---
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 
 if os.path.exists(STATIC_DIR):
     # Mount _next directory for Next.js assets

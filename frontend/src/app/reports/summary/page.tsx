@@ -13,6 +13,8 @@ type AreaSummary = {
     area: string;
     visits: number;
     calls: number;
+    priorityVisits: number;
+    priorityCalls: number;
     designProposals: number;
     customers: Set<string>;
 };
@@ -77,16 +79,40 @@ function generateMonthlySummary(reports: Report[], monthPrefix: string): Monthly
         const isCall = r.行動内容?.includes('電話');
         if (!isVisit && !isCall) return;
 
+        const isPriority = r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '';
         const area = r.エリア && String(r.エリア).trim() ? String(r.エリア).trim() : '未設定';
+
         if (!areaMap.has(area)) {
-            areaMap.set(area, { area, visits: 0, calls: 0, designProposals: 0, customers: new Set() });
+            areaMap.set(area, {
+                area,
+                visits: 0,
+                calls: 0,
+                priorityVisits: 0,
+                priorityCalls: 0,
+                designProposals: 0,
+                customers: new Set()
+            });
         }
         const stats = areaMap.get(area)!;
-        if (isVisit) stats.visits++;
-        if (isCall) stats.calls++;
+        if (isVisit) {
+            stats.visits++;
+            if (isPriority) stats.priorityVisits++;
+        }
+        if (isCall) {
+            stats.calls++;
+            if (isPriority) stats.priorityCalls++;
+        }
         if (r.デザイン提案有無 === '有') stats.designProposals++;
         if (r.訪問先名) stats.customers.add(r.訪問先名);
     });
+
+    // 重点顧客の月全体集計（KPIカード用など適宜）
+    const totalPriorityVisits = monthReports.filter(r =>
+        r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '' && r.行動内容?.includes('訪問')
+    ).length;
+    const totalPriorityCalls = monthReports.filter(r =>
+        r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '' && r.行動内容?.includes('電話')
+    ).length;
 
     // 重点顧客集計
     const priorityMap = new Map<string, PriorityCustomerSummary>();

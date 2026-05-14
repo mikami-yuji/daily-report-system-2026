@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
+import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { normalizeDateInput } from '@/lib/reportUtils';
 
 interface NewReportModalProps {
     onClose: () => void;
@@ -13,8 +15,13 @@ interface NewReportModalProps {
 export default function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProps) {
     const { isOnline, saveOfflineReport, cachedCustomers, cacheCustomers } = useOffline();
 
-    const [formData, setFormData] = useState({
-        日付: new Date().toISOString().split('T')[0].replace(/-/g, '/').slice(2), // YY/MM/DD format
+    // 下書き保存フック
+    type ModalDraftData = {
+        formData: typeof defaultFormData;
+        designMode: 'none' | 'new' | 'existing';
+    };
+    const defaultFormData = {
+        日付: new Date().toISOString().split('T')[0].replace(/-/g, '/').slice(2),
         行動内容: '',
         エリア: '',
         得意先CD: '',
@@ -34,18 +41,40 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
         デザイン名: '',
         デザイン進捗状況: '',
         'デザイン依頼No.': '',
-    });
+    };
+    const { getDraft, saveDraft, clearDraft } = useLocalStorageDraft<ModalDraftData>('new-report-modal-draft');
+
+    // 下書きがあれば復元、なければ初期値
+    const initialDraft = getDraft();
+    const [formData, setFormData] = useState(initialDraft?.formData || defaultFormData);
     const [submitting, setSubmitting] = useState(false);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [interviewers, setInterviewers] = useState<string[]>([]);
-    const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>('none');
+    const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(initialDraft?.designMode || 'none');
     const [designs, setDesigns] = useState<Design[]>([]);
     const [startOutTime, setStartOutTime] = useState('');
     const [endOutTime, setEndOutTime] = useState('');
     // 得意先リストからエリア一覧を動的に取得
     const [areaOptions, setAreaOptions] = useState<string[]>([]);
+    // 下書き復元時のtoast通知
+    const [draftRestored] = useState(!!initialDraft);
+
+    // 下書き復元通知（初回マウント時のみ）
+    useEffect(() => {
+        if (draftRestored) {
+            toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'modal-draft-restored' });
+        }
+    }, []);
+
+    // formDataまたはdesignMode変更時に自動保存
+    useEffect(() => {
+        const hasData = formData.訪問先名 || formData.行動内容 || formData.商談内容 || formData.面談者 || formData.提案物;
+        if (hasData) {
+            saveDraft({ formData, designMode });
+        }
+    }, [formData, designMode, saveDraft]);
 
 
 
@@ -233,7 +262,10 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             }
 
             // 外出時間の場合は商談内容に時間を追記
-            let finalFormData = { ...formData };
+            let finalFormData = { 
+                ...formData,
+                日付: normalizeDateInput(formData.日付)
+            };
             if (formData.行動内容 === '外出時間') {
                 let timeString = '';
                 if (startOutTime && endOutTime) {
@@ -291,6 +323,8 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
 
             const responseData = await response.json();
             toast.success(`日報を保存しました (No. ${responseData.management_number})`, { duration: 3000 });
+            // 送信成功時に下書きをクリア
+            clearDraft();
             onSuccess();
         } catch (error: any) {
             console.error('Error creating report:', error);

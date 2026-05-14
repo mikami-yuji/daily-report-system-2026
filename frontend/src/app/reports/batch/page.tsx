@@ -1,13 +1,15 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
+import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { normalizeDateInput } from '@/lib/reportUtils';
 
 // バリデーションエラーの型
 type ValidationErrors = {
@@ -79,9 +81,20 @@ const createEmptyVisit = (): VisitEntry => ({
     interviewers: [],
 });
 
+// 下書きデータの型定義
+type BatchDraftData = {
+    date: string;
+    visits: VisitEntry[];
+    searchTerms: { [key: string]: string };
+    retailerSearchTerms: { [key: string]: string };
+};
+
 export default function BatchReportPage() {
     const { selectedFile } = useFile();
     const queryClient = useQueryClient();
+
+    // 下書き保存フック
+    const { getDraft, saveDraft, clearDraft } = useLocalStorageDraft<BatchDraftData>('batch-report-draft');
 
     // 時間オプションの生成 (08:00 - 22:00, 30分刻み)
     const timeOptions = useMemo(() => {
@@ -108,10 +121,25 @@ export default function BatchReportPage() {
     const [visits, setVisits] = useState<VisitEntry[]>([]);
     const [isLoaded, setIsLoaded] = useState(false);
 
-    // クライアント側でのみ初期訪問ブロックを作成(hydration mismatch回避）
+    // クライアント側でのみ初期訪問ブロックを作成、または下書きを復元
     useEffect(() => {
         if (!isLoaded) {
-            setVisits([createEmptyVisit()]);
+            const draft = getDraft();
+            if (draft && draft.visits && draft.visits.length > 0) {
+                // 下書きデータを復元
+                setDate(draft.date || today);
+                setVisits(draft.visits);
+                // 検索テキストも復元（次のuseEffectで参照されるようsetStateで設定）
+                if (draft.searchTerms) {
+                    setSearchTerms(draft.searchTerms);
+                }
+                if (draft.retailerSearchTerms) {
+                    setRetailerSearchTerms(draft.retailerSearchTerms);
+                }
+                toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'draft-restored' });
+            } else {
+                setVisits([createEmptyVisit()]);
+            }
             setIsLoaded(true);
         }
     }, [isLoaded]);
@@ -139,6 +167,10 @@ export default function BatchReportPage() {
     // 量販店調査入力用state
     const [retailerSearchTerms, setRetailerSearchTerms] = useState<{ [key: string]: string }>({});
     const [showRetailerSuggestions, setShowRetailerSuggestions] = useState<{ [key: string]: boolean }>({});
+
+    // エリア検索用state
+    const [areaSearchTerms, setAreaSearchTerms] = useState<{ [key: string]: string }>({});
+    const [showAreaSuggestions, setShowAreaSuggestions] = useState<{ [key: string]: boolean }>({});
 
     // 過去の量販店調査訪問名履歴（reportsから抽出）
     const retailerHistory = useMemo(() => {
@@ -345,6 +377,16 @@ export default function BatchReportPage() {
         let errorCount = 0;
 
         for (const visit of validVisits) {
+            // 未確定の入力がある場合、ここで自動確定させる
+            let finalVisitName = visit.訪問先名 || '';
+            if (!finalVisitName) {
+                if (visit.行動内容 === '量販店調査') {
+                    finalVisitName = retailerSearchTerms[visit.id]?.trim() || '';
+                } else {
+                    finalVisitName = searchTerms[visit.id]?.trim() || '';
+                }
+            }
+
             // 商談内容の構築（外出時間の場合）
             let finalCommercialContent = visit.商談内容 || '';
             let finalRank = visit.ランク;
@@ -363,9 +405,9 @@ export default function BatchReportPage() {
             }
 
             const reportData = {
-                日付: date,
+                日付: normalizeDateInput(date),
                 得意先CD: visit.得意先CD,
-                訪問先名: visit.訪問先名,
+                訪問先名: finalVisitName,
                 直送先CD: visit.直送先CD,
                 直送先名: visit.直送先名,
                 行動内容: visit.行動内容,
@@ -399,14 +441,27 @@ export default function BatchReportPage() {
         if (successCount > 0) {
             toast.success(`${successCount}件の日報を保存しました`);
             queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
-            // 入力をリセット
+            // 入力をリセットし、下書きもクリア
             setVisits([createEmptyVisit()]);
+            setSearchTerms({});
+            setRetailerSearchTerms({});
+            clearDraft();
         }
 
         if (errorCount > 0) {
             toast.error(`${errorCount}件の保存に失敗しました`);
         }
     };
+
+    // 入力内容が変更されるたびに下書きを自動保存
+    useEffect(() => {
+        if (!isLoaded) return; // 初期化前は保存しない
+        // 完全に空の状態（初期状態）は保存しない
+        const hasData = visits.some(v => v.得意先CD || v.訪問先名 || v.行動内容 || v.商談内容 || v.面談者 || v.提案物 || v.次回プラン || v.競合他社情報);
+        if (hasData) {
+            saveDraft({ date, visits, searchTerms, retailerSearchTerms });
+        }
+    }, [date, visits, searchTerms, retailerSearchTerms, isLoaded, saveDraft]);
 
     // 有効な訪問数
     // 何かしらデータが入力されている訪問数をカウント
@@ -709,19 +764,59 @@ export default function BatchReportPage() {
 
                                     {/* エリア選択ドロップダウン（行動内容の右側） */}
                                     {!['社内（１日）', '社内（半日）', '外出時間'].includes(visit.行動内容) && (
-                                        <div>
+                                        <div className="relative">
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">エリア</label>
-                                            <select
-                                                value={visit.エリア}
-                                                onChange={(e) => updateVisit(visit.id, 'エリア', e.target.value)}
+                                            <input
+                                                type="text"
+                                                value={areaSearchTerms[visit.id] !== undefined ? areaSearchTerms[visit.id] : (visit.エリア || '')}
+                                                onChange={(e) => {
+                                                    setAreaSearchTerms({ ...areaSearchTerms, [visit.id]: e.target.value });
+                                                    setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: true });
+                                                }}
+                                                onFocus={() => setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: true })}
+                                                onBlur={() => {
+                                                    // 少し遅延させてクリックイベントが間に合うようにする
+                                                    setTimeout(() => {
+                                                        setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: false });
+                                                        setAreaSearchTerms(prev => {
+                                                            const next = { ...prev };
+                                                            delete next[visit.id];
+                                                            return next;
+                                                        });
+                                                    }, 200);
+                                                }}
+                                                placeholder="エリアを検索..."
                                                 className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${!visit.エリア && visit.訪問先名 ? 'border-amber-300 bg-amber-50' : 'border-sf-border'
                                                     }`}
-                                            >
-                                                <option value="">エリアを選択</option>
-                                                {areaOptions.map(area => (
-                                                    <option key={area} value={area}>{area}</option>
-                                                ))}
-                                            </select>
+                                            />
+                                            {showAreaSuggestions[visit.id] && (
+                                                <div className="absolute z-20 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                    {areaOptions
+                                                        .filter(area => !areaSearchTerms[visit.id] || area.toLowerCase().includes(areaSearchTerms[visit.id].toLowerCase()))
+                                                        .map(area => (
+                                                            <div
+                                                                key={area}
+                                                                className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                                onMouseDown={() => {
+                                                                    updateVisit(visit.id, 'エリア', area);
+                                                                    setAreaSearchTerms(prev => {
+                                                                        const next = { ...prev };
+                                                                        delete next[visit.id];
+                                                                        return next;
+                                                                    });
+                                                                    setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: false });
+                                                                }}
+                                                            >
+                                                                {area}
+                                                            </div>
+                                                        ))}
+                                                    {areaOptions.filter(area => !areaSearchTerms[visit.id] || area.toLowerCase().includes(areaSearchTerms[visit.id].toLowerCase())).length === 0 && (
+                                                        <div className="px-3 py-2 text-sm text-gray-400">
+                                                            該当するエリアがありません
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                             {!visit.エリア && visit.訪問先名 && (
                                                 <p className="mt-1 text-xs text-amber-600">⚠ エリアが未選択です</p>
                                             )}

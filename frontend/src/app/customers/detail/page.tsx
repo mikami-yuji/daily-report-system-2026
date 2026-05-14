@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { compareDates } from '@/lib/reportUtils';
 
 interface DesignRequest {
     designNo: number;
@@ -64,6 +65,11 @@ function CustomerDetailContent() {
     const [selectedInterviewer, setSelectedInterviewer] = useState<string>('');
     const [salesData, setSalesData] = useState<SalesData | null>(null);
     const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // Fetch sales data when tab is active
     useEffect(() => {
@@ -90,9 +96,7 @@ function CustomerDetailContent() {
                 }
 
                 customerReports.sort((a, b) => {
-                    const dateA = String(a.日付 || '');
-                    const dateB = String(b.日付 || '');
-                    return dateB.localeCompare(dateA);
+                    return compareDates(String(b.日付 || ''), String(a.日付 || ''));
                 });
 
                 setReports(customerReports);
@@ -159,15 +163,13 @@ function CustomerDetailContent() {
 
         const requests = Array.from(designMap.values()).map(req => {
             req.requests.sort((a, b) => {
-                const dateA = String(a.日付 || '');
-                const dateB = String(b.日付 || '');
-                return dateB.localeCompare(dateA);
+                return compareDates(String(b.日付 || ''), String(a.日付 || ''));
             });
             req.lastUpdate = req.requests[0]?.日付 || '';
             return req;
         });
 
-        requests.sort((a, b) => b.lastUpdate.localeCompare(a.lastUpdate));
+        requests.sort((a, b) => compareDates(b.lastUpdate, a.lastUpdate));
         setDesignRequests(requests);
     };
 
@@ -735,7 +737,7 @@ function CustomerDetailContent() {
                                         </div>
                                         {salesData.updated_at && (
                                             <p className="text-xs text-right text-gray-300 mt-2">
-                                                データ更新: {new Date(salesData.updated_at).toLocaleDateString()}
+                                                データ更新: {mounted && salesData.updated_at ? new Date(salesData.updated_at).toLocaleDateString() : ''}
                                             </p>
                                         )}
                                     </div>

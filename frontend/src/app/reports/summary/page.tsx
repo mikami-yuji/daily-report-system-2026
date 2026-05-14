@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { Report } from '@/lib/api';
-import { ChevronLeft, ChevronRight, Printer, FileText, Users, Phone, MapPin, Palette, Star, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Printer, FileText, Users, Phone, MapPin, Palette, Star, TrendingUp, ChevronDown, ChevronUp, CornerDownRight } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import toast from 'react-hot-toast';
+import { compareDates } from '@/lib/reportUtils';
 
 // エリア別の集計データ
 type AreaSummary = {
@@ -19,6 +20,19 @@ type AreaSummary = {
     customers: Set<string>;
 };
 
+// 直送先の集計データ
+type DirectDeliverySummary = {
+    code: string;
+    name: string;
+    visits: number;
+    calls: number;
+    designProposals: number;
+    lastDate: string;
+    area: string;
+    rank: string;
+    isPriority: boolean;
+};
+
 // 重点顧客の集計データ
 type PriorityCustomerSummary = {
     code: string;
@@ -26,7 +40,12 @@ type PriorityCustomerSummary = {
     visits: number;
     calls: number;
     designProposals: number;
+    total: number;
     lastDate: string;
+    area: string;
+    rank: string;
+    isPriority: boolean;
+    directDeliveries: DirectDeliverySummary[];
 };
 
 // デザイン案件の集計データ
@@ -35,11 +54,12 @@ type DesignSummary = {
     count: number;
 };
 
-// 月次サマリー全体
 type MonthlySummaryData = {
     totalReports: number;
     totalVisits: number;
     totalCalls: number;
+    priorityVisits: number;
+    priorityCalls: number;
     totalDesignProposals: number;
     totalDesignCompleted: number;
     totalDesignRejected: number;
@@ -48,7 +68,8 @@ type MonthlySummaryData = {
     areaBreakdown: AreaSummary[];
     priorityCustomers: PriorityCustomerSummary[];
     designProgress: DesignSummary[];
-    topCustomers: { name: string; count: number }[];
+    topCustomers: { name: string; count: number; details?: { name: string; count: number }[] }[];
+    topCallCustomers: { name: string; count: number; details?: { name: string; count: number }[] }[];
     dailyActivity: { date: string; visits: number; calls: number }[];
 };
 
@@ -60,7 +81,7 @@ function generateMonthlySummary(reports: Report[], monthPrefix: string): Monthly
     // 基本統計
     const visits = monthReports.filter(r => r.行動内容?.includes('訪問'));
     const calls = monthReports.filter(r => r.行動内容?.includes('電話'));
-    const designProposals = monthReports.filter(r => r.デザイン提案有無 === '有');
+    const designProposals = monthReports.filter(r => r.デザイン進捗状況 === '新規' || r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり');
     const designCompleted = monthReports.filter(r => r.デザイン進捗状況?.includes('出稿'));
     const designRejected = monthReports.filter(r => r.デザイン進捗状況?.includes('不採用'));
 
@@ -102,7 +123,7 @@ function generateMonthlySummary(reports: Report[], monthPrefix: string): Monthly
             stats.calls++;
             if (isPriority) stats.priorityCalls++;
         }
-        if (r.デザイン提案有無 === '有') stats.designProposals++;
+        if (r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり') stats.designProposals++;
         if (r.訪問先名) stats.customers.add(r.訪問先名);
     });
 
@@ -114,44 +135,107 @@ function generateMonthlySummary(reports: Report[], monthPrefix: string): Monthly
         r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '' && r.行動内容?.includes('電話')
     ).length;
 
-    // 重点顧客集計
-    const priorityMap = new Map<string, PriorityCustomerSummary>();
+    // 重点顧客集計（得意先CDでグループ化し、その中で直送先をネスト）
+    const priorityGroupMap = new Map<string, PriorityCustomerSummary>();
+
     monthReports
         .filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '')
         .forEach(r => {
-            const key = r.得意先CD || r.訪問先名 || '不明';
-            if (!priorityMap.has(key)) {
-                priorityMap.set(key, {
-                    code: r.得意先CD || '',
-                    name: r.訪問先名 || '不明',
+            const customerCode = r.得意先CD || '不明';
+            const ddCode = r.直送先CD ? String(r.直送先CD).replace(/\.0$/, '').trim() : '';
+            const ddName = r.直送先名 || '';
+
+            // 親（得意先）のエントリを初期化
+            if (!priorityGroupMap.has(customerCode)) {
+                priorityGroupMap.set(customerCode, {
+                    code: customerCode,
+                    name: r.訪問先名 || '不明', // 親の名前
                     visits: 0,
                     calls: 0,
                     designProposals: 0,
+                    total: 0,
                     lastDate: '',
+                    area: r.エリア || '',
+                    rank: r.ランク || '',
+                    isPriority: true,
+                    directDeliveries: []
                 });
             }
-            const pc = priorityMap.get(key)!;
-            if (r.行動内容?.includes('訪問')) pc.visits++;
-            if (r.行動内容?.includes('電話')) pc.calls++;
-            if (r.デザイン提案有無 === '有') pc.designProposals++;
-            if (String(r.日付) > pc.lastDate) pc.lastDate = String(r.日付);
+
+            const parent = priorityGroupMap.get(customerCode)!;
+            const isVisit = r.行動内容?.includes('訪問');
+            const isCall = r.行動内容?.includes('電話');
+            const isDesign = r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり';
+            const date = String(r.日付);
+
+            // 親の集計を更新
+            if (isVisit) parent.visits++;
+            if (isCall) parent.calls++;
+            if (isDesign) parent.designProposals++;
+            if (isVisit || isCall) parent.total++;
+            if (compareDates(date, parent.lastDate) > 0) parent.lastDate = date;
+
+            // 直送先がある場合のみ子エントリを処理
+            if (ddCode) {
+                let child = parent.directDeliveries.find(d => d.code === ddCode);
+                if (!child) {
+                    child = {
+                        code: ddCode,
+                        name: ddName,
+                        visits: 0,
+                        calls: 0,
+                        designProposals: 0,
+                        lastDate: '',
+                        area: r.エリア || '',
+                        rank: r.ランク || '',
+                        isPriority: true
+                    };
+                    parent.directDeliveries.push(child);
+                }
+                if (isVisit) child.visits++;
+                if (isCall) child.calls++;
+                if (isDesign) child.designProposals++;
+                if (compareDates(date, child.lastDate) > 0) child.lastDate = date;
+            }
         });
 
     // デザイン進捗集計
     const designStatusMap = new Map<string, number>();
     monthReports
-        .filter(r => r.デザイン提案有無 === '有')
+        .filter(r => r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり')
         .forEach(r => {
             const status = r.デザイン進捗状況 && r.デザイン進捗状況.trim() ? r.デザイン進捗状況.trim() : '未設定';
             designStatusMap.set(status, (designStatusMap.get(status) || 0) + 1);
         });
 
     // 訪問回数の多い顧客Top10
-    const customerCountMap = new Map<string, number>();
+    const customerCountMap = new Map<string, { total: number; details: Map<string, number> }>();
     monthReports
         .filter(r => r.訪問先名 && r.行動内容?.includes('訪問'))
         .forEach(r => {
-            customerCountMap.set(r.訪問先名, (customerCountMap.get(r.訪問先名) || 0) + 1);
+            const name = r.訪問先名;
+            const ddName = r.直送先名 || '(直接)';
+            if (!customerCountMap.has(name)) {
+                customerCountMap.set(name, { total: 0, details: new Map() });
+            }
+            const stats = customerCountMap.get(name)!;
+            stats.total++;
+            stats.details.set(ddName, (stats.details.get(ddName) || 0) + 1);
+        });
+
+    // 電話回数の多い顧客Top10
+    const callCountMap = new Map<string, { total: number; details: Map<string, number> }>();
+    monthReports
+        .filter(r => r.訪問先名 && r.行動内容?.includes('電話'))
+        .forEach(r => {
+            const name = r.訪問先名;
+            const ddName = r.直送先名 || '(直接)';
+            if (!callCountMap.has(name)) {
+                callCountMap.set(name, { total: 0, details: new Map() });
+            }
+            const stats = callCountMap.get(name)!;
+            stats.total++;
+            stats.details.set(ddName, (stats.details.get(ddName) || 0) + 1);
         });
 
     // 日別活動集計
@@ -168,6 +252,8 @@ function generateMonthlySummary(reports: Report[], monthPrefix: string): Monthly
         totalReports: monthReports.length,
         totalVisits: visits.length,
         totalCalls: calls.length,
+        priorityVisits: totalPriorityVisits,
+        priorityCalls: totalPriorityCalls,
         totalDesignProposals: designProposals.length,
         totalDesignCompleted: designCompleted.length,
         totalDesignRejected: designRejected.length,
@@ -178,17 +264,33 @@ function generateMonthlySummary(reports: Report[], monthPrefix: string): Monthly
             if (b.area === '未設定') return -1;
             return (b.visits + b.calls) - (a.visits + a.calls);
         }),
-        priorityCustomers: Array.from(priorityMap.values()).sort((a, b) => (b.visits + b.calls) - (a.visits + a.calls)),
+        priorityCustomers: Array.from(priorityGroupMap.values()).sort((a, b) => b.total - a.total),
         designProgress: Array.from(designStatusMap.entries())
             .map(([status, count]) => ({ status, count }))
             .sort((a, b) => b.count - a.count),
         topCustomers: Array.from(customerCountMap.entries())
-            .map(([name, count]) => ({ name, count }))
+            .map(([name, stats]) => ({
+                name,
+                count: stats.total,
+                details: Array.from(stats.details.entries())
+                    .map(([dName, dCount]) => ({ name: dName, count: dCount }))
+                    .sort((a, b) => b.count - a.count)
+            }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10),
+        topCallCustomers: Array.from(callCountMap.entries())
+            .map(([name, stats]) => ({
+                name,
+                count: stats.total,
+                details: Array.from(stats.details.entries())
+                    .map(([dName, dCount]) => ({ name: dName, count: dCount }))
+                    .sort((a, b) => b.count - a.count)
+            }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 10),
         dailyActivity: Array.from(dailyMap.entries())
             .map(([date, data]) => ({ date, ...data }))
-            .sort((a, b) => a.date.localeCompare(b.date)),
+            .sort((a, b) => compareDates(a.date, b.date)),
     };
 }
 
@@ -210,7 +312,22 @@ export default function MonthlySummaryPage(): React.ReactElement {
     const { data: reports = [], isLoading } = useReports(selectedFile || undefined);
 
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [collapsedCustomers, setCollapsedCustomers] = useState<Set<string>>(new Set());
+    const [mounted, setMounted] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
+
+    const toggleCustomerCollapse = (code: string): void => {
+        setCollapsedCustomers(prev => {
+            const next = new Set(prev);
+            if (next.has(code)) next.delete(code);
+            else next.add(code);
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // 選択中の年月パーツ
     const yearShort = String(currentDate.getFullYear()).slice(-2);
@@ -305,7 +422,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                 {/* 印刷用ヘッダー */}
                 <div className="hidden print:block text-center mb-4">
                     <h1 className="text-2xl font-bold mb-1">月次活動サマリー — {monthLabel}</h1>
-                    <p className="text-sm text-gray-600">担当者: {staffName}　｜　出力日: {new Date().toLocaleDateString('ja-JP')}</p>
+                    <p className="text-sm text-gray-600">担当者: {staffName}　｜　出力日: {mounted ? new Date().toLocaleDateString('ja-JP') : ''}</p>
                 </div>
 
                 {/* KPIカード群 */}
@@ -336,83 +453,199 @@ export default function MonthlySummaryPage(): React.ReactElement {
 
                 {/* エリア別実績テーブル */}
                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden print:break-inside-avoid">
-                    <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+                    <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                         <h2 className="font-bold text-gray-900 flex items-center gap-2">
                             <MapPin size={18} className="text-blue-600" />
                             エリア別実績
                         </h2>
                     </div>
-                    <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs text-gray-500 border-b">
-                            <tr>
-                                <th className="px-4 py-2 text-left font-semibold">エリア</th>
-                                <th className="px-4 py-2 text-center font-semibold">訪問</th>
-                                <th className="px-4 py-2 text-center font-semibold">電話</th>
-                                <th className="px-4 py-2 text-center font-semibold">合計</th>
-                                <th className="px-4 py-2 text-center font-semibold">デザイン依頼</th>
-                                <th className="px-4 py-2 text-center font-semibold">訪問先数</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {summary.areaBreakdown.map(area => (
-                                <tr key={area.area} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                    <td className="px-4 py-2 font-medium text-gray-900">{area.area}</td>
-                                    <td className="px-4 py-2 text-center text-gray-700">{area.visits}</td>
-                                    <td className="px-4 py-2 text-center text-gray-700">{area.calls}</td>
-                                    <td className="px-4 py-2 text-center font-semibold text-gray-900">{area.visits + area.calls}</td>
-                                    <td className="px-4 py-2 text-center text-purple-600">{area.designProposals}</td>
-                                    <td className="px-4 py-2 text-center text-teal-600">{area.customers.size}</td>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-gray-50 text-xs text-gray-500 border-b border-gray-200">
+                                <tr>
+                                    <th className="px-4 py-3 text-left font-medium whitespace-nowrap">エリア</th>
+                                    <th className="px-4 py-3 text-center font-medium whitespace-nowrap">一般訪問</th>
+                                    <th className="px-4 py-3 text-center font-medium whitespace-nowrap">一般電話</th>
+                                    <th className="px-4 py-3 text-center font-medium whitespace-nowrap">一般合計</th>
+                                    <th className="px-4 py-3 text-center font-medium border-l-2 border-yellow-200 bg-yellow-50 whitespace-nowrap">重点顧客訪問</th>
+                                    <th className="px-4 py-3 text-center font-medium bg-yellow-50 whitespace-nowrap">重点顧客電話</th>
+                                    <th className="px-4 py-3 text-center font-medium bg-yellow-50 whitespace-nowrap">重点顧客合計</th>
+                                    <th className="px-4 py-3 text-center font-medium whitespace-nowrap">デザイン依頼</th>
+                                    <th className="px-4 py-3 text-center font-medium whitespace-nowrap">総合計<br /><span className="text-[10px] whitespace-nowrap">(デザイン依頼除く)</span></th>
                                 </tr>
-                            ))}
-                            {/* 合計行 */}
-                            <tr className="bg-blue-50 font-bold border-t-2 border-gray-300">
-                                <td className="px-4 py-2 text-gray-900">合計</td>
-                                <td className="px-4 py-2 text-center text-gray-900">{summary.totalVisits}</td>
-                                <td className="px-4 py-2 text-center text-gray-900">{summary.totalCalls}</td>
-                                <td className="px-4 py-2 text-center text-gray-900">{summary.totalVisits + summary.totalCalls}</td>
-                                <td className="px-4 py-2 text-center text-purple-700">{summary.totalDesignProposals}</td>
-                                <td className="px-4 py-2 text-center text-teal-700">{summary.uniqueCustomers}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {summary.areaBreakdown.map(area => {
+                                    const generalVisits = area.visits - area.priorityVisits;
+                                    const generalCalls = area.calls - area.priorityCalls;
+                                    const generalTotal = generalVisits + generalCalls;
+                                    const priorityTotal = area.priorityVisits + area.priorityCalls;
+
+                                    return (
+                                        <tr key={area.area} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                            <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">{area.area}</td>
+                                            <td className="px-4 py-2 text-center text-gray-700 whitespace-nowrap">{generalVisits}</td>
+                                            <td className="px-4 py-2 text-center text-gray-700 whitespace-nowrap">{generalCalls}</td>
+                                            <td className="px-4 py-2 text-center font-semibold text-gray-900 whitespace-nowrap">{generalTotal}</td>
+                                            <td className="px-4 py-2 text-center text-purple-600 border-l-2 border-yellow-200 bg-yellow-50/50 whitespace-nowrap">{area.priorityVisits}</td>
+                                            <td className="px-4 py-2 text-center text-orange-600 bg-yellow-50/50 whitespace-nowrap">{area.priorityCalls}</td>
+                                            <td className="px-4 py-2 text-center font-semibold text-yellow-700 bg-yellow-50/50 whitespace-nowrap">{priorityTotal}</td>
+                                            <td className="px-4 py-2 text-center text-purple-600 whitespace-nowrap">{area.designProposals}</td>
+                                            <td className="px-4 py-2 text-center font-bold text-blue-700 bg-blue-50/50 whitespace-nowrap">{generalTotal + priorityTotal}</td>
+                                        </tr>
+                                    );
+                                })}
+                                {/* 合計行 */}
+                                <tr className="bg-blue-50/60 font-semibold border-t-2 border-gray-300">
+                                    <td className="px-4 py-2 text-gray-900 whitespace-nowrap">合計</td>
+                                    {(() => {
+                                        const totalGeneralVisits = summary.totalVisits - summary.priorityVisits;
+                                        const totalGeneralCalls = summary.totalCalls - summary.priorityCalls;
+                                        const totalGeneral = totalGeneralVisits + totalGeneralCalls;
+                                        const totalPriority = summary.priorityVisits + summary.priorityCalls;
+                                        return (
+                                            <>
+                                                <td className="px-4 py-2 text-center text-gray-900 whitespace-nowrap">{totalGeneralVisits}</td>
+                                                <td className="px-4 py-2 text-center text-gray-900 whitespace-nowrap">{totalGeneralCalls}</td>
+                                                <td className="px-4 py-2 text-center text-gray-900 whitespace-nowrap">{totalGeneral}</td>
+                                            </>
+                                        );
+                                    })()}
+                                    <td className="px-4 py-2 text-center text-purple-700 border-l-2 border-yellow-200 bg-yellow-100/60 whitespace-nowrap">{summary.priorityVisits}</td>
+                                    <td className="px-4 py-2 text-center text-orange-700 bg-yellow-100/60 whitespace-nowrap">{summary.priorityCalls}</td>
+                                    <td className="px-4 py-2 text-center text-yellow-800 bg-yellow-100/60 whitespace-nowrap">{summary.priorityVisits + summary.priorityCalls}</td>
+                                    <td className="px-4 py-2 text-center text-purple-700 whitespace-nowrap">{summary.totalDesignProposals}</td>
+                                    {(() => {
+                                        const totalGeneralVisits = summary.totalVisits - summary.priorityVisits;
+                                        const totalGeneralCalls = summary.totalCalls - summary.priorityCalls;
+                                        const totalGeneral = totalGeneralVisits + totalGeneralCalls;
+                                        const totalPriority = summary.priorityVisits + summary.priorityCalls;
+                                        return (
+                                            <td className="px-4 py-2 text-center font-bold text-blue-800 bg-blue-100/60 whitespace-nowrap">{totalGeneral + totalPriority}</td>
+                                        );
+                                    })()}
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                {/* 2カラムレイアウト: 重点顧客 + 訪問回数Top10 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:grid-cols-2 print:gap-4">
-                    {/* 重点顧客活動 */}
-                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden print:break-inside-avoid">
-                        <div className="px-5 py-3 border-b border-gray-200 bg-yellow-50">
-                            <h2 className="font-bold text-gray-900 flex items-center gap-2">
-                                <Star size={18} className="text-yellow-600" />
-                                重点顧客活動 ({summary.priorityCustomers.length}社)
-                            </h2>
-                        </div>
-                        {summary.priorityCustomers.length === 0 ? (
-                            <p className="p-4 text-gray-400 text-sm text-center">重点顧客の活動データなし</p>
-                        ) : (
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 text-xs text-gray-500 border-b">
-                                    <tr>
-                                        <th className="px-3 py-2 text-left font-semibold">顧客名</th>
-                                        <th className="px-3 py-2 text-center font-semibold">訪問</th>
-                                        <th className="px-3 py-2 text-center font-semibold">電話</th>
-                                        <th className="px-3 py-2 text-center font-semibold">最終日</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {summary.priorityCustomers.map(pc => (
-                                        <tr key={pc.code || pc.name} className="border-b border-gray-100 hover:bg-gray-50">
-                                            <td className="px-3 py-2 text-gray-900 font-medium truncate max-w-[200px]" title={pc.name}>{pc.name}</td>
-                                            <td className="px-3 py-2 text-center text-blue-600">{pc.visits}</td>
-                                            <td className="px-3 py-2 text-center text-green-600">{pc.calls}</td>
-                                            <td className="px-3 py-2 text-center text-gray-500 text-xs">{pc.lastDate}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
+                {/* 重点顧客活動 */}
+                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden print:break-inside-avoid">
+                    <div className="px-5 py-3 border-b border-gray-200 bg-yellow-50">
+                        <h2 className="font-bold text-gray-900 flex items-center gap-2">
+                            <Star size={18} className="text-yellow-600" />
+                            重点顧客活動 ({summary.priorityCustomers.length}社)
+                        </h2>
                     </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 text-xs text-gray-500 border-b">
+                                <tr>
+                                    <th className="px-3 py-2 text-left font-semibold w-10 print:hidden"></th>
+                                    <th className="px-3 py-2 text-left font-semibold">得意先CD</th>
+                                    <th className="px-3 py-2 text-left font-semibold">顧客名</th>
+                                    <th className="px-3 py-2 text-left font-semibold">エリア</th>
+                                    <th className="px-3 py-2 text-center font-semibold">ランク</th>
+                                    <th className="px-3 py-2 text-center font-semibold">重点</th>
+                                    <th className="px-3 py-2 text-center font-semibold">合計</th>
+                                    <th className="px-3 py-2 text-center font-semibold">訪問</th>
+                                    <th className="px-3 py-2 text-center font-semibold">電話</th>
+                                    <th className="px-3 py-2 text-center font-semibold">デザイン</th>
+                                    <th className="px-3 py-2 text-center font-semibold">最終日</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {summary.priorityCustomers.map(pc => {
+                                    const isCollapsed = collapsedCustomers.has(pc.code);
+                                    const isExpanded = !isCollapsed;
+                                    const hasDirectDeliveries = pc.directDeliveries.length > 0;
 
+                                    return (
+                                        <React.Fragment key={pc.code}>
+                                            {/* 親行（得意先） */}
+                                            <tr className="hover:bg-gray-50 group">
+                                                <td className="px-3 py-2 text-center print:hidden">
+                                                    {hasDirectDeliveries && (
+                                                        <button
+                                                            onClick={() => toggleCustomerCollapse(pc.code)}
+                                                            className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                                        >
+                                                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 text-gray-500 font-mono text-xs">{pc.code}</td>
+                                                <td className="px-3 py-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-900 font-bold">{pc.name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-3 py-2 text-gray-600 text-xs">{pc.area}</td>
+                                                <td className="px-3 py-2 text-center">
+                                                    {pc.rank && (
+                                                        <span className="inline-block px-1.5 py-0.5 rounded border border-gray-300 text-[10px] font-bold text-gray-500 bg-gray-50">
+                                                            {pc.rank}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 text-center">
+                                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-700">
+                                                        重点
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-center font-bold text-gray-900">{pc.total}</td>
+                                                <td className="px-3 py-2 text-center text-blue-600 font-medium">{pc.visits}</td>
+                                                <td className="px-3 py-2 text-center text-green-600 font-medium">{pc.calls}</td>
+                                                <td className="px-3 py-2 text-center text-purple-600 font-medium">{pc.designProposals}</td>
+                                                <td className="px-3 py-2 text-center text-gray-500 text-[10px]">{pc.lastDate}</td>
+                                            </tr>
+
+                                            {/* 子行（直送先） - 展開時のみ表示 */}
+                                            {(isExpanded || !mounted) && pc.directDeliveries.map(dd => (
+                                                <tr key={`${pc.code}-${dd.code}`} className="bg-gray-50/50 border-l-4 border-gray-200">
+                                                    <td className="px-3 py-1.5 print:hidden"></td>
+                                                    <td className="px-3 py-1.5 text-gray-400 font-mono text-[10px] pl-6 flex items-center gap-1">
+                                                        <CornerDownRight size={12} /> {dd.code}
+                                                    </td>
+                                                    <td className="px-3 py-1.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[10px] font-bold whitespace-nowrap">直送</span>
+                                                            <span className="text-gray-700 text-sm">{dd.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-gray-500 text-[10px]">{dd.area}</td>
+                                                    <td className="px-3 py-1.5 text-center">
+                                                        {dd.rank && (
+                                                            <span className="inline-block px-1 py-0.5 rounded border border-gray-200 text-[10px] font-bold text-gray-400">
+                                                                {dd.rank}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-center">
+                                                        <span className="inline-block px-1 py-0.5 rounded text-[10px] font-bold bg-yellow-50 text-yellow-600 opacity-70">
+                                                            重点
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-center text-gray-400 text-xs">
+                                                        {dd.visits + dd.calls}
+                                                    </td>
+                                                    <td className="px-3 py-1.5 text-center text-blue-400 text-xs">{dd.visits}</td>
+                                                    <td className="px-3 py-1.5 text-center text-green-400 text-xs">{dd.calls}</td>
+                                                    <td className="px-3 py-1.5 text-center text-purple-400 text-xs">{dd.designProposals}</td>
+                                                    <td className="px-3 py-1.5 text-center text-gray-400 text-[10px]">{dd.lastDate}</td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* ランキングセクション */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:grid-cols-2 print:gap-4">
                     {/* 訪問回数Top10 */}
                     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden print:break-inside-avoid">
                         <div className="px-5 py-3 border-b border-gray-200 bg-blue-50">
@@ -426,15 +659,69 @@ export default function MonthlySummaryPage(): React.ReactElement {
                         ) : (
                             <div className="divide-y divide-gray-100">
                                 {summary.topCustomers.map((c, idx) => (
-                                    <div key={c.name} className="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx < 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                                                }`}>
-                                                {idx + 1}
-                                            </span>
-                                            <span className="text-sm text-gray-900 truncate max-w-[200px]" title={c.name}>{c.name}</span>
+                                    <div key={c.name} className="px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-3">
+                                                <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx < 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                                                    }`}>
+                                                    {idx + 1}
+                                                </span>
+                                                <span className="text-sm text-gray-900 font-bold truncate max-w-[200px]" title={c.name}>{c.name}</span>
+                                            </div>
+                                            <span className="text-sm font-bold text-sf-light-blue">{c.count}回</span>
                                         </div>
-                                        <span className="text-sm font-bold text-sf-light-blue">{c.count}回</span>
+                                        {/* 直送先内訳 */}
+                                        {c.details && c.details.length > 0 && !(c.details.length === 1 && c.details[0].name === '(直接)') && (
+                                            <div className="ml-9 flex flex-wrap gap-x-3 gap-y-1">
+                                                {c.details.map(d => (
+                                                    <div key={d.name} className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                                        <span className="truncate max-w-[120px]">{d.name}</span>
+                                                        <span className="font-bold text-gray-700">{d.count}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 電話回数Top10 */}
+                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden print:break-inside-avoid">
+                        <div className="px-5 py-3 border-b border-gray-200 bg-green-50">
+                            <h2 className="font-bold text-gray-900 flex items-center gap-2">
+                                <Phone size={18} className="text-green-600" />
+                                電話回数ランキング (Top10)
+                            </h2>
+                        </div>
+                        {summary.topCallCustomers.length === 0 ? (
+                            <p className="p-4 text-gray-400 text-sm text-center">電話データなし</p>
+                        ) : (
+                            <div className="divide-y divide-gray-100">
+                                {summary.topCallCustomers.map((c, idx) => (
+                                    <div key={c.name} className="px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-3">
+                                                <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx < 3 ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'
+                                                    }`}>
+                                                    {idx + 1}
+                                                </span>
+                                                <span className="text-sm text-gray-900 font-bold truncate max-w-[200px]" title={c.name}>{c.name}</span>
+                                            </div>
+                                            <span className="text-sm font-bold text-green-600">{c.count}回</span>
+                                        </div>
+                                        {/* 直送先内訳 */}
+                                        {c.details && c.details.length > 0 && !(c.details.length === 1 && c.details[0].name === '(直接)') && (
+                                            <div className="ml-9 flex flex-wrap gap-x-3 gap-y-1">
+                                                {c.details.map(d => (
+                                                    <div key={d.name} className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                                        <span className="truncate max-w-[120px]">{d.name}</span>
+                                                        <span className="font-bold text-gray-700">{d.count}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>

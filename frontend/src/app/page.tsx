@@ -11,6 +11,7 @@ import EditReportModal from '../components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Check } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { compareDates } from '@/lib/reportUtils';
 import {
   BarChart,
   Bar,
@@ -49,9 +50,7 @@ export default function Home() {
   // 日付でソート（useMemo）
   const reports = useMemo(() => {
     return [...rawReports].sort((a, b) => {
-      const dateA = String(a.日付 || '');
-      const dateB = String(b.日付 || '');
-      return dateB.localeCompare(dateA);
+      return compareDates(String(b.日付 || ''), String(a.日付 || ''));
     });
   }, [rawReports]);
 
@@ -64,6 +63,11 @@ export default function Home() {
   const [submittingReply, setSubmittingReply] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);  // 通知一覧の展開状態
   const [processingNotifications, setProcessingNotifications] = useState<Set<number>>(new Set()); // 処理中の通知ID
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 画像読み込み
   useEffect(() => {
@@ -237,7 +241,7 @@ export default function Home() {
   });
 
   // 月別データをソート (新しい順)
-  const sortedMonths = Array.from(monthsMap.values()).sort((a, b) => b.month.localeCompare(a.month));
+  const sortedMonths = Array.from(monthsMap.values()).sort((a, b) => compareDates(b.month, a.month));
 
   // グラフ用データ (古い順)
   const chartData = [...sortedMonths].reverse();
@@ -273,6 +277,14 @@ export default function Home() {
     .sort((a, b) => b.total - a.total)
     .slice(0, 10);
 
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sf-light-blue"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -526,9 +538,9 @@ export default function Home() {
             <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border">
               <tr>
                 <th className="px-4 py-3 font-medium">エリア</th>
-                <th className="px-4 py-3 font-medium text-center">訪問件数</th>
-                <th className="px-4 py-3 font-medium text-center">電話件数</th>
-                <th className="px-4 py-3 font-medium text-center">合計</th>
+                <th className="px-4 py-3 font-medium text-center">一般訪問</th>
+                <th className="px-4 py-3 font-medium text-center">一般電話</th>
+                <th className="px-4 py-3 font-medium text-center">一般合計</th>
                 <th className="px-4 py-3 font-medium text-center border-l-2 border-yellow-200 bg-yellow-50">重点顧客訪問</th>
                 <th className="px-4 py-3 font-medium text-center bg-yellow-50">重点顧客電話</th>
                 <th className="px-4 py-3 font-medium text-center bg-yellow-50">重点顧客合計</th>
@@ -550,23 +562,39 @@ export default function Home() {
                 });
                 return (
                   <>
-                    {areas.map(([area, areaStats]) => (
-                      <tr key={area} className="border-b border-sf-border hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-2 text-sf-text font-medium">{area}</td>
-                        <td className="px-4 py-2 text-center text-sf-text">{areaStats.visits}</td>
-                        <td className="px-4 py-2 text-center text-sf-text">{areaStats.calls}</td>
-                        <td className="px-4 py-2 text-center font-medium text-sf-text">{areaStats.visits + areaStats.calls}</td>
-                        <td className="px-4 py-2 text-center text-purple-600 border-l-2 border-yellow-200 bg-yellow-50/50">{areaStats.priorityVisits}</td>
-                        <td className="px-4 py-2 text-center text-orange-600 bg-yellow-50/50">{areaStats.priorityCalls}</td>
-                        <td className="px-4 py-2 text-center font-medium text-yellow-700 bg-yellow-50/50">{areaStats.priorityVisits + areaStats.priorityCalls}</td>
-                      </tr>
-                    ))}
+                    {areas.map(([area, areaStats]) => {
+                      const generalVisits = areaStats.visits - areaStats.priorityVisits;
+                      const generalCalls = areaStats.calls - areaStats.priorityCalls;
+                      const generalTotal = generalVisits + generalCalls;
+                      const priorityTotal = areaStats.priorityVisits + areaStats.priorityCalls;
+                      return (
+                        <tr key={area} className="border-b border-sf-border hover:bg-gray-50 transition-colors">
+                          <td className="px-4 py-2 text-sf-text font-medium">{area}</td>
+                          <td className="px-4 py-2 text-center text-sf-text">{generalVisits}</td>
+                          <td className="px-4 py-2 text-center text-sf-text">{generalCalls}</td>
+                          <td className="px-4 py-2 text-center font-medium text-sf-text">{generalTotal}</td>
+                          <td className="px-4 py-2 text-center text-purple-600 border-l-2 border-yellow-200 bg-yellow-50/50">{areaStats.priorityVisits}</td>
+                          <td className="px-4 py-2 text-center text-orange-600 bg-yellow-50/50">{areaStats.priorityCalls}</td>
+                          <td className="px-4 py-2 text-center font-medium text-yellow-700 bg-yellow-50/50">{priorityTotal}</td>
+                        </tr>
+                      );
+                    })}
                     {/* 月合計行 */}
                     <tr className="border-t-2 border-sf-border bg-blue-50/60 font-semibold">
                       <td className="px-4 py-2 text-sf-text font-bold">合計</td>
-                      <td className="px-4 py-2 text-center text-sf-text">{currentMonthData.visits}</td>
-                      <td className="px-4 py-2 text-center text-sf-text">{currentMonthData.calls}</td>
-                      <td className="px-4 py-2 text-center font-bold text-sf-text">{currentMonthData.visits + currentMonthData.calls}</td>
+                      {(() => {
+                        const totalGeneralVisits = currentMonthData.visits - currentMonthData.priorityVisits;
+                        const totalGeneralCalls = currentMonthData.calls - currentMonthData.priorityCalls;
+                        const totalGeneral = totalGeneralVisits + totalGeneralCalls;
+                        const totalPriority = currentMonthData.priorityVisits + currentMonthData.priorityCalls;
+                        return (
+                          <>
+                            <td className="px-4 py-2 text-center text-sf-text">{totalGeneralVisits}</td>
+                            <td className="px-4 py-2 text-center text-sf-text">{totalGeneralCalls}</td>
+                            <td className="px-4 py-2 text-center font-bold text-sf-text">{totalGeneral}</td>
+                          </>
+                        );
+                      })()}
                       <td className="px-4 py-2 text-center text-purple-700 border-l-2 border-yellow-200 bg-yellow-100/60">{currentMonthData.priorityVisits}</td>
                       <td className="px-4 py-2 text-center text-orange-700 bg-yellow-100/60">{currentMonthData.priorityCalls}</td>
                       <td className="px-4 py-2 text-center font-bold text-yellow-800 bg-yellow-100/60">{currentMonthData.priorityVisits + currentMonthData.priorityCalls}</td>

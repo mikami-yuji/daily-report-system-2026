@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Report, updateReport } from '@/lib/api';
-import { sanitizeReport } from '@/lib/reportUtils';
+import { sanitizeReport, normalizeDateInput } from '@/lib/reportUtils';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -104,7 +104,10 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
         const { 管理番号, ...rest } = report;
 
-        let finalFormData = { ...formData };
+        let finalFormData = { 
+            ...formData,
+            日付: normalizeDateInput(formData.日付)
+        };
 
         // 外出時間の場合は商談内容に時間を追記
         if (formData.行動内容 === '外出時間') {

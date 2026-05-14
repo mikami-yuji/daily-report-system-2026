@@ -798,6 +798,7 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
 
 @app.post("/api/reports")
 def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    logging.info(f"DEBUG ADD_REPORT: Received payload: {report.model_dump()}")
     excel_file = os.path.join(EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
@@ -894,12 +895,18 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
 
         # Define the columns to write to and their values
         # 2026年度版カラム構造（K列に「得意先目標」が追加）
+        
+        # 自由入力（得意先CDが空で、訪問先名が入っている場合）は、ダミーの得意先CD「999999」を入れる
+        write_customer_cd = report.得意先CD
+        if not write_customer_cd and report.訪問先名:
+            write_customer_cd = "999999"
+
         columns_to_write = {
             1: new_mgmt_num,        # A: 管理番号
             2: report.日付,          # B: 日付
             3: report.行動内容,       # C: 行動内容
             4: report.エリア,         # D: エリア
-            5: report.得意先CD,       # E: 得意先CD.
+            5: write_customer_cd,    # E: 得意先CD.
             6: report.直送先CD,       # F: 直送先CD.
             7: report.訪問先名,       # G: 訪問先名/得意先名
             8: report.直送先名,       # H: 直送先名
@@ -1239,9 +1246,9 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
             
             # Fields to check for conflicts (critical text fields)
             check_fields = {
-                22: '上長コメント',
-                23: 'コメント返信欄',
-                18: '商談内容'
+                23: '上長コメント',
+                24: 'コメント返信欄',
+                19: '商談内容'
             }
             
             conflicts = []
@@ -1962,6 +1969,139 @@ async def get_sales_data(customer_code: str):
     except Exception as e:
         logging.error(f"Error retrieving sales data: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+
+@app.get("/api/analytics/team-summary")
+def get_team_summary(month: Optional[str] = None):
+    """
+    複数ファイルから全メンバーの活動状況を集計する。
+    month: "YY/MM" 形式 (例: "26/03")。
+    """
+    logging.info(f"Team Summary triggered for month: {month}")
+    if not os.path.exists(EXCEL_DIR):
+        raise HTTPException(status_code=500, detail="Excel directory not found")
+
+    # 除外リスト
+    EXCLUDE_FILES = [
+        "●20260117_2026年度用_日報【原本_2】.xlsm",
+        "【電話営業資料】電話　メール話題情報.xlsx",
+        "支店999_【津田_操作確認用】_2026年度用日報.xlsm",
+        "本社001_【中野次長】_2026年度用日報.xlsm"
+    ]
+
+    try:
+        # ファイル一覧の取得
+        target_files = [
+            f for f in os.listdir(EXCEL_DIR) 
+            if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
+        ]
+        logging.info(f"Scanning {len(target_files)} files for aggregation.")
+
+        def extract_staff_name_py(filename: str) -> str:
+            import re
+            match = re.search(r'【(.+?)】', filename)
+            if not match: return "不明"
+            content = match.group(1)
+            name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
+            if name_with_paren: return name_with_paren.group(1) + name_with_paren.group(2)
+            surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
+            if surname: return surname.group(1)
+            return content[:4]
+
+        summary_results = []
+
+        # 月次ターゲットの正規化 (YY/MM -> 20YY-MM)
+        target_month_iso = ""
+        if month and '/' in month:
+            parts = month.split('/')
+            target_month_iso = f"20{parts[0]}-{parts[1]}"
+            logging.info(f"Normalized target month to: {target_month_iso}")
+
+        for filename in target_files:
+            try:
+                staff_name = extract_staff_name_py(filename)
+                df = get_cached_dataframe(filename, '営業日報')
+                if df.empty:
+                    logging.debug(f"File {filename}: Empty dataframe.")
+                    continue
+
+                # カラムクリーンアップ
+                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+                
+                # 日付フィルタ
+                if month and '日付' in df.columns:
+                    # 柔軟な日付処理
+                    # 1. まずdatetimeオブジェクトへの変換を試みる
+                    def smart_parse_dates(s):
+                        for fmt in ['%y/%m/%d', '%Y/%m/%d', '%Y-%m-%d']:
+                            parsed = pd.to_datetime(s, format=fmt, errors='coerce')
+                            if not parsed.isna().all():
+                                return parsed
+                        return pd.to_datetime(s, errors='coerce')
+
+                    temp_dates = smart_parse_dates(df['日付'])
+                    
+                    # 2. マッチング処理
+                    # datetimeとして変換できた場合は YY/MM 形式にフォーマットして比較
+                    if not temp_dates.isna().all():
+                        # month が '26/02' のような形式であることを想定
+                        mask = temp_dates.dt.strftime('%y/%m') == month
+                        
+                        # もしヒットしない場合はフルイヤー形式 (2026/02) なども考慮
+                        if not mask.any() and target_month_iso:
+                            mask = temp_dates.dt.strftime('%Y-%m') == target_month_iso
+                            
+                        df = df[mask]
+                    else:
+                        # 全くdatetime変換できない場合は文字列として startswith 比較
+                        df['日付'] = df['日付'].astype(str)
+                        df = df[df['日付'].str.contains(month, na=False)]
+
+                if df.empty:
+                    logging.debug(f"File {filename}: No records found after filtering for {month}.")
+                    continue
+
+                # 集計
+                df['エリア'] = df['エリア'].apply(lambda x: str(x).strip() if pd.notnull(x) and str(x).strip() != '' else '未設定')
+                
+                def get_category(row):
+                    val = row['重点顧客'] if '重点顧客' in df.columns else row.get('重点\n顧客', '')
+                    if pd.notnull(val) and str(val).strip() != '' and str(val).strip() != '-':
+                        return '重点'
+                    return '一般'
+                
+                df['区分'] = df.apply(get_category, axis=1)
+                df['is_visit'] = df['行動内容'].apply(lambda x: 1 if pd.notnull(x) and '訪問' in str(x) else 0)
+                df['is_call'] = df['行動内容'].apply(lambda x: 1 if pd.notnull(x) and '電話' in str(x) else 0)
+
+                grouped = df.groupby(['エリア', '区分']).agg({
+                    'is_visit': 'sum',
+                    'is_call': 'sum'
+                }).reset_index()
+
+                for _, row in grouped.iterrows():
+                    summary_results.append({
+                        "staff": staff_name,
+                        "area": row['エリア'],
+                        "category": row['区分'],
+                        "visits": int(row['is_visit']),
+                        "calls": int(row['is_call']),
+                        "file": filename
+                    })
+                
+                logging.debug(f"File {filename}: Successfully aggregated {len(grouped)} area/category pairs.")
+
+            except Exception as file_err:
+                logging.warning(f"Error aggregating file {filename}: {file_err}")
+                continue
+
+        logging.info(f"Aggregation complete. Total records: {len(summary_results)}.")
+        return {"records": summary_results, "count": len(target_files)}
+
+    except Exception as e:
+        logging.error(f"Error in get_team_summary: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Static File Serving for Standalone App ---

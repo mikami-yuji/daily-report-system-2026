@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import NewReportModal from '@/components/reports/NewReportModal';
 import EditReportModal from '@/components/reports/EditReportModal';
 import ReportDetailModal from '@/components/reports/ReportDetailModal';
-import { cleanText } from '@/lib/reportUtils';
+import { cleanText, compareDates } from '@/lib/reportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 
@@ -28,6 +28,11 @@ export default function ReportsPage() {
     const [showNewReportModal, setShowNewReportModal] = useState(false);
     const [showEditReportModal, setShowEditReportModal] = useState(false);
     const [editingReport, setEditingReport] = useState<Report | null>(null);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // ページネーション
     const [currentPage, setCurrentPage] = useState(1);
@@ -48,11 +53,18 @@ export default function ReportsPage() {
         return [...validData].sort((a, b) => {
             const dateA = String(a.日付 || '');
             const dateB = String(b.日付 || '');
-            if (sortOrder === 'asc') {
-                return dateA.localeCompare(dateB);
-            } else {
-                return dateB.localeCompare(dateA);
+            
+            // 日付で比較
+            const dateComp = compareDates(dateA, dateB);
+            
+            if (dateComp !== 0) {
+                return sortOrder === 'asc' ? dateComp : -dateComp;
             }
+            
+            // 日付が同じ場合は管理番号で比較 (常に新しい番号を上にしたい場合が多いが、基本は降順)
+            const numA = Number(a.管理番号) || 0;
+            const numB = Number(b.管理番号) || 0;
+            return sortOrder === 'asc' ? numA - numB : numB - numA;
         });
     }, [rawReports, sortOrder]);
 
@@ -84,6 +96,14 @@ export default function ReportsPage() {
             setSelectedReportIndex(selectedReportIndex + 1);
         }
     };
+
+    if (!mounted) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sf-light-blue"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col animate-fadeIn">

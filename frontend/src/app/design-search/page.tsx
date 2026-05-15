@@ -272,7 +272,8 @@ export default function DesignSearchPage() {
     };
 
     return (
-        <div className="space-y-6 animate-fadeIn">
+        <>
+            <div className="space-y-6 animate-fadeIn">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-semibold text-sf-text">デザイン依頼検索</h1>
             </div>
@@ -651,6 +652,7 @@ export default function DesignSearchPage() {
                     </div>
                 )}
             </div>
+            </div>
 
             {/* Image Search Result Modal */}
             {showImageModal && (
@@ -767,6 +769,6 @@ export default function DesignSearchPage() {
                     )}
                 </div>
             )}
-        </div>
+        </>
     );
 }

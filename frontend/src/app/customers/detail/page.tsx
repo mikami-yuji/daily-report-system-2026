@@ -189,6 +189,7 @@ function CustomerDetailContent() {
     };
 
     const getActionIcon = (action: string) => {
+        if (!action) return <FileText size={16} className="text-gray-500" />;
         if (action.includes('電話')) return <Phone size={16} className="text-blue-500" />;
         if (action.includes('訪問')) return <User size={16} className="text-green-500" />;
         return <FileText size={16} className="text-gray-500" />;

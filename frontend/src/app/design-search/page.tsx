@@ -4,9 +4,10 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
-import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X, Download } from 'lucide-react';
+import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X, Download, PenSquare } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 
 interface DesignRequest {
     designNo: string;
@@ -41,6 +42,23 @@ export default function DesignSearchPage() {
     const [showImageModal, setShowImageModal] = useState(false);
     const [searchQueryDebug, setSearchQueryDebug] = useState('');
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+
+    // 新規日報作成モーダル連携用
+    const [showNewReportModal, setShowNewReportModal] = useState(false);
+    const [initialDesignData, setInitialDesignData] = useState<InitialDesignData | undefined>(undefined);
+
+    const handleAddReport = (req: DesignRequest, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setInitialDesignData({
+            得意先CD: req.customerCode,
+            得意先名: req.customerName,
+            デザイン依頼No: req.designNo,
+            デザイン名: req.designName,
+            デザイン種別: req.designType,
+            デザイン進捗状況: req.designProgress
+        });
+        setShowNewReportModal(true);
+    };
 
     const handleImageSearch = async (designNo: string, e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent row toggle
@@ -591,10 +609,19 @@ export default function DesignSearchPage() {
                                                                 </div>
                                                             </div>
 
-                                                            <h3 className="text-sm font-semibold text-sf-text mb-3 flex items-center gap-2">
-                                                                <FileText size={16} className="text-sf-light-blue" />
-                                                                活動履歴（時系列）
-                                                            </h3>
+                                                            <div className="flex justify-between items-end mb-3">
+                                                                <h3 className="text-sm font-semibold text-sf-text flex items-center gap-2">
+                                                                    <FileText size={16} className="text-sf-light-blue" />
+                                                                    活動履歴（時系列）
+                                                                </h3>
+                                                                <button
+                                                                    onClick={(e) => handleAddReport(req, e)}
+                                                                    className="px-3 py-1.5 bg-sf-light-blue text-white rounded text-xs hover:bg-blue-700 transition-colors flex items-center gap-1 shadow-sm"
+                                                                >
+                                                                    <PenSquare size={14} />
+                                                                    このデザインの日報を追加
+                                                                </button>
+                                                            </div>
                                                             <div className="space-y-3">
                                                                 {req.requests.map((report, idx) => (
                                                                     <div
@@ -790,6 +817,20 @@ export default function DesignSearchPage() {
                         </button>
                     )}
                 </div>
+            )}
+
+            {/* 新規日報作成モーダル（デザイン情報引き継ぎ用） */}
+            {showNewReportModal && selectedFile && (
+                <NewReportModal
+                    onClose={() => setShowNewReportModal(false)}
+                    onSuccess={() => {
+                        setShowNewReportModal(false);
+                        // データ再取得などの処理は、SWR/React Queryなら自動で走るか、手動でトリガー
+                        window.location.reload(); // 簡易的にリロードして最新データを反映
+                    }}
+                    selectedFile={selectedFile}
+                    initialDesignData={initialDesignData}
+                />
             )}
         </>
     );

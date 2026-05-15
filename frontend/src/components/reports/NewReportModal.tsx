@@ -6,13 +6,23 @@ import { X, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { normalizeDateInput } from '@/lib/reportUtils';
 
+export interface InitialDesignData {
+    得意先CD?: string;
+    得意先名?: string;
+    デザイン依頼No?: string;
+    デザイン名?: string;
+    デザイン種別?: string;
+    デザイン進捗状況?: string;
+}
+
 interface NewReportModalProps {
     onClose: () => void;
     onSuccess: () => void;
     selectedFile: string;
+    initialDesignData?: InitialDesignData;
 }
 
-export default function NewReportModal({ onClose, onSuccess, selectedFile }: NewReportModalProps) {
+export default function NewReportModal({ onClose, onSuccess, selectedFile, initialDesignData }: NewReportModalProps) {
     const { isOnline, saveOfflineReport, cachedCustomers, cacheCustomers } = useOffline();
 
     // 下書き保存フック
@@ -46,20 +56,37 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
 
     // 下書きがあれば復元、なければ初期値
     const initialDraft = getDraft();
-    const [formData, setFormData] = useState(initialDraft?.formData || defaultFormData);
+    const [formData, setFormData] = useState(() => {
+        const base = initialDesignData ? defaultFormData : (initialDraft?.formData || defaultFormData);
+        if (initialDesignData) {
+            return {
+                ...base,
+                訪問先名: initialDesignData.得意先名 || '',
+                得意先CD: initialDesignData.得意先CD || '',
+                'デザイン依頼No.': initialDesignData.デザイン依頼No || '',
+                デザイン名: initialDesignData.デザイン名 || '',
+                デザイン種別: initialDesignData.デザイン種別 || '',
+                デザイン進捗状況: initialDesignData.デザイン進捗状況 || '',
+                デザイン提案有無: 'あり'
+            };
+        }
+        return base;
+    });
     const [submitting, setSubmitting] = useState(false);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [interviewers, setInterviewers] = useState<string[]>([]);
-    const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(initialDraft?.designMode || 'none');
+    const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(
+        initialDesignData ? 'existing' : (initialDraft?.designMode || 'none')
+    );
     const [designs, setDesigns] = useState<Design[]>([]);
     const [startOutTime, setStartOutTime] = useState('');
     const [endOutTime, setEndOutTime] = useState('');
     // 得意先リストからエリア一覧を動的に取得
     const [areaOptions, setAreaOptions] = useState<string[]>([]);
     // 下書き復元時のtoast通知
-    const [draftRestored] = useState(!!initialDraft);
+    const [draftRestored] = useState(!initialDesignData && !!initialDraft);
 
     // 下書き復元通知（初回マウント時のみ）
     useEffect(() => {
@@ -95,6 +122,28 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
             // エリア一覧を抽出（重複除去・ソート）
             const areas = [...new Set(data.map(c => c.エリア).filter(Boolean))].sort();
             setAreaOptions(areas);
+
+            // initialDesignData がある場合、該当得意先情報を埋める
+            if (initialDesignData?.得意先CD) {
+                const customer = data.find(c => String(c.得意先CD) === initialDesignData.得意先CD);
+                if (customer) {
+                    setFormData(prev => ({
+                        ...prev,
+                        訪問先名: customer.得意先名 || '',
+                        直送先名: customer.直送先名 || '',
+                        得意先CD: customer.得意先CD || '',
+                        直送先CD: customer.直送先CD || '',
+                        エリア: customer.エリア || '',
+                        重点顧客: customer.重点顧客 || '',
+                        ランク: customer.ランク || ''
+                    }));
+                }
+
+                // Fetch interviewers and designs for this customer
+                getInterviewers(initialDesignData.得意先CD, selectedFile, initialDesignData.得意先名).then(d => setInterviewers(d)).catch(() => setInterviewers([]));
+                getDesigns(initialDesignData.得意先CD, selectedFile).then(d => setDesigns(d)).catch(() => setDesigns([]));
+            }
+
         }).catch(err => {
             console.error('Failed to fetch customers:', err);
             if (cachedCustomers.length > 0) {
@@ -104,11 +153,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile }: New
                 toast('キャッシュされた得意先リストを使用します', { icon: '📡', id: 'cached-customers' });
             }
         });
-    }, [selectedFile, isOnline, cacheCustomers, cachedCustomers]);
-
-    // ... (existing logic) ...
-    // Note: I will need to replace the imports and state defs first, then find the specific location for the input field.
-    // Actually, I can replace the whole file content for imports, but that's risky.
+    }, [selectedFile, isOnline, cacheCustomers, cachedCustomers, initialDesignData]);
 
 
     // Handle customer name change with keyword search across all fields including kana

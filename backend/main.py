@@ -594,6 +594,15 @@ def get_reports(filename: str = DEFAULT_EXCEL_FILE):
         # Convert dates to string to avoid serialization issues
         if '日付' in df.columns:
              df['日付'] = df['日付'].astype(str)
+             
+        # システム確認用デザインNo.が空の場合、デザイン依頼No.で補完する
+        if 'システム確認用デザインNo.' in df.columns and 'デザイン依頼No.' in df.columns:
+            import numpy as np
+            df['システム確認用デザインNo.'] = np.where(
+                (df['システム確認用デザインNo.'] == '') | df['システム確認用デザインNo.'].isna(), 
+                df['デザイン依頼No.'], 
+                df['システム確認用デザインNo.']
+            )
         
         # Convert to dict and manually clean any remaining problematic values
         records = df.to_dict(orient="records")

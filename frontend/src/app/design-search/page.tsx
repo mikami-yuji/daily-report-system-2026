@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
-import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X } from 'lucide-react';
+import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
@@ -40,6 +40,7 @@ export default function DesignSearchPage() {
     const [imageResults, setImageResults] = useState<DesignImage[]>([]);
     const [showImageModal, setShowImageModal] = useState(false);
     const [searchQueryDebug, setSearchQueryDebug] = useState('');
+    const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
     const handleImageSearch = async (designNo: string, e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent row toggle
@@ -674,7 +675,17 @@ export default function DesignSearchPage() {
                                         const isPdf = img.name.toLowerCase().endsWith('.pdf');
                                         return (
                                             <div key={i} className="group relative bg-white rounded border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                                                <a href={getImageUrl(img.path)} target="_blank" rel="noopener noreferrer" className="block aspect-square overflow-hidden bg-gray-200 flex items-center justify-center">
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (isPdf) {
+                                                            window.open(getImageUrl(img.path), '_blank');
+                                                        } else {
+                                                            setSelectedImageIndex(i);
+                                                        }
+                                                    }} 
+                                                    className="w-full block aspect-square overflow-hidden bg-gray-200 flex items-center justify-center cursor-pointer"
+                                                >
                                                     {isPdf ? (
                                                         <div className="flex flex-col items-center justify-center text-red-500">
                                                             <FileText size={48} />
@@ -689,7 +700,7 @@ export default function DesignSearchPage() {
                                                             loading="lazy"
                                                         />
                                                     )}
-                                                </a>
+                                                </button>
                                                 <div className="p-2 text-xs">
                                                     <div className="font-medium truncate text-sf-text" title={img.name}>{img.name}</div>
                                                     <div className="text-gray-400 truncate mt-0.5">{img.folder}</div>
@@ -706,6 +717,54 @@ export default function DesignSearchPage() {
                             )}
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Lightbox Viewer */}
+            {selectedImageIndex !== null && (
+                <div className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-[70]">
+                    <button
+                        onClick={() => setSelectedImageIndex(null)}
+                        className="absolute top-4 right-4 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-2 z-50"
+                    >
+                        <X size={24} />
+                    </button>
+
+                    {selectedImageIndex > 0 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageIndex(selectedImageIndex - 1);
+                            }}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-3 z-50"
+                        >
+                            <ChevronLeft size={32} />
+                        </button>
+                    )}
+
+                    <div className="w-full h-full p-8 flex items-center justify-center relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={getImageUrl(imageResults[selectedImageIndex].path)}
+                            alt={imageResults[selectedImageIndex].name}
+                            className="max-w-full max-h-full object-contain"
+                        />
+                        <div className="absolute bottom-4 left-0 right-0 text-center text-white text-sm bg-black bg-opacity-50 py-2">
+                            {imageResults[selectedImageIndex].name} ({selectedImageIndex + 1} / {imageResults.length})
+                        </div>
+                    </div>
+
+                    {selectedImageIndex < imageResults.length - 1 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageIndex(selectedImageIndex + 1);
+                            }}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-3 z-50"
+                        >
+                            <ChevronRight size={32} />
+                        </button>
+                    )}
                 </div>
             )}
         </div>

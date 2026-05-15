@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
-import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X } from 'lucide-react';
+import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X, Download } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
@@ -703,9 +703,20 @@ export default function DesignSearchPage() {
                                                         />
                                                     )}
                                                 </button>
-                                                <div className="p-2 text-xs">
-                                                    <div className="font-medium truncate text-sf-text" title={img.name}>{img.name}</div>
-                                                    <div className="text-gray-400 truncate mt-0.5">{img.folder}</div>
+                                                <div className="p-2 text-xs flex justify-between items-start">
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <div className="font-medium truncate text-sf-text" title={img.name}>{img.name}</div>
+                                                        <div className="text-gray-400 truncate mt-0.5">{img.folder}</div>
+                                                    </div>
+                                                    <a 
+                                                        href={getImageUrl(img.path)} 
+                                                        download={img.name}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="ml-2 p-1.5 bg-gray-100 hover:bg-sf-light-blue hover:text-white rounded text-gray-500 transition-colors"
+                                                        title="ダウンロード"
+                                                    >
+                                                        <Download size={14} />
+                                                    </a>
                                                 </div>
                                             </div>
                                         );
@@ -725,12 +736,23 @@ export default function DesignSearchPage() {
             {/* Lightbox Viewer */}
             {selectedImageIndex !== null && (
                 <div className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-[70]">
-                    <button
-                        onClick={() => setSelectedImageIndex(null)}
-                        className="absolute top-4 right-4 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-2 z-50"
-                    >
-                        <X size={24} />
-                    </button>
+                    <div className="absolute top-4 right-4 flex gap-3 z-50">
+                        <a
+                            href={getImageUrl(imageResults[selectedImageIndex].path)}
+                            download={imageResults[selectedImageIndex].name}
+                            className="text-white hover:text-sf-light-blue bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-2 transition-all flex items-center justify-center"
+                            title="画像をダウンロード"
+                        >
+                            <Download size={24} />
+                        </a>
+                        <button
+                            onClick={() => setSelectedImageIndex(null)}
+                            className="text-white hover:text-gray-300 bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-2 transition-all"
+                            title="閉じる"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
 
                     {selectedImageIndex > 0 && (
                         <button

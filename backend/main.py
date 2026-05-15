@@ -1971,196 +1971,188 @@ async def get_sales_data(customer_code: str):
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
 
 @app.get("/api/analytics/team-summary")
-def get_team_summary(month: Optional[str] = None):
-    """
-    複数ファイルから全メンバーの活動状況を集計する。
-    month: "YY/MM" 形式 (例: "26/03")。
-    """
-    logging.info(f"Team Summary triggered for month: {month}")
-    if not os.path.exists(EXCEL_DIR):
-        raise HTTPException(status_code=500, detail="Excel directory not found")
-
-    # 除外リスト
-    EXCLUDE_FILES = [
-        "●20260117_2026年度用_日報【原本_2】.xlsm",
-        "【電話営業資料】電話　メール話題情報.xlsx",
-        "支店999_【津田_操作確認用】_2026年度用日報.xlsm",
-        "本社001_【中野次長】_2026年度用日報.xlsm"
-    ]
-
+def get_team_summary(month: str = None):
     try:
-        # ファイル一覧の取得
-        target_files = [
-            f for f in os.listdir(EXCEL_DIR) 
-            if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
-        ]
-        logging.info(f"Scanning {len(target_files)} files for aggregation.")
-
-        def extract_staff_name_py(filename: str) -> str:
-            import re
-            match = re.search(r'【(.+?)】', filename)
-            if not match: return "不明"
-            content = match.group(1)
-            name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
-            if name_with_paren: return name_with_paren.group(1) + name_with_paren.group(2)
-            surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
-            if surname: return surname.group(1)
-            return content[:4]
-
-        summary_results = []
-
-        # 月次ターゲットの正規化 (YY/MM -> 20YY-MM)
-        target_month_iso = ""
-        if month and '/' in month:
-            parts = month.split('/')
-            target_month_iso = f"20{parts[0]}-{parts[1]}"
-            logging.info(f"Normalized target month to: {target_month_iso}")
-
-        for filename in target_files:
+        logging.info(f"--- Team Summary Aggregation Start: month={month} ---")
+        target_files = [f for f in os.listdir(EXCEL_DIR) if f.endswith('.xlsm') and not f.startswith('~$')]
+        results = []
+        for fname in target_files:
             try:
-                staff_name = extract_staff_name_py(filename)
-                df = get_cached_dataframe(filename, '営業日報')
-                if df.empty:
-                    logging.debug(f"File {filename}: Empty dataframe.")
-                    continue
-
-                # カラムクリーンアップ
-                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
-                
-                # 日付フィルタ
-                if month and '日付' in df.columns:
-                    # 柔軟な日付処理
-                    # 1. まずdatetimeオブジェクトへの変換を試みる
-                    def smart_parse_dates(s):
-                        for fmt in ['%y/%m/%d', '%Y/%m/%d', '%Y-%m-%d']:
-                            parsed = pd.to_datetime(s, format=fmt, errors='coerce')
-                            if not parsed.isna().all():
-                                return parsed
-                        return pd.to_datetime(s, errors='coerce')
-
-                    temp_dates = smart_parse_dates(df['日付'])
-                    
-                    # 2. マッチング処理
-                    # datetimeとして変換できた場合は YY/MM 形式にフォーマットして比較
-                    if not temp_dates.isna().all():
-                        # month が '26/02' のような形式であることを想定
-                        mask = temp_dates.dt.strftime('%y/%m') == month
-                        
-                        # もしヒットしない場合はフルイヤー形式 (2026/02) なども考慮
-                        if not mask.any() and target_month_iso:
-                            mask = temp_dates.dt.strftime('%Y-%m') == target_month_iso
-                            
-                        df = df[mask]
-                    else:
-                        # 全くdatetime変換できない場合は文字列として startswith 比較
-                        df['日付'] = df['日付'].astype(str)
-                        df = df[df['日付'].str.contains(month, na=False)]
-
-                if df.empty:
-                    logging.debug(f"File {filename}: No records found after filtering for {month}.")
-                    continue
-
-                # 集計
-                df['エリア'] = df['エリア'].apply(lambda x: str(x).strip() if pd.notnull(x) and str(x).strip() != '' else '未設定')
-                
-                def get_category(row):
-                    val = row['重点顧客'] if '重点顧客' in df.columns else row.get('重点\n顧客', '')
-                    if pd.notnull(val) and str(val).strip() != '' and str(val).strip() != '-':
-                        return '重点'
-                    return '一般'
-                
-                df['区分'] = df.apply(get_category, axis=1)
-                df['is_visit'] = df['行動内容'].apply(lambda x: 1 if pd.notnull(x) and '訪問' in str(x) else 0)
-                df['is_call'] = df['行動内容'].apply(lambda x: 1 if pd.notnull(x) and '電話' in str(x) else 0)
-
-                grouped = df.groupby(['エリア', '区分']).agg({
-                    'is_visit': 'sum',
-                    'is_call': 'sum'
-                }).reset_index()
-
-                for _, row in grouped.iterrows():
-                    summary_results.append({
-                        "staff": staff_name,
-                        "area": row['エリア'],
-                        "category": row['区分'],
-                        "visits": int(row['is_visit']),
-                        "calls": int(row['is_call']),
-                        "file": filename
-                    })
-                
-                logging.debug(f"File {filename}: Successfully aggregated {len(grouped)} area/category pairs.")
-
-            except Exception as file_err:
-                logging.warning(f"Error aggregating file {filename}: {file_err}")
-                continue
-
-        logging.info(f"Aggregation complete. Total records: {len(summary_results)}.")
-        return {"records": summary_results, "count": len(target_files)}
-
+                df = get_cached_dataframe(fname, '営業日報')
+                if df is None: continue
+                df.columns = [str(c).replace('\n', '').strip() for c in df.columns]
+                date_col = next((c for c in df.columns if '日付' in c), '日付')
+                action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
+                df['dt'] = pd.to_datetime(df[date_col], errors='coerce')
+                if month:
+                    df = df[df['dt'].dt.strftime('%y/%m') == month]
+                if not df.empty:
+                    staff = fname.replace('.xlsm', '')
+                    v = df[action_col].astype(str).str.contains('訪問', na=False).sum()
+                    c = len(df) - v
+                    results.append({"staff": staff, "total": len(df), "visits": int(v), "calls": int(c)})
+            except: continue
+        return {"records": results, "count": len(results)}
     except Exception as e:
-        logging.error(f"Error in get_team_summary: {e}")
-        import traceback
-        traceback.print_exc()
+        logging.error(f"Team summary error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/stats/dashboard")
+def get_dashboard_stats(filename: str = DEFAULT_EXCEL_FILE):
+    """ダッシュボード統計をバックエンドで集計して返す"""
+    # 空レスポンスのテンプレート（エラー時のフォールバック用）
+    empty_response = {
+        "summary": {"totalReports": 0, "thisMonth": 0, "visits": 0, "calls": 0},
+        "priority": {"uniqueCustomers": 0, "visits": 0, "calls": 0},
+        "monthly": [], "ranking": [], "updatedAt": datetime.now().isoformat()
+    }
+    try:
+        logging.info(f"--- Dashboard Stats for {filename} ---")
+        # Excelファイルが読めない場合（他のユーザーが開いている等）は空レスポンスを返す
+        try:
+            df = get_cached_dataframe(filename, '営業日報')
+        except Exception as read_err:
+            logging.warning(f"Dashboard: Cannot read file {filename}: {read_err}")
+            return empty_response
 
-# --- Static File Serving for Standalone App ---
+        if df is None or df.empty:
+            logging.info(f"Dashboard: Empty dataframe for {filename}")
+            return empty_response
+
+        logging.info(f"Dashboard: Raw rows={len(df)}")
+
+        # カラム名のクリーンアップ
+        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        date_col = next((c for c in df.columns if '日付' in c or '年月日' in c), '日付')
+        action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
+        priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
+        customer_col = next((c for c in df.columns if '得意先CD' in c), '得意先CD')
+        customer_name_col = next((c for c in df.columns if '訪問先名' in c or '得意先名' in c), '訪問先名')
+        area_col = next((c for c in df.columns if 'エリア' in c), 'エリア')
+
+        logging.info(f"Dashboard: Cols detected - date={date_col}, action={action_col}")
+
+        # 日付パース（YY/MM/DD テキスト形式に対応）
+        def parse_dt(x):
+            if pd.isna(x): return pd.NaT
+            s = str(x).strip()
+            if s == '' or s == 'nan' or s == '-': return pd.NaT
+            # 形式1: YY/MM/DD (26/05/13)
+            try:
+                d = pd.to_datetime(s, format='%y/%m/%d')
+                return d
+            except:
+                pass
+            # 形式2: 汎用パース
+            try:
+                return pd.to_datetime(s, errors='coerce')
+            except:
+                return pd.NaT
+
+        df['dt'] = df[date_col].apply(parse_dt)
+        vdf = df.dropna(subset=['dt']).copy()
+
+        logging.info(f"Dashboard: Valid date rows={len(vdf)}")
+
+        if vdf.empty:
+            logging.warning(f"Dashboard: No valid dates. Sample: {df[date_col].head(3).tolist()}")
+            return empty_response
+
+        # 基本統計
+        total = len(vdf)
+        now = datetime.now()
+        this_month_mask = (vdf['dt'].dt.year == now.year) & (vdf['dt'].dt.month == now.month)
+        tm_cnt = int(this_month_mask.sum())
+
+        # 訪問・電話フラグ
+        is_v = vdf[action_col].astype(str).str.contains('訪問', na=False)
+        is_c = vdf[action_col].astype(str).str.contains('電話', na=False)
+        visits_total = int(is_v.sum())
+        calls_total = int(is_c.sum())
+
+        # 重点顧客
+        is_p = vdf[priority_col].fillna('').astype(str).apply(lambda x: x.strip() != '' and x.strip() != '-')
+        pdf = vdf[is_p]
+        p_unique = int(pdf[customer_col].nunique()) if customer_col in pdf.columns else 0
+        p_visits = int((pdf[action_col].astype(str).str.contains('訪問', na=False)).sum())
+        p_calls = int((pdf[action_col].astype(str).str.contains('電話', na=False)).sum())
+
+        # 月別推移
+        vdf['m'] = vdf['dt'].dt.strftime('%y/%m')
+        monthly = []
+        for m, g in vdf.groupby('m'):
+            mv = int(g[action_col].astype(str).str.contains('訪問', na=False).sum())
+            mc = int(g[action_col].astype(str).str.contains('電話', na=False).sum())
+            g_p = g[priority_col].fillna('').astype(str).apply(lambda x: x.strip() != '' and x.strip() != '-')
+            pv = int((g[action_col].astype(str).str.contains('訪問', na=False) & g_p).sum())
+            pc = int((g[action_col].astype(str).str.contains('電話', na=False) & g_p).sum())
+            # エリア別
+            area_stats = []
+            if area_col in g.columns:
+                ga = g.copy()
+                ga[area_col] = ga[area_col].fillna('未設定').astype(str).str.strip()
+                ga.loc[ga[area_col] == '', area_col] = '未設定'
+                for an, ag in ga.groupby(area_col):
+                    av = int(ag[action_col].astype(str).str.contains('訪問', na=False).sum())
+                    ac = int(ag[action_col].astype(str).str.contains('電話', na=False).sum())
+                    ap = ag[priority_col].fillna('').astype(str).apply(lambda x: x.strip() != '' and x.strip() != '-')
+                    area_stats.append({
+                        "area": str(an), "visits": av, "calls": ac,
+                        "priorityVisits": int((ag[action_col].astype(str).str.contains('訪問', na=False) & ap).sum()),
+                        "priorityCalls": int((ag[action_col].astype(str).str.contains('電話', na=False) & ap).sum())
+                    })
+            monthly.append({
+                "month": m, "visits": mv, "calls": mc,
+                "priorityVisits": pv, "priorityCalls": pc,
+                "areaBreakdown": area_stats
+            })
+        monthly.sort(key=lambda x: x['month'], reverse=True)
+
+        # 得意先ランキング (Top 10)
+        ranking = []
+        rank_base = vdf[is_v | is_c].copy()
+        if not rank_base.empty and customer_name_col in rank_base.columns:
+            rank_base[customer_name_col] = rank_base[customer_name_col].fillna('名称不明').astype(str)
+            rank_base['_rv'] = rank_base[action_col].astype(str).str.contains('訪問', na=False)
+            rank_base['_rc'] = rank_base[action_col].astype(str).str.contains('電話', na=False)
+            rdf = rank_base.groupby(customer_name_col).agg(v=('_rv', 'sum'), c=('_rc', 'sum'))
+            rdf['t'] = rdf['v'] + rdf['c']
+            rdf = rdf.sort_values('t', ascending=False).head(10)
+            for name, row in rdf.iterrows():
+                ranking.append({"name": str(name), "visits": int(row['v']), "calls": int(row['c']), "total": int(row['t'])})
+
+        logging.info(f"Dashboard: Total={total}, ThisMonth={tm_cnt}, Visits={visits_total}, Calls={calls_total}")
+        return {
+            "summary": {"totalReports": total, "thisMonth": tm_cnt, "visits": visits_total, "calls": calls_total},
+            "priority": {"uniqueCustomers": p_unique, "visits": p_visits, "calls": p_calls},
+            "monthly": monthly, "ranking": ranking,
+            "updatedAt": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logging.error(f"Dashboard error: {e}")
+        import traceback
+        traceback.print_exc()
+        # 500エラーを投げずに空レスポンスを返す（フロントエンドのクラッシュを防止）
+        return empty_response
+
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
-
 if os.path.exists(STATIC_DIR):
-    # Mount _next directory for Next.js assets
-    # Check if _next exists inside static to avoid error
     if os.path.exists(os.path.join(STATIC_DIR, "_next")):
          app.mount("/_next", StaticFiles(directory=os.path.join(STATIC_DIR, "_next")), name="next_assets")
-
     @app.get("/")
     async def serve_index():
-        index_path = os.path.join(STATIC_DIR, "index.html")
-        if os.path.exists(index_path):
-            return FileResponse(index_path)
-        return {"message": "Daily Report System API (Static files not found)"}
-
+        p = os.path.join(STATIC_DIR, "index.html")
+        return FileResponse(p) if os.path.exists(p) else {"msg": "No static"}
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Check if file exists in static dir
-        file_path = os.path.join(STATIC_DIR, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        
-        # Check if it maps to a .html file (e.g. /design-search -> design-search.html)
-        html_path = file_path + ".html"
-        if os.path.isfile(html_path):
-            return FileResponse(html_path)
-            
-        # Check if it's a directory with index.html
-        index_path = os.path.join(file_path, "index.html")
-        if os.path.isfile(index_path):
-            return FileResponse(index_path)
-        
-        # If not found, return index.html for SPA routing
-        # (API routes are already handled by precedence)
-        spa_index = os.path.join(STATIC_DIR, "index.html")
-        if os.path.exists(spa_index):
-             return FileResponse(spa_index)
-        
-        return {"detail": "Not Found"}
-# ----------------------------------------------
+        fp = os.path.join(STATIC_DIR, full_path)
+        if os.path.isfile(fp): return FileResponse(fp)
+        si = os.path.join(STATIC_DIR, "index.html")
+        return FileResponse(si) if os.path.exists(si) else {"detail": "Not Found"}
 
 if __name__ == "__main__":
-    import uvicorn
-    import webbrowser
-    import threading
-
-    def open_browser():
-        """サーバー起動後にブラウザを自動で開く"""
-        import time
-        time.sleep(2)  # サーバー起動を待つ
-        webbrowser.open("http://localhost:8001")
-
-    # ブラウザ自動起動（別スレッドで遅延実行）
-    threading.Thread(target=open_browser, daemon=True).start()
-
-    uvicorn.run(app, host="0.0.0.0", port=8001)
-
-
-
+    import uvicorn, webbrowser, threading
+    def ob():
+        import time; time.sleep(2); webbrowser.open("http://localhost:8001")
+    threading.Thread(target=ob, daemon=True).start()
+    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")

@@ -234,7 +234,46 @@ export const searchDesignImages = async (query: string, filename?: string): Prom
 export const getImageUrl = (path: string): string => {
     return `${API_URL}/images/content?path=${encodeURIComponent(path)}`;
 };
-// ... existing exports ...
+export interface DashboardStats {
+    summary: {
+        totalReports: number;
+        thisMonth: number;
+        visits: number;
+        calls: number;
+    };
+    priority: {
+        uniqueCustomers: number;
+        visits: number;
+        calls: number;
+    };
+    monthly: Array<{
+        month: string;
+        visits: number;
+        calls: number;
+        priorityVisits: number;
+        priorityCalls: number;
+        areaBreakdown: Array<{
+            area: string;
+            visits: number;
+            calls: number;
+            priorityVisits: number;
+            priorityCalls: number;
+        }>;
+    }>;
+    ranking: Array<{
+        name: string;
+        visits: number;
+        calls: number;
+        total: number;
+    }>;
+    updatedAt: string;
+}
+
+export const getDashboardStats = async (filename?: string): Promise<DashboardStats> => {
+    const params = filename ? { filename } : {};
+    const response = await api.get(`${API_URL}/stats/dashboard`, { params });
+    return response.data;
+};
 
 export interface SalesData {
     rank: number;

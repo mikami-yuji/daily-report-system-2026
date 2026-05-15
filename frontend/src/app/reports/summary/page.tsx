@@ -2,297 +2,10 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useFile } from '@/context/FileContext';
-import { useReports } from '@/hooks/useQueryHooks';
-import { Report } from '@/lib/api';
+import { useMonthlySummaryStats } from '@/hooks/useStatsHooks';
 import { ChevronLeft, ChevronRight, Printer, FileText, Users, Phone, MapPin, Palette, Star, TrendingUp, ChevronDown, ChevronUp, CornerDownRight } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import toast from 'react-hot-toast';
-import { compareDates } from '@/lib/reportUtils';
-
-// エリア別の集計データ
-type AreaSummary = {
-    area: string;
-    visits: number;
-    calls: number;
-    priorityVisits: number;
-    priorityCalls: number;
-    designProposals: number;
-    customers: Set<string>;
-};
-
-// 直送先の集計データ
-type DirectDeliverySummary = {
-    code: string;
-    name: string;
-    visits: number;
-    calls: number;
-    designProposals: number;
-    lastDate: string;
-    area: string;
-    rank: string;
-    isPriority: boolean;
-};
-
-// 重点顧客の集計データ
-type PriorityCustomerSummary = {
-    code: string;
-    name: string;
-    visits: number;
-    calls: number;
-    designProposals: number;
-    total: number;
-    lastDate: string;
-    area: string;
-    rank: string;
-    isPriority: boolean;
-    directDeliveries: DirectDeliverySummary[];
-};
-
-// デザイン案件の集計データ
-type DesignSummary = {
-    status: string;
-    count: number;
-};
-
-type MonthlySummaryData = {
-    totalReports: number;
-    totalVisits: number;
-    totalCalls: number;
-    priorityVisits: number;
-    priorityCalls: number;
-    totalDesignProposals: number;
-    totalDesignCompleted: number;
-    totalDesignRejected: number;
-    uniqueCustomers: number;
-    activeDays: number;
-    areaBreakdown: AreaSummary[];
-    priorityCustomers: PriorityCustomerSummary[];
-    designProgress: DesignSummary[];
-    topCustomers: { name: string; count: number; details?: { name: string; count: number }[] }[];
-    topCallCustomers: { name: string; count: number; details?: { name: string; count: number }[] }[];
-    dailyActivity: { date: string; visits: number; calls: number }[];
-};
-
-// 月次サマリーデータを生成する関数
-function generateMonthlySummary(reports: Report[], monthPrefix: string): MonthlySummaryData {
-    // 対象月のレポートをフィルタ
-    const monthReports = reports.filter(r => r.日付 && String(r.日付).startsWith(monthPrefix));
-
-    // 基本統計
-    const visits = monthReports.filter(r => r.行動内容?.includes('訪問'));
-    const calls = monthReports.filter(r => r.行動内容?.includes('電話'));
-    const designProposals = monthReports.filter(r => r.デザイン進捗状況 === '新規' || r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり');
-    const designCompleted = monthReports.filter(r => r.デザイン進捗状況?.includes('出稿'));
-    const designRejected = monthReports.filter(r => r.デザイン進捗状況?.includes('不採用'));
-
-    // ユニーク顧客数
-    const uniqueCustomerSet = new Set(
-        monthReports.filter(r => r.訪問先名 && r.訪問先名.trim()).map(r => r.訪問先名)
-    );
-
-    // 活動日数
-    const activeDaySet = new Set(monthReports.map(r => String(r.日付)));
-
-    // エリア別集計
-    const areaMap = new Map<string, AreaSummary>();
-    monthReports.forEach(r => {
-        const isVisit = r.行動内容?.includes('訪問');
-        const isCall = r.行動内容?.includes('電話');
-        if (!isVisit && !isCall) return;
-
-        const isPriority = r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '';
-        const area = r.エリア && String(r.エリア).trim() ? String(r.エリア).trim() : '未設定';
-
-        if (!areaMap.has(area)) {
-            areaMap.set(area, {
-                area,
-                visits: 0,
-                calls: 0,
-                priorityVisits: 0,
-                priorityCalls: 0,
-                designProposals: 0,
-                customers: new Set()
-            });
-        }
-        const stats = areaMap.get(area)!;
-        if (isVisit) {
-            stats.visits++;
-            if (isPriority) stats.priorityVisits++;
-        }
-        if (isCall) {
-            stats.calls++;
-            if (isPriority) stats.priorityCalls++;
-        }
-        if (r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり') stats.designProposals++;
-        if (r.訪問先名) stats.customers.add(r.訪問先名);
-    });
-
-    // 重点顧客の月全体集計（KPIカード用など適宜）
-    const totalPriorityVisits = monthReports.filter(r =>
-        r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '' && r.行動内容?.includes('訪問')
-    ).length;
-    const totalPriorityCalls = monthReports.filter(r =>
-        r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '' && r.行動内容?.includes('電話')
-    ).length;
-
-    // 重点顧客集計（得意先CDでグループ化し、その中で直送先をネスト）
-    const priorityGroupMap = new Map<string, PriorityCustomerSummary>();
-
-    monthReports
-        .filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '')
-        .forEach(r => {
-            const customerCode = r.得意先CD || '不明';
-            const ddCode = r.直送先CD ? String(r.直送先CD).replace(/\.0$/, '').trim() : '';
-            const ddName = r.直送先名 || '';
-
-            // 親（得意先）のエントリを初期化
-            if (!priorityGroupMap.has(customerCode)) {
-                priorityGroupMap.set(customerCode, {
-                    code: customerCode,
-                    name: r.訪問先名 || '不明', // 親の名前
-                    visits: 0,
-                    calls: 0,
-                    designProposals: 0,
-                    total: 0,
-                    lastDate: '',
-                    area: r.エリア || '',
-                    rank: r.ランク || '',
-                    isPriority: true,
-                    directDeliveries: []
-                });
-            }
-
-            const parent = priorityGroupMap.get(customerCode)!;
-            const isVisit = r.行動内容?.includes('訪問');
-            const isCall = r.行動内容?.includes('電話');
-            const isDesign = r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり';
-            const date = String(r.日付);
-
-            // 親の集計を更新
-            if (isVisit) parent.visits++;
-            if (isCall) parent.calls++;
-            if (isDesign) parent.designProposals++;
-            if (isVisit || isCall) parent.total++;
-            if (compareDates(date, parent.lastDate) > 0) parent.lastDate = date;
-
-            // 直送先がある場合のみ子エントリを処理
-            if (ddCode) {
-                let child = parent.directDeliveries.find(d => d.code === ddCode);
-                if (!child) {
-                    child = {
-                        code: ddCode,
-                        name: ddName,
-                        visits: 0,
-                        calls: 0,
-                        designProposals: 0,
-                        lastDate: '',
-                        area: r.エリア || '',
-                        rank: r.ランク || '',
-                        isPriority: true
-                    };
-                    parent.directDeliveries.push(child);
-                }
-                if (isVisit) child.visits++;
-                if (isCall) child.calls++;
-                if (isDesign) child.designProposals++;
-                if (compareDates(date, child.lastDate) > 0) child.lastDate = date;
-            }
-        });
-
-    // デザイン進捗集計
-    const designStatusMap = new Map<string, number>();
-    monthReports
-        .filter(r => r.デザイン提案有無 === '有' || r.デザイン提案有無 === 'あり')
-        .forEach(r => {
-            const status = r.デザイン進捗状況 && r.デザイン進捗状況.trim() ? r.デザイン進捗状況.trim() : '未設定';
-            designStatusMap.set(status, (designStatusMap.get(status) || 0) + 1);
-        });
-
-    // 訪問回数の多い顧客Top10
-    const customerCountMap = new Map<string, { total: number; details: Map<string, number> }>();
-    monthReports
-        .filter(r => r.訪問先名 && r.行動内容?.includes('訪問'))
-        .forEach(r => {
-            const name = r.訪問先名;
-            const ddName = r.直送先名 || '(直接)';
-            if (!customerCountMap.has(name)) {
-                customerCountMap.set(name, { total: 0, details: new Map() });
-            }
-            const stats = customerCountMap.get(name)!;
-            stats.total++;
-            stats.details.set(ddName, (stats.details.get(ddName) || 0) + 1);
-        });
-
-    // 電話回数の多い顧客Top10
-    const callCountMap = new Map<string, { total: number; details: Map<string, number> }>();
-    monthReports
-        .filter(r => r.訪問先名 && r.行動内容?.includes('電話'))
-        .forEach(r => {
-            const name = r.訪問先名;
-            const ddName = r.直送先名 || '(直接)';
-            if (!callCountMap.has(name)) {
-                callCountMap.set(name, { total: 0, details: new Map() });
-            }
-            const stats = callCountMap.get(name)!;
-            stats.total++;
-            stats.details.set(ddName, (stats.details.get(ddName) || 0) + 1);
-        });
-
-    // 日別活動集計
-    const dailyMap = new Map<string, { visits: number; calls: number }>();
-    monthReports.forEach(r => {
-        const date = String(r.日付);
-        if (!dailyMap.has(date)) dailyMap.set(date, { visits: 0, calls: 0 });
-        const day = dailyMap.get(date)!;
-        if (r.行動内容?.includes('訪問')) day.visits++;
-        if (r.行動内容?.includes('電話')) day.calls++;
-    });
-
-    return {
-        totalReports: monthReports.length,
-        totalVisits: visits.length,
-        totalCalls: calls.length,
-        priorityVisits: totalPriorityVisits,
-        priorityCalls: totalPriorityCalls,
-        totalDesignProposals: designProposals.length,
-        totalDesignCompleted: designCompleted.length,
-        totalDesignRejected: designRejected.length,
-        uniqueCustomers: uniqueCustomerSet.size,
-        activeDays: activeDaySet.size,
-        areaBreakdown: Array.from(areaMap.values()).sort((a, b) => {
-            if (a.area === '未設定') return 1;
-            if (b.area === '未設定') return -1;
-            return (b.visits + b.calls) - (a.visits + a.calls);
-        }),
-        priorityCustomers: Array.from(priorityGroupMap.values()).sort((a, b) => b.total - a.total),
-        designProgress: Array.from(designStatusMap.entries())
-            .map(([status, count]) => ({ status, count }))
-            .sort((a, b) => b.count - a.count),
-        topCustomers: Array.from(customerCountMap.entries())
-            .map(([name, stats]) => ({
-                name,
-                count: stats.total,
-                details: Array.from(stats.details.entries())
-                    .map(([dName, dCount]) => ({ name: dName, count: dCount }))
-                    .sort((a, b) => b.count - a.count)
-            }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10),
-        topCallCustomers: Array.from(callCountMap.entries())
-            .map(([name, stats]) => ({
-                name,
-                count: stats.total,
-                details: Array.from(stats.details.entries())
-                    .map(([dName, dCount]) => ({ name: dName, count: dCount }))
-                    .sort((a, b) => b.count - a.count)
-            }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10),
-        dailyActivity: Array.from(dailyMap.entries())
-            .map(([date, data]) => ({ date, ...data }))
-            .sort((a, b) => compareDates(a.date, b.date)),
-    };
-}
 
 // ファイル名から担当者名を抽出
 function extractStaffName(filename: string | null): string {
@@ -309,8 +22,6 @@ function extractStaffName(filename: string | null): string {
 
 export default function MonthlySummaryPage(): React.ReactElement {
     const { selectedFile } = useFile();
-    const { data: reports = [], isLoading } = useReports(selectedFile || undefined);
-
     const [currentDate, setCurrentDate] = useState(new Date());
     const [collapsedCustomers, setCollapsedCustomers] = useState<Set<string>>(new Set());
     const [mounted, setMounted] = useState(false);
@@ -338,8 +49,8 @@ export default function MonthlySummaryPage(): React.ReactElement {
     // 担当者名
     const staffName = useMemo(() => extractStaffName(selectedFile), [selectedFile]);
 
-    // 月次サマリーデータをメモ化
-    const summary = useMemo(() => generateMonthlySummary(reports, monthPrefix), [reports, monthPrefix]);
+    // 月次サマリーデータをバックエンドから取得
+    const { data: summary, isLoading } = useMonthlySummaryStats(monthPrefix, selectedFile || undefined);
 
     // 月送り
     const handlePreviousMonth = (): void => {
@@ -364,7 +75,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
         documentTitle: `月次サマリー_${staffName}_${monthLabel}`,
     });
 
-    if (isLoading) {
+    if (isLoading || !summary) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="text-center">

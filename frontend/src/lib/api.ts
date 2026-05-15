@@ -275,6 +275,76 @@ export const getDashboardStats = async (filename?: string): Promise<DashboardSta
     return response.data;
 };
 
+export interface MonthlySummaryStats {
+    totalReports: number;
+    totalVisits: number;
+    totalCalls: number;
+    priorityVisits: number;
+    priorityCalls: number;
+    totalDesignProposals: number;
+    totalDesignCompleted: number;
+    totalDesignRejected: number;
+    uniqueCustomers: number;
+    activeDays: number;
+    areaBreakdown: Array<{
+        area: string;
+        visits: number;
+        calls: number;
+        priorityVisits: number;
+        priorityCalls: number;
+        designProposals: number;
+    }>;
+    priorityCustomers: Array<{
+        code: string;
+        name: string;
+        visits: number;
+        calls: number;
+        designProposals: number;
+        total: number;
+        lastDate: string;
+        area: string;
+        rank: string;
+        isPriority: boolean;
+        directDeliveries: Array<{
+            code: string;
+            name: string;
+            visits: number;
+            calls: number;
+            designProposals: number;
+            lastDate: string;
+            area: string;
+            rank: string;
+            isPriority: boolean;
+        }>;
+    }>;
+    designProgress: Array<{
+        status: string;
+        count: number;
+    }>;
+    topCustomers: Array<{
+        name: string;
+        count: number;
+        details?: Array<{ name: string; count: number }>;
+    }>;
+    topCallCustomers: Array<{
+        name: string;
+        count: number;
+        details?: Array<{ name: string; count: number }>;
+    }>;
+    dailyActivity: Array<{
+        date: string;
+        visits: number;
+        calls: number;
+    }>;
+}
+
+export const getMonthlySummaryStats = async (filename: string | undefined, month: string): Promise<MonthlySummaryStats> => {
+    const params: any = { month };
+    if (filename) params.filename = filename;
+    const response = await api.get(`${API_URL}/stats/monthly-summary`, { params });
+    return response.data;
+};
+
 export interface SalesData {
     rank: number;
     rank_class: string;

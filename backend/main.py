@@ -2135,6 +2135,217 @@ def get_dashboard_stats(filename: str = DEFAULT_EXCEL_FILE):
         # 500エラーを投げずに空レスポンスを返す（フロントエンドのクラッシュを防止）
         return empty_response
 
+@app.get("/api/stats/monthly-summary")
+def get_monthly_summary_stats(filename: str = DEFAULT_EXCEL_FILE, month: str = None):
+    # month format is 'YY/MM'
+    empty_response = {
+        "totalReports": 0, "totalVisits": 0, "totalCalls": 0, 
+        "priorityVisits": 0, "priorityCalls": 0,
+        "totalDesignProposals": 0, "totalDesignCompleted": 0, "totalDesignRejected": 0,
+        "uniqueCustomers": 0, "activeDays": 0,
+        "areaBreakdown": [], "priorityCustomers": [], "designProgress": [],
+        "topCustomers": [], "topCallCustomers": [], "dailyActivity": []
+    }
+    if not month:
+        return empty_response
+
+    try:
+        logging.info(f"--- Monthly Summary Stats for {filename}, month={month} ---")
+        try:
+            df = get_cached_dataframe(filename, '営業日報')
+        except Exception as read_err:
+            logging.warning(f"MonthlySummary: Cannot read file {filename}: {read_err}")
+            return empty_response
+
+        if df is None or df.empty:
+            return empty_response
+
+        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        date_col = next((c for c in df.columns if '日付' in c or '年月日' in c), '日付')
+        action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
+        priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
+        customer_col = next((c for c in df.columns if '得意先CD' in c), '得意先CD')
+        customer_name_col = next((c for c in df.columns if '訪問先名' in c or '得意先名' in c), '訪問先名')
+        area_col = next((c for c in df.columns if 'エリア' in c), 'エリア')
+        dd_code_col = next((c for c in df.columns if '直送先CD' in c), '直送先CD')
+        dd_name_col = next((c for c in df.columns if '直送先名' in c), '直送先名')
+        rank_col = next((c for c in df.columns if 'ランク' in c), 'ランク')
+        design_exist_col = next((c for c in df.columns if 'デザイン提案有無' in c), 'デザイン提案有無')
+        design_status_col = next((c for c in df.columns if 'デザイン進捗状況' in c), 'デザイン進捗状況')
+
+        def parse_dt(x):
+            if pd.isna(x): return pd.NaT
+            s = str(x).strip()
+            if s == '' or s == 'nan' or s == '-': return pd.NaT
+            try:
+                d = pd.to_datetime(s, format='%y/%m/%d')
+                return d
+            except: pass
+            try:
+                return pd.to_datetime(s, errors='coerce')
+            except: return pd.NaT
+
+        df['dt'] = df[date_col].apply(parse_dt)
+        vdf = df.dropna(subset=['dt']).copy()
+        if vdf.empty:
+            return empty_response
+
+        vdf['m'] = vdf['dt'].dt.strftime('%y/%m')
+        mdf = vdf[vdf['m'] == month].copy()
+        if mdf.empty:
+            return empty_response
+
+        mdf['is_v'] = mdf[action_col].astype(str).str.contains('訪問', na=False)
+        mdf['is_c'] = mdf[action_col].astype(str).str.contains('電話', na=False)
+        mdf['is_p'] = mdf[priority_col].fillna('').astype(str).apply(lambda x: x.strip() != '' and x.strip() != '-')
+        
+        has_design = mdf[design_exist_col].astype(str).apply(lambda x: x.strip() in ['有', 'あり']) if design_exist_col in mdf.columns else pd.Series(False, index=mdf.index)
+        is_design_new = mdf[design_status_col].astype(str).str.strip() == '新規' if design_status_col in mdf.columns else pd.Series(False, index=mdf.index)
+        is_design_proposal = has_design | is_design_new
+        
+        is_design_completed = mdf[design_status_col].astype(str).str.contains('出稿', na=False) if design_status_col in mdf.columns else pd.Series(False, index=mdf.index)
+        is_design_rejected = mdf[design_status_col].astype(str).str.contains('不採用', na=False) if design_status_col in mdf.columns else pd.Series(False, index=mdf.index)
+
+        totalVisits = int(mdf['is_v'].sum())
+        totalCalls = int(mdf['is_c'].sum())
+        priorityVisits = int((mdf['is_v'] & mdf['is_p']).sum())
+        priorityCalls = int((mdf['is_c'] & mdf['is_p']).sum())
+        totalDesignProposals = int(is_design_proposal.sum())
+        totalDesignCompleted = int(is_design_completed.sum())
+        totalDesignRejected = int(is_design_rejected.sum())
+
+        uniqueCustomers = int(mdf[mdf[customer_name_col].astype(str).str.strip() != ''][customer_name_col].nunique()) if customer_name_col in mdf.columns else 0
+        activeDays = int(mdf['dt'].nunique())
+
+        areaBreakdown = []
+        if area_col in mdf.columns:
+            adf = mdf[mdf['is_v'] | mdf['is_c']].copy()
+            adf[area_col] = adf[area_col].fillna('未設定').astype(str).str.strip()
+            adf.loc[adf[area_col] == '', area_col] = '未設定'
+            for an, ag in adf.groupby(area_col):
+                areaBreakdown.append({
+                    "area": str(an),
+                    "visits": int(ag['is_v'].sum()),
+                    "calls": int(ag['is_c'].sum()),
+                    "priorityVisits": int((ag['is_v'] & ag['is_p']).sum()),
+                    "priorityCalls": int((ag['is_c'] & ag['is_p']).sum()),
+                    "designProposals": int(is_design_proposal[ag.index].sum()),
+                })
+            areaBreakdown.sort(key=lambda x: (1 if x['area'] == '未設定' else 0, -(x['visits'] + x['calls'])))
+
+        priorityCustomers = []
+        pdf = mdf[mdf['is_p']].copy()
+        if not pdf.empty and customer_col in pdf.columns:
+            for ccode, cg in pdf.groupby(customer_col):
+                p_cname = cg[customer_name_col].iloc[0] if customer_name_col in cg.columns else '不明'
+                p_area = cg[area_col].iloc[0] if area_col in cg.columns else ''
+                p_rank = cg[rank_col].iloc[0] if rank_col in cg.columns else ''
+                
+                dd_list = []
+                if dd_code_col in cg.columns:
+                    for ddcode, ddg in cg[cg[dd_code_col].notna() & (cg[dd_code_col].astype(str).str.strip() != '')].groupby(dd_code_col):
+                        dd_cname = ddg[dd_name_col].iloc[0] if dd_name_col in ddg.columns else ''
+                        dd_area = ddg[area_col].iloc[0] if area_col in ddg.columns else ''
+                        dd_rank = ddg[rank_col].iloc[0] if rank_col in ddg.columns else ''
+                        dd_visits = int(ddg['is_v'].sum())
+                        dd_calls = int(ddg['is_c'].sum())
+                        
+                        if dd_visits > 0 or dd_calls > 0 or int(is_design_proposal[ddg.index].sum()) > 0:
+                            dd_list.append({
+                                "code": str(ddcode).replace('.0', '').strip(),
+                                "name": str(dd_cname),
+                                "visits": dd_visits,
+                                "calls": dd_calls,
+                                "designProposals": int(is_design_proposal[ddg.index].sum()),
+                                "lastDate": ddg['dt'].max().strftime('%Y/%m/%d') if not pd.isna(ddg['dt'].max()) else '',
+                                "area": str(dd_area),
+                                "rank": str(dd_rank),
+                                "isPriority": True
+                            })
+
+                c_visits = int(cg['is_v'].sum())
+                c_calls = int(cg['is_c'].sum())
+                priorityCustomers.append({
+                    "code": str(ccode),
+                    "name": str(p_cname),
+                    "visits": c_visits,
+                    "calls": c_calls,
+                    "designProposals": int(is_design_proposal[cg.index].sum()),
+                    "total": c_visits + c_calls,
+                    "lastDate": cg['dt'].max().strftime('%Y/%m/%d') if not pd.isna(cg['dt'].max()) else '',
+                    "area": str(p_area),
+                    "rank": str(p_rank),
+                    "isPriority": True,
+                    "directDeliveries": dd_list
+                })
+            priorityCustomers.sort(key=lambda x: x['total'], reverse=True)
+
+        designProgress = []
+        if design_status_col in mdf.columns:
+            dsg_df = mdf[has_design].copy()
+            if not dsg_df.empty:
+                dsg_df[design_status_col] = dsg_df[design_status_col].fillna('未設定').astype(str).str.strip()
+                dsg_df.loc[dsg_df[design_status_col] == '', design_status_col] = '未設定'
+                for st, sg in dsg_df.groupby(design_status_col):
+                    designProgress.append({"status": str(st), "count": len(sg)})
+            designProgress.sort(key=lambda x: x['count'], reverse=True)
+
+        def get_top_customers(action_mask):
+            top = []
+            tdf = mdf[action_mask & mdf[customer_name_col].notna()].copy()
+            if not tdf.empty and customer_name_col in tdf.columns:
+                tdf[customer_name_col] = tdf[customer_name_col].astype(str).str.strip()
+                tdf = tdf[tdf[customer_name_col] != '']
+                for cname, cg in tdf.groupby(customer_name_col):
+                    details = []
+                    if dd_name_col in cg.columns:
+                        cg_dd = cg.copy()
+                        cg_dd[dd_name_col] = cg_dd[dd_name_col].fillna('(直接)').astype(str).str.strip()
+                        cg_dd.loc[cg_dd[dd_name_col] == '', dd_name_col] = '(直接)'
+                        for ddn, ddg in cg_dd.groupby(dd_name_col):
+                            details.append({"name": str(ddn), "count": len(ddg)})
+                        details.sort(key=lambda x: x['count'], reverse=True)
+                    top.append({"name": str(cname), "count": len(cg), "details": details})
+                top.sort(key=lambda x: x['count'], reverse=True)
+            return top[:10]
+
+        topCustomers = get_top_customers(mdf['is_v'])
+        topCallCustomers = get_top_customers(mdf['is_c'])
+
+        dailyActivity = []
+        mdf['date_str'] = mdf['dt'].dt.strftime('%Y/%m/%d')
+        for d, dg in mdf.groupby('date_str'):
+            dailyActivity.append({
+                "date": str(d),
+                "visits": int(dg['is_v'].sum()),
+                "calls": int(dg['is_c'].sum())
+            })
+        dailyActivity.sort(key=lambda x: x['date'])
+
+        return {
+            "totalReports": len(mdf),
+            "totalVisits": totalVisits,
+            "totalCalls": totalCalls,
+            "priorityVisits": priorityVisits,
+            "priorityCalls": priorityCalls,
+            "totalDesignProposals": totalDesignProposals,
+            "totalDesignCompleted": totalDesignCompleted,
+            "totalDesignRejected": totalDesignRejected,
+            "uniqueCustomers": uniqueCustomers,
+            "activeDays": activeDays,
+            "areaBreakdown": areaBreakdown,
+            "priorityCustomers": priorityCustomers,
+            "designProgress": designProgress,
+            "topCustomers": topCustomers,
+            "topCallCustomers": topCallCustomers,
+            "dailyActivity": dailyActivity
+        }
+    except Exception as e:
+        logging.error(f"Monthly summary error: {e}")
+        import traceback
+        traceback.print_exc()
+        return empty_response
+
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 if os.path.exists(STATIC_DIR):
     if os.path.exists(os.path.join(STATIC_DIR, "_next")):

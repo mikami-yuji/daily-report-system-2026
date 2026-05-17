@@ -1,176 +1,260 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useReports } from '@/hooks/useQueryHooks'; // Reuse existing hook or fetch directly
-import { Search, MapPin, Users, Phone, Filter, Download, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Search, Download, ArrowUpDown, ChevronLeft, ChevronRight, Award, BarChart3, HelpCircle } from 'lucide-react';
 import axios from 'axios';
+import { PointsRecord, MonthlyActivity } from '@/types/analytics';
 
-type TeamRecord = {
-    staff: string;
-    area: string;
-    category: string;
-    visits: number;
-    calls: number;
-    file: string;
-};
-
-export default function TeamMemberAnalysisPage() {
-    const [currentDate, setCurrentDate] = useState(new Date());
+export default function DailyReportPointsTablePage() {
     const [loading, setLoading] = useState(false);
     const [hasFetched, setHasFetched] = useState(false);
-    const [records, setRecords] = useState<TeamRecord[]>([]);
+    const [records, setRecords] = useState<PointsRecord[]>([]);
+    const [targetMonths, setTargetMonths] = useState<number>(7); // デフォルト: 7ヶ月分 (月200点×7 = 1400点)
     const [searchTerm, setSearchTerm] = useState('');
-    const [areaFilter, setAreaFilter] = useState('すべて');
+    const [onlyShowActiveMonths, setOnlyShowActiveMonths] = useState(true); // 実績のある月のみ表示
     const [mounted, setMounted] = useState(false);
 
-    React.useEffect(() => {
+    useEffect(() => {
         setMounted(true);
+        // 初回ロード時に自動的にデータを取得
+        fetchPointsTable(7);
     }, []);
 
-    const monthPrefix = useMemo(() => {
-        const yearShort = String(currentDate.getFullYear()).slice(-2);
-        const monthStr = String(currentDate.getMonth() + 1).padStart(2, '0');
-        return `${yearShort}/${monthStr}`;
-    }, [currentDate]);
-
-    const monthLabel = `${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月`;
-
-    // Fetch data manually via click
-    const fetchData = async () => {
+    // データ取得処理
+    const fetchPointsTable = async (monthsCount: number) => {
         setLoading(true);
         setHasFetched(true);
         try {
-            const res = await axios.get(`/api/analytics/team-summary`, {
-                params: { month: monthPrefix }
+            const res = await axios.get(`/api/analytics/points-table`, {
+                params: { target_months_count: monthsCount }
             });
             setRecords(res.data.records || []);
         } catch (error) {
-            console.error('Failed to fetch team summary:', error);
+            console.error('Failed to fetch points table:', error);
             setRecords([]);
         } finally {
             setTimeout(() => setLoading(false), 300);
         }
     };
 
-    // Remove auto-useEffect for fetching. Reset fetched state when month changes so user knows to click again.
-    React.useEffect(() => {
-        setHasFetched(false);
-        setRecords([]);
-    }, [monthPrefix]);
+    // 集計対象月数の変更ハンドラ
+    const handleTargetMonthsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = Number(e.target.value);
+        setTargetMonths(val);
+        fetchPointsTable(val);
+    };
 
-    // Filters
+    // 検索フィルタ適用後のレコード
     const filteredRecords = useMemo(() => {
-        return records.filter(r => {
-            const matchesSearch = r.staff.includes(searchTerm) || r.area.includes(searchTerm);
-            const matchesArea = areaFilter === 'すべて' || r.area === areaFilter;
-            return matchesSearch && matchesArea;
-        });
-    }, [records, searchTerm, areaFilter]);
+        return records.filter(r => 
+            r.staff.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [records, searchTerm]);
 
-    // Grouping by staff
-    const groupedData = useMemo(() => {
-        const groups: Record<string, TeamRecord[]> = {};
-        filteredRecords.forEach(r => {
-            if (!groups[r.staff]) groups[r.staff] = [];
-            groups[r.staff].push(r);
-        });
+    // 全12ヶ月の定義順
+    const allMonths = useMemo(() => [
+        "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月", "1月"
+    ], []);
 
-        // Sort each group so '重点' comes before '一般', and then by area alphabetically
-        Object.keys(groups).forEach(staff => {
-            groups[staff].sort((a, b) => {
-                if (a.category === '重点' && b.category !== '重点') return -1;
-                if (a.category !== '重点' && b.category === '重点') return 1;
-                // Secondary sort by area name
-                if (a.area < b.area) return -1;
-                if (a.area > b.area) return 1;
-                return 0;
+    // 実績がある月（全メンバーでいずれかの活動が1件以上ある月）のみを抽出
+    const activeMonths = useMemo(() => {
+        if (records.length === 0) return ["2月", "3月", "4月"]; // 初期フォールバック
+        return allMonths.filter(month => {
+            return records.some(r => {
+                const m = r.monthly_data[month];
+                return m && (m.priority_calls > 0 || m.general_calls > 0 || m.priority_visits > 0 || m.general_visits > 0);
             });
         });
+    }, [records, allMonths]);
 
-        return groups;
-    }, [filteredRecords]);
+    // 表示対象の月リスト
+    const displayMonths = useMemo(() => {
+        return onlyShowActiveMonths ? activeMonths : allMonths;
+    }, [onlyShowActiveMonths, activeMonths, allMonths]);
 
-    // Averages calculation for the current filtered view
-    const averages = useMemo(() => {
-        if (filteredRecords.length === 0) return { visits: 0, calls: 0, total: 0 };
-        const staffNames = Object.keys(groupedData);
-        if (staffNames.length === 0) return { visits: 0, calls: 0, total: 0 };
-
-        let totalVisits = 0;
-        let totalCalls = 0;
-
-        filteredRecords.forEach(r => {
-            totalVisits += r.visits;
-            totalCalls += r.calls;
-        });
-
-        const numStaff = staffNames.length;
-        return {
-            visits: totalVisits / numStaff,
-            calls: totalCalls / numStaff,
-            total: (totalVisits + totalCalls) / numStaff
+    // --- 各列の縦計・平均の算出 ---
+    const summaryData = useMemo(() => {
+        const count = filteredRecords.length;
+        const total = {
+            priority_count: 0,
+            monthly: {} as Record<string, MonthlyActivity>,
+            totals: {
+                priority_calls: 0,
+                general_calls: 0,
+                total_calls: 0,
+                priority_visits: 0,
+                general_visits: 0,
+                total_visits: 0
+            },
+            points: 0,
+            achievement_rate: 0,
+            rating: 0
         };
-    }, [filteredRecords, groupedData]);
 
-    const cellClass = (val: number, isVisit: boolean, isTotal: boolean = false) => {
-        const avg = isTotal ? averages.total : (isVisit ? averages.visits : averages.calls);
-        const base = "font-medium";
-        if (val < avg) return `${base} text-red-500`; // Below average
-        if (isTotal) return `${base} font-bold text-gray-900 text-base`;
-        return `${base} ${isVisit ? 'text-blue-600' : 'text-green-600'}`;
-    };
-
-    // Unique areas for filter
-    const uniqueAreas = useMemo(() => {
-        const areas = new Set(records.map(r => r.area));
-        return ['すべて', ...Array.from(areas)].sort();
-    }, [records]);
-
-    // Month navigation
-    const handlePreviousMonth = () => {
-        setCurrentDate(prev => {
-            const d = new Date(prev);
-            d.setMonth(d.getMonth() - 1);
-            return d;
+        // 初期化
+        displayMonths.forEach(m => {
+            total.monthly[m] = { priority_calls: 0, general_calls: 0, priority_visits: 0, general_visits: 0 };
         });
-    };
-    const handleNextMonth = () => {
-        setCurrentDate(prev => {
-            const d = new Date(prev);
-            d.setMonth(d.getMonth() + 1);
-            return d;
-        });
-    };
 
+        // 合計計算
+        filteredRecords.forEach(r => {
+            total.priority_count += r.priority_count || 0;
+            displayMonths.forEach(m => {
+                const act = r.monthly_data[m];
+                if (act) {
+                    total.monthly[m].priority_calls += act.priority_calls;
+                    total.monthly[m].general_calls += act.general_calls;
+                    total.monthly[m].priority_visits += act.priority_visits;
+                    total.monthly[m].general_visits += act.general_visits;
+                }
+            });
+
+            total.totals.priority_calls += r.totals.priority_calls;
+            total.totals.general_calls += r.totals.general_calls;
+            total.totals.total_calls += r.totals.total_calls;
+            total.totals.priority_visits += r.totals.priority_visits;
+            total.totals.general_visits += r.totals.general_visits;
+            total.totals.total_visits += r.totals.total_visits;
+
+            total.points += r.points;
+            total.achievement_rate += r.achievement_rate;
+            total.rating += r.rating;
+        });
+
+        // 平均計算
+        const avg = {
+            priority_count: count > 0 ? total.priority_count / count : 0,
+            monthly: {} as Record<string, { priority_calls: number; general_calls: number; priority_visits: number; general_visits: number }>,
+            totals: {
+                priority_calls: count > 0 ? total.totals.priority_calls / count : 0,
+                general_calls: count > 0 ? total.totals.general_calls / count : 0,
+                total_calls: count > 0 ? total.totals.total_calls / count : 0,
+                priority_visits: count > 0 ? total.totals.priority_visits / count : 0,
+                general_visits: count > 0 ? total.totals.general_visits / count : 0,
+                total_visits: count > 0 ? total.totals.total_visits / count : 0
+            },
+            points: count > 0 ? total.points / count : 0,
+            achievement_rate: count > 0 ? total.points / count / (200 * targetMonths) * 100 : 0,
+            rating: count > 0 ? (total.points / count) / 140 : 0
+        };
+
+        displayMonths.forEach(m => {
+            const t = total.monthly[m];
+            avg.monthly[m] = {
+                priority_calls: count > 0 ? t.priority_calls / count : 0,
+                general_calls: count > 0 ? t.general_calls / count : 0,
+                priority_visits: count > 0 ? t.priority_visits / count : 0,
+                general_visits: count > 0 ? t.general_visits / count : 0
+            };
+        });
+
+        return { total, avg };
+    }, [filteredRecords, displayMonths, targetMonths]);
+
+    // CSV出力処理
     const handleExportCSV = () => {
         if (filteredRecords.length === 0) return;
 
-        // BOM for Excel
         const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-        const headers = ['担当者', 'エリア', '区分', '訪問件数', '電話件数', '合計', 'ファイル名'];
-        const csvRows = [headers.join(',')];
-
-        // Format data
-        Object.keys(groupedData).forEach(staff => {
-            groupedData[staff].forEach(r => {
-                const row = [
-                    `"${r.staff}"`,
-                    `"${r.area}"`,
-                    `"${r.category}"`,
-                    r.visits,
-                    r.calls,
-                    r.visits + r.calls,
-                    `"${r.file}"`
-                ];
-                csvRows.push(row.join(','));
-            });
+        
+        // ヘッダー生成
+        const row1 = ['営業名', '重点件数'];
+        const row2 = ['', ''];
+        
+        displayMonths.forEach(m => {
+            row1.push(m, '', '', '');
+            row2.push('重点電話', '電話総数(一般)', '重点訪問', '訪問件数(一般)');
         });
+        
+        row1.push('累計', '', '', '', '', '', '点数', `月200点×${targetMonths}(${200 * targetMonths})`, '点数');
+        row2.push('重点電話総数', '電話総件数(一般)', '総電話件数', '重点訪問総数', '訪問総件数(一般)', '総訪問件数', '総合点数', '達成率', '評価レート');
+
+        const csvRows = [
+            row1.join(','),
+            row2.join(',')
+        ];
+
+        // データ行
+        filteredRecords.forEach(r => {
+            const dataRow = [
+                `"${r.staff}"`,
+                r.priority_count
+            ];
+            
+            displayMonths.forEach(m => {
+                const act = r.monthly_data[m] || { priority_calls: 0, general_calls: 0, priority_visits: 0, general_visits: 0 };
+                dataRow.push(
+                    String(act.priority_calls),
+                    String(act.general_calls),
+                    String(act.priority_visits),
+                    String(act.general_visits)
+                );
+            });
+            
+            dataRow.push(
+                String(r.totals.priority_calls),
+                String(r.totals.general_calls),
+                String(r.totals.total_calls),
+                String(r.totals.priority_visits),
+                String(r.totals.general_visits),
+                String(r.totals.total_visits),
+                String(r.points),
+                `"${r.achievement_rate}%"`,
+                String(r.rating)
+            );
+            
+            csvRows.push(dataRow.join(','));
+        });
+
+        // 合計行
+        const totalRow = [
+            '"合計"',
+            summaryData.total.priority_count
+        ];
+        displayMonths.forEach(m => {
+            const t = summaryData.total.monthly[m];
+            totalRow.push(String(t.priority_calls), String(t.general_calls), String(t.priority_visits), String(t.general_visits));
+        });
+        totalRow.push(
+            String(summaryData.total.totals.priority_calls),
+            String(summaryData.total.totals.general_calls),
+            String(summaryData.total.totals.total_calls),
+            String(summaryData.total.totals.priority_visits),
+            String(summaryData.total.totals.general_visits),
+            String(summaryData.total.totals.total_visits),
+            String(summaryData.total.points),
+            `"${summaryData.total.achievement_rate.toFixed(1)}%"`,
+            String(summaryData.total.rating.toFixed(1))
+        );
+        csvRows.push(totalRow.join(','));
+
+        // 平均行
+        const avgRow = [
+            '"平均点"',
+            summaryData.avg.priority_count.toFixed(1)
+        ];
+        displayMonths.forEach(m => {
+            const a = summaryData.avg.monthly[m];
+            avgRow.push(a.priority_calls.toFixed(1), a.general_calls.toFixed(1), a.priority_visits.toFixed(1), a.general_visits.toFixed(1));
+        });
+        avgRow.push(
+            summaryData.avg.totals.priority_calls.toFixed(1),
+            summaryData.avg.totals.general_calls.toFixed(1),
+            summaryData.avg.totals.total_calls.toFixed(1),
+            summaryData.avg.totals.priority_visits.toFixed(1),
+            summaryData.avg.totals.general_visits.toFixed(1),
+            summaryData.avg.totals.total_visits.toFixed(1),
+            summaryData.avg.points.toFixed(1),
+            `"${summaryData.avg.achievement_rate.toFixed(1)}%"`,
+            summaryData.avg.rating.toFixed(1)
+        );
+        csvRows.push(avgRow.join(','));
 
         const blob = new Blob([bom, csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `活動集計_${monthPrefix.replace('/', '')}.csv`;
+        link.download = `日報点数表_${targetMonths}ヶ月集計.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -185,239 +269,275 @@ export default function TeamMemberAnalysisPage() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 pb-20">
-            <div className="max-w-7xl mx-auto">
+        <div className="min-h-screen bg-gray-50/50 p-6 pb-20">
+            <div className="max-w-[98%] mx-auto">
                 {/* Header */}
-                <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="mb-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">全メンバー活動分析</h1>
-                        <p className="text-sm text-gray-500">全部署・全担当者の日報データを一括集計</p>
-                    </div>
-
-                    <div className="flex items-center gap-3 bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-                        <button onClick={handlePreviousMonth} className="p-2 hover:bg-gray-100 rounded-md transition-colors text-gray-600">
-                            <ChevronLeft size={20} />
-                        </button>
-                        <span className="font-bold text-lg px-4 min-w-[120px] text-center">{monthLabel}</span>
-                        <button onClick={handleNextMonth} className="p-2 hover:bg-gray-100 rounded-md transition-colors text-gray-600">
-                            <ChevronRight size={20} />
-                        </button>
-                    </div>
-                </div>
-
-                {/* Filters/Actions Bar */}
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex flex-1 items-center gap-4 min-w-[300px]">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                            <input
-                                type="text"
-                                placeholder="担当者名またはエリアで検索..."
-                                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-sf-light-blue outline-none text-sm"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded-full">社内集計</span>
+                            <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">実績連動</span>
                         </div>
+                        <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+                            <Award className="text-amber-500" size={26} />
+                            日報点数表 2026
+                        </h1>
+                        <p className="text-xs text-gray-500 mt-1">全営業メンバーの日報データを点数化し、達成率および評価点をマトリクスで一覧表示します。</p>
+                    </div>
 
+                    <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
+                        {/* Target Months Multiplier */}
                         <div className="flex items-center gap-2">
-                            <Filter size={18} className="text-gray-400" />
+                            <span className="text-xs font-bold text-gray-700">目標値設定 (月200点 × Nヶ月):</span>
                             <select
-                                className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sf-light-blue"
-                                value={areaFilter}
-                                onChange={(e) => setAreaFilter(e.target.value)}
+                                className="bg-gray-50 border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-bold text-blue-700 outline-none focus:ring-2 focus:ring-blue-500"
+                                value={targetMonths}
+                                onChange={handleTargetMonthsChange}
                             >
-                                {uniqueAreas.map(area => (
-                                    <option key={area} value={area}>{area}</option>
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                                    <option key={m} value={m}>{m}ヶ月分 ({200 * m}点目標)</option>
                                 ))}
                             </select>
                         </div>
+
+                        {/* Active Months Filter Toggle */}
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={onlyShowActiveMonths}
+                                onChange={(e) => setOnlyShowActiveMonths(e.target.checked)}
+                                className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="text-xs font-medium text-gray-600">実績のある月のみ表示</span>
+                        </label>
+                    </div>
+                </div>
+
+                {/* Actions & Filters Bar */}
+                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="relative w-full md:w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input
+                            type="text"
+                            placeholder="営業担当者名で検索..."
+                            className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        {hasFetched && filteredRecords.length > 0 && (
-                            <button
-                                onClick={handleExportCSV}
-                                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium shadow-sm"
-                            >
-                                <Download size={18} />
-                                CSV出力
-                            </button>
-                        )}
+                    <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                         <button
-                            onClick={fetchData}
-                            disabled={loading}
-                            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg transition-colors text-sm font-bold shadow-sm ${loading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-sf-light-blue text-white hover:bg-blue-600'}`}
+                            onClick={handleExportCSV}
+                            disabled={filteredRecords.length === 0}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-bold text-xs shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <ArrowUpDown size={18} />}
-                            {loading ? '集計中...' : hasFetched ? '再集計' : '集計開始'}
+                            <Download size={15} />
+                            CSV出力
+                        </button>
+                        <button
+                            onClick={() => fetchPointsTable(targetMonths)}
+                            disabled={loading}
+                            className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold text-xs shadow-sm transition-colors disabled:opacity-70"
+                        >
+                            {loading ? <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <BarChart3 size={15} />}
+                            再集計
                         </button>
                     </div>
                 </div>
 
-                {/* Main Content Table */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden min-h-[400px]">
-                    {!hasFetched ? (
-                        <div className="py-32 flex flex-col items-center justify-center text-center px-4">
-                            <div className="w-16 h-16 bg-blue-50 text-sf-light-blue rounded-full flex items-center justify-center mb-4">
-                                <ArrowUpDown size={32} strokeWidth={1.5} />
-                            </div>
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">集計データがありません</h3>
-                            <p className="text-gray-500 max-w-sm">
-                                「集計開始」ボタンをクリックすると、指定した月の全員の活動データが一括で読み込まれます。<br />
-                                <span className="text-xs text-red-500 mt-2 block">※平均値を下回る数値は赤字で表示されます。</span>
-                            </p>
-                        </div>
-                    ) : loading ? (
-                        <div className="py-32 flex flex-col items-center justify-center">
-                            <div className="w-12 h-12 border-4 border-gray-100 border-t-sf-light-blue rounded-full animate-spin mb-4" />
-                            <p className="text-gray-500 animate-pulse text-sm">全エクセルファイルからデータを集計中...</p>
+                {/* Main Points Matrix Table */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-md overflow-hidden">
+                    {loading ? (
+                        <div className="py-40 flex flex-col items-center justify-center">
+                            <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4" />
+                            <p className="text-gray-500 animate-pulse text-xs font-semibold">全営業メンバーの活動実績を計算し、点数を算出しています...</p>
                         </div>
                     ) : filteredRecords.length === 0 ? (
                         <div className="py-32 text-center">
-                            <p className="text-gray-400">データが見つかりませんでした。</p>
+                            <p className="text-gray-400 text-sm">該当する営業担当者のデータが見つかりませんでした。</p>
                         </div>
                     ) : (
-                        <div className="overflow-auto max-h-[600px] relative border-t border-gray-200">
-                            <table className="w-full text-left text-sm border-collapse">
+                        <div className="overflow-x-auto max-w-full">
+                            <table className="w-full text-left text-xs border-collapse table-fixed min-w-[1200px]">
                                 <thead>
-                                    <tr className="bg-gray-100 text-gray-600 font-bold sticky top-0 z-10 shadow-sm border-b border-gray-200">
-                                        <th className="px-6 py-4 w-1/4 bg-gray-100">担当者 / エリア</th>
-                                        <th className="px-6 py-4 text-center bg-gray-100">区分</th>
-                                        <th className="px-6 py-4 text-right bg-gray-100">
-                                            訪問件数
-                                            <div className="text-[10px] font-normal text-gray-400 mt-0.5">平均: {averages.visits.toFixed(1)}</div>
+                                    {/* Row 1: Months and Major Groups */}
+                                    <tr className="bg-gray-100 text-gray-700 font-bold text-center border-b border-gray-200">
+                                        <th rowSpan={2} className="sticky left-0 bg-gray-100 z-30 px-4 py-3 text-left font-black border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[100px] min-w-[100px]">営業名</th>
+                                        <th rowSpan={2} className="sticky left-[100px] bg-gray-100 z-30 px-3 py-3 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[70px] min-w-[70px] text-xs">重点件数</th>
+                                        
+                                        {displayMonths.map(m => (
+                                            <th key={`group-${m}`} colSpan={4} className="border-r border-gray-200 bg-blue-50/50 py-2 text-blue-900 border-b border-gray-300 font-black text-sm">
+                                                {m}
+                                            </th>
+                                        ))}
+
+                                        <th colSpan={6} className="border-r border-gray-200 bg-gray-200 py-2 text-gray-800 border-b border-gray-300 font-black text-sm">
+                                            計
                                         </th>
-                                        <th className="px-6 py-4 text-right bg-gray-100">
-                                            電話件数
-                                            <div className="text-[10px] font-normal text-gray-400 mt-0.5">平均: {averages.calls.toFixed(1)}</div>
+
+                                        <th rowSpan={2} className="bg-amber-50 text-amber-950 font-black px-3 py-3 text-right border-r border-gray-200 w-[80px] min-w-[80px] text-xs shadow-inner">
+                                            点数
                                         </th>
-                                        <th className="px-6 py-4 text-right bg-gray-100">
-                                            総合計
-                                            <div className="text-[10px] font-normal text-gray-400 mt-0.5">平均: {averages.total.toFixed(1)}</div>
+                                        <th rowSpan={2} className="bg-blue-50 text-blue-950 font-black px-3 py-3 text-right border-r border-gray-200 w-[120px] min-w-[120px] text-xs">
+                                            月200点×{targetMonths}<br />
+                                            <span className="text-[10px] font-medium opacity-80">({200 * targetMonths}点満点)</span>
+                                        </th>
+                                        <th rowSpan={2} className="bg-emerald-50 text-emerald-950 font-black px-3 py-3 text-right w-[80px] min-w-[80px] text-xs">
+                                            評価点
                                         </th>
                                     </tr>
+
+                                    {/* Row 2: Sub-headers */}
+                                    <tr className="bg-gray-50 text-gray-600 font-bold text-center border-b border-gray-200 text-[10px]">
+                                        {displayMonths.map(m => (
+                                            <React.Fragment key={`sub-${m}`}>
+                                                <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">重点電</th>
+                                                <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">電話総</th>
+                                                <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">重点訪</th>
+                                                <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-200 w-[55px] min-w-[55px]">訪問件</th>
+                                            </React.Fragment>
+                                        ))}
+
+                                        <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">重点電話</th>
+                                        <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">電話総</th>
+                                        <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">総電話</th>
+                                        <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">重点訪</th>
+                                        <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">訪問件</th>
+                                        <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">総訪問</th>
+                                    </tr>
                                 </thead>
-                                <tbody>
-                                    {Object.entries(groupedData).map(([staff, staffRecords]) => {
-                                        // Calculate subtotals
-                                        const priorityTotal = { visits: 0, calls: 0 };
-                                        const generalTotal = { visits: 0, calls: 0 };
-                                        let staffFile = '';
 
-                                        staffRecords.forEach(r => {
-                                            staffFile = r.file; // usually same for all records of a staff
-                                            if (r.category === '重点') {
-                                                priorityTotal.visits += r.visits;
-                                                priorityTotal.calls += r.calls;
-                                            } else {
-                                                generalTotal.visits += r.visits;
-                                                generalTotal.calls += r.calls;
-                                            }
-                                        });
-
-                                        const grandTotalVisits = priorityTotal.visits + generalTotal.visits;
-                                        const grandTotalCalls = priorityTotal.calls + generalTotal.calls;
-
+                                <tbody className="divide-y divide-gray-100 text-gray-700">
+                                    {/* Data Rows */}
+                                    {filteredRecords.map((r) => {
                                         return (
-                                            <React.Fragment key={staff}>
-                                                {/* Staff Header Row */}
-                                                <tr className="bg-gray-50/50 border-t border-gray-200">
-                                                    <td colSpan={5} className="px-6 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="font-bold text-gray-900 text-base">{staff}</div>
-                                                            <div className="text-xs text-gray-400 border border-gray-200 bg-white px-2 py-0.5 rounded-full">{staffFile}</div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                            <tr key={r.staff} className="hover:bg-blue-50/10 transition-colors">
+                                                {/* Sticky Name */}
+                                                <td className="sticky left-0 bg-white z-20 px-4 py-3 font-bold text-gray-900 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                                    {r.staff}
+                                                </td>
+                                                {/* Sticky Priority count */}
+                                                <td className="sticky left-[100px] bg-white z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] font-semibold text-gray-600">
+                                                    {r.priority_count || '-'}
+                                                </td>
 
-                                                {/* Individual Detail Rows and inline Subtotals */}
-                                                {staffRecords.map((record, idx) => {
-                                                    const isPriority = record.category === '重点';
-                                                    const nextRecord = staffRecords[idx + 1];
-                                                    const isLastPriority = isPriority && (!nextRecord || nextRecord.category !== '重点');
-                                                    const isLastGeneral = !isPriority && (!nextRecord || nextRecord.category === '重点'); // Though sorted, just in case
-
+                                                {/* Monthly breakdown */}
+                                                {displayMonths.map(m => {
+                                                    const act = r.monthly_data[m] || { priority_calls: 0, general_calls: 0, priority_visits: 0, general_visits: 0 };
                                                     return (
-                                                        <React.Fragment key={`${staff}-${record.area}-${record.category}-${idx}`}>
-                                                            <tr className="border-t border-gray-100 hover:bg-blue-50/20 transition-colors">
-                                                                <td className="px-6 py-2.5 pl-10 text-gray-600">
-                                                                    <div className="flex items-center gap-1.5 text-sm">
-                                                                        <MapPin size={14} className="text-gray-300" />
-                                                                        {record.area}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-6 py-2.5 text-center">
-                                                                    <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold ${record.category === '重点'
-                                                                        ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                                                                        : 'bg-gray-50 text-gray-500 border border-gray-200'
-                                                                        }`}>
-                                                                        {record.category}
-                                                                    </span>
-                                                                </td>
-                                                                <td className={`px-6 py-2.5 text-right font-medium text-gray-500`}>
-                                                                    {record.visits}
-                                                                </td>
-                                                                <td className={`px-6 py-2.5 text-right font-medium text-gray-500`}>
-                                                                    {record.calls}
-                                                                </td>
-                                                                <td className="px-6 py-2.5 text-right font-medium text-gray-600 bg-gray-50/30">
-                                                                    {record.visits + record.calls}
-                                                                </td>
-                                                            </tr>
-
-                                                            {/* Insert Priority Subtotal immediately after the last priority record */}
-                                                            {isLastPriority && (priorityTotal.visits > 0 || priorityTotal.calls > 0) && (
-                                                                <tr className="bg-yellow-50/30 border-t border-yellow-100 text-sm">
-                                                                    <td className="px-6 py-2 pl-12 text-yellow-800 font-medium">重点 小計</td>
-                                                                    <td className="px-6 py-2 text-center text-xs text-yellow-600">重点</td>
-                                                                    <td className="px-6 py-2 text-right font-bold text-yellow-700">{priorityTotal.visits}</td>
-                                                                    <td className="px-6 py-2 text-right font-bold text-yellow-700">{priorityTotal.calls}</td>
-                                                                    <td className="px-6 py-2 text-right font-bold text-yellow-800 bg-yellow-100/30">{priorityTotal.visits + priorityTotal.calls}</td>
-                                                                </tr>
-                                                            )}
-
-                                                            {/* Insert General Subtotal immediately after the last general record */}
-                                                            {isLastGeneral && (generalTotal.visits > 0 || generalTotal.calls > 0) && (
-                                                                <tr className="bg-gray-50 border-t border-gray-100 text-sm">
-                                                                    <td className="px-6 py-2 pl-12 text-gray-600 font-medium">一般 小計</td>
-                                                                    <td className="px-6 py-2 text-center text-xs text-gray-400">一般</td>
-                                                                    <td className="px-6 py-2 text-right font-bold text-gray-600">{generalTotal.visits}</td>
-                                                                    <td className="px-6 py-2 text-right font-bold text-gray-600">{generalTotal.calls}</td>
-                                                                    <td className="px-6 py-2 text-right font-bold text-gray-700 bg-gray-100/50">{generalTotal.visits + generalTotal.calls}</td>
-                                                                </tr>
-                                                            )}
+                                                        <React.Fragment key={`data-${r.staff}-${m}`}>
+                                                            <td className={`text-right px-2 py-2 border-r border-gray-100 ${act.priority_calls > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.priority_calls}</td>
+                                                            <td className={`text-right px-2 py-2 border-r border-gray-100 ${act.general_calls > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.general_calls}</td>
+                                                            <td className={`text-right px-2 py-2 border-r border-gray-100 ${act.priority_visits > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.priority_visits}</td>
+                                                            <td className={`text-right px-2 py-2 border-r border-gray-200 ${act.general_visits > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.general_visits}</td>
                                                         </React.Fragment>
                                                     );
                                                 })}
 
-                                                {/* Grand Total per staff (Calculates vs Average) */}
-                                                <tr className="bg-blue-50/40 border-t-2 border-blue-100">
-                                                    <td colSpan={2} className="px-6 py-3 font-bold text-blue-900 text-right">
-                                                        {staff} 総合計
-                                                    </td>
-                                                    <td className={`px-6 py-3 text-right bg-white/50 ${cellClass(grandTotalVisits, true)}`}>
-                                                        {grandTotalVisits}
-                                                    </td>
-                                                    <td className={`px-6 py-3 text-right bg-white/50 ${cellClass(grandTotalCalls, false)}`}>
-                                                        {grandTotalCalls}
-                                                    </td>
-                                                    <td className={`px-6 py-3 text-right bg-blue-100/30 ${cellClass(grandTotalVisits + grandTotalCalls, true, true)}`}>
-                                                        {grandTotalVisits + grandTotalCalls}
-                                                    </td>
-                                                </tr>
-                                            </React.Fragment>
+                                                {/* Summed Columns under "計" */}
+                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.priority_calls}</td>
+                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.general_calls}</td>
+                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-black text-blue-700 bg-blue-50/20">{r.totals.total_calls}</td>
+                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.priority_visits}</td>
+                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.general_visits}</td>
+                                                <td className="text-right px-2 py-2 border-r border-gray-200 font-black text-emerald-700 bg-emerald-50/20">{r.totals.total_visits}</td>
+
+                                                {/* Scoring & Achievement Cells */}
+                                                <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-50/30 text-sm">{r.points}</td>
+                                                <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-50/30 text-sm">
+                                                    {r.achievement_rate}%
+                                                    <div className="w-full bg-gray-200 rounded-full h-1 mt-1 overflow-hidden">
+                                                        <div 
+                                                            className={`h-full ${r.achievement_rate >= 100 ? 'bg-emerald-500' : r.achievement_rate >= 50 ? 'bg-blue-500' : 'bg-red-400'}`} 
+                                                            style={{ width: `${Math.min(r.achievement_rate, 100)}%` }} 
+                                                        />
+                                                    </div>
+                                                </td>
+                                                <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-50/30 text-sm">{r.rating}</td>
+                                            </tr>
                                         );
                                     })}
+
+                                    {/* Summary Row 1: Total (計) */}
+                                    <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                                        <td className="sticky left-0 bg-gray-100 z-20 px-4 py-3 font-black text-gray-900 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">計</td>
+                                        <td className="sticky left-[100px] bg-gray-100 z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] font-bold text-gray-800">
+                                            {summaryData.total.priority_count}
+                                        </td>
+
+                                        {displayMonths.map(m => {
+                                            const t = summaryData.total.monthly[m];
+                                            return (
+                                                <React.Fragment key={`total-${m}`}>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-100 font-bold text-gray-900">{t.priority_calls}</td>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-100 font-bold text-gray-900">{t.general_calls}</td>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-100 font-bold text-gray-900">{t.priority_visits}</td>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-200 font-bold text-gray-900">{t.general_visits}</td>
+                                                </React.Fragment>
+                                            );
+                                        })}
+
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{summaryData.total.totals.priority_calls}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{summaryData.total.totals.general_calls}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-black text-blue-700 bg-blue-100/10">{summaryData.total.totals.total_calls}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{summaryData.total.totals.priority_visits}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{summaryData.total.totals.general_visits}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-200 font-black text-emerald-700 bg-emerald-100/10">{summaryData.total.totals.total_visits}</td>
+
+                                        <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-100/20 text-sm">{summaryData.total.points.toFixed(1)}</td>
+                                        <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-100/20 text-sm">{summaryData.total.achievement_rate.toFixed(1)}%</td>
+                                        <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-100/20 text-sm">{summaryData.total.rating.toFixed(1)}</td>
+                                    </tr>
+
+                                    {/* Summary Row 2: Average Points (平均点) */}
+                                    <tr className="bg-gray-50 font-bold border-t border-gray-200">
+                                        <td className="sticky left-0 bg-gray-50 z-20 px-4 py-3 font-black text-gray-700 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">平均点</td>
+                                        <td className="sticky left-[100px] bg-gray-50 z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] font-bold text-gray-600">
+                                            {summaryData.avg.priority_count.toFixed(1)}
+                                        </td>
+
+                                        {displayMonths.map(m => {
+                                            const a = summaryData.avg.monthly[m];
+                                            return (
+                                                <React.Fragment key={`avg-${m}`}>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-100 font-semibold text-gray-600">{a.priority_calls.toFixed(1)}</td>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-100 font-semibold text-gray-600">{a.general_calls.toFixed(1)}</td>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-100 font-semibold text-gray-600">{a.priority_visits.toFixed(1)}</td>
+                                                    <td className="text-right px-2 py-2 border-r border-gray-200 font-semibold text-gray-600">{a.general_visits.toFixed(1)}</td>
+                                                </React.Fragment>
+                                            );
+                                        })}
+
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{summaryData.avg.totals.priority_calls.toFixed(1)}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{summaryData.avg.totals.general_calls.toFixed(1)}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-black text-blue-600">{summaryData.avg.totals.total_calls.toFixed(1)}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{summaryData.avg.totals.priority_visits.toFixed(1)}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{summaryData.avg.totals.general_visits.toFixed(1)}</td>
+                                        <td className="text-right px-2 py-2 border-r border-gray-200 font-black text-emerald-600">{summaryData.avg.totals.total_visits.toFixed(1)}</td>
+
+                                        <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-100/10 text-sm">{summaryData.avg.points.toFixed(1)}</td>
+                                        <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-100/10 text-sm">{summaryData.avg.achievement_rate.toFixed(1)}%</td>
+                                        <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-100/10 text-sm">{summaryData.avg.rating.toFixed(1)}</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
                     )}
                 </div>
 
-                {/* Footer Tip */}
-                <div className="mt-4 flex items-center gap-2 text-xs text-gray-400 bg-white border border-gray-200 p-3 rounded-lg w-fit shadow-sm">
-                    <Filter size={14} className="text-sf-light-blue" />
-                    <span>各担当者のファイルからデータを集計します。再集計するには常にボタンをクリックしてください。赤字は全体平均を下回る数値を示します。</span>
+                {/* Calculation Methodology Info Alert */}
+                <div className="mt-4 bg-amber-50/50 border border-amber-200/80 rounded-xl p-4 shadow-sm flex items-start gap-3">
+                    <HelpCircle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+                    <div>
+                        <h4 className="text-xs font-bold text-amber-900 mb-1">【計算式】活動点数および評価点について</h4>
+                        <ul className="list-disc pl-4 space-y-1 text-[11px] text-amber-800">
+                            <li><strong>点数の計算方法:</strong> <code>重点電話総数 × 1 ＋ 電話総数(一般) ÷ 2 ＋ 重点訪問総数 × 10 ＋ 訪問件数(一般) × 3</code></li>
+                            <li><strong>達成率の計算方法:</strong> <code>総合点数 ÷ (月200点 × 集計対象月数) × 100%</code></li>
+                            <li><strong>評価点の計算方法:</strong> <code>総合点数 ÷ 140</code> （10点満点の評価点レートに標準化）</li>
+                            <li>※テーブル内の各営業名の左側の「営業名」「重点件数」列は、横スクロール時も左端に固定表示されます。</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>

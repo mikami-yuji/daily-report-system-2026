@@ -2469,6 +2469,202 @@ def get_monthly_summary_stats(filename: str = DEFAULT_EXCEL_FILE, month: str = N
         traceback.print_exc()
         return empty_response
 
+@app.get("/api/analytics/points-table")
+def get_points_table(target_months_count: int = 7):
+    """
+    全メンバーの日報点数表を集計する。
+    """
+    if not os.path.exists(EXCEL_DIR):
+        raise HTTPException(status_code=500, detail="Excel directory not found")
+
+    EXCLUDE_FILES = [
+        "●20260117_2026年度用_日報【原本_2】.xlsm",
+        "【電話営業資料】電話　メール話題情報.xlsx",
+        "支店999_【津田_操作確認用】_2026年度用日報.xlsm",
+        "本社001_【中野次長】_2026年度用日報.xlsm"
+    ]
+
+    try:
+        target_files = [
+            f for f in os.listdir(EXCEL_DIR) 
+            if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
+        ]
+        
+        # 2026年度の月リスト（2月〜翌1月）
+        month_keys = [
+            ("26/02", "2月"), ("26/03", "3月"), ("26/04", "4月"), ("26/05", "5月"),
+            ("26/06", "6月"), ("26/07", "7月"), ("26/08", "8月"), ("26/09", "9月"),
+            ("26/10", "10月"), ("26/11", "11月"), ("26/12", "12月"), ("27/01", "1月")
+        ]
+
+        def extract_staff_name_py(filename: str) -> str:
+            import re
+            match = re.search(r'【(.+?)】', filename)
+            if not match: return filename.replace('.xlsm', '')
+            content = match.group(1)
+            name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
+            if name_with_paren: return name_with_paren.group(1)
+            surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
+            if surname: return surname.group(1)
+            return content[:4]
+
+        # 柔軟な日付解析ヘルパー
+        def parse_dt(x):
+            if pd.isna(x): return pd.NaT
+            s = str(x).strip()
+            if s == '' or s == 'nan' or s == '-': return pd.NaT
+            try:
+                return pd.to_datetime(s, format='%y/%m/%d')
+            except:
+                pass
+            try:
+                return pd.to_datetime(s, format='%Y/%m/%d')
+            except:
+                pass
+            try:
+                return pd.to_datetime(s, format='%Y-%m-%d')
+            except:
+                pass
+            try:
+                return pd.to_datetime(s, errors='coerce')
+            except:
+                return pd.NaT
+
+        records = []
+
+        for filename in target_files:
+            try:
+                staff_name = extract_staff_name_py(filename)
+                
+                # 1. 重点件数（得意先_Listから重点の数を数える）
+                priority_count = 0
+                try:
+                    cust_df = get_cached_dataframe(filename, '得意先_List')
+                    if cust_df is not None and not cust_df.empty:
+                        cust_df.columns = [str(col).replace('\n', '').strip() for col in cust_df.columns]
+                        priority_col = next((c for c in cust_df.columns if '重点' in c), None)
+                        if priority_col:
+                            priority_count = int(cust_df[cust_df[priority_col].astype(str).str.contains('重点', na=False)].shape[0])
+                except Exception as cust_err:
+                    logging.warning(f"Error reading priority count for {filename}: {cust_err}")
+
+                # 2. 日報データの読み込み
+                df = get_cached_dataframe(filename, '営業日報')
+                if df is None or df.empty:
+                    # 空白レコードを追加
+                    monthly_data = {label: {"priority_calls": 0, "general_calls": 0, "priority_visits": 0, "general_visits": 0} for _, label in month_keys}
+                    records.append({
+                        "staff": staff_name,
+                        "priority_count": priority_count,
+                        "monthly_data": monthly_data,
+                        "totals": {"priority_calls": 0, "general_calls": 0, "total_calls": 0, "priority_visits": 0, "general_visits": 0, "total_visits": 0},
+                        "points": 0.0,
+                        "achievement_rate": 0.0,
+                        "rating": 0.0,
+                        "file": filename
+                    })
+                    continue
+
+                # カラムクリーンアップ
+                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+                
+                date_col = next((c for c in df.columns if '日付' in c), '日付')
+                action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
+                priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
+
+                df['dt'] = df[date_col].apply(parse_dt)
+                df = df.dropna(subset=['dt'])
+
+                # 各項目のフラグ付け
+                def is_priority(val):
+                    if pd.isnull(val): return False
+                    s = str(val).strip()
+                    return s != '' and s != '-' and '重点' in s
+
+                df['is_priority_cust'] = df[priority_col].apply(is_priority) if priority_col in df.columns else False
+                df['is_visit'] = df[action_col].apply(lambda x: True if pd.notnull(x) and '訪問' in str(x) else False)
+                df['is_call'] = df[action_col].apply(lambda x: True if pd.notnull(x) and '電話' in str(x) else False)
+
+                # 月ごとの集計
+                monthly_data = {}
+                tot_p_calls = 0
+                tot_g_calls = 0
+                tot_p_visits = 0
+                tot_g_visits = 0
+
+                for m_key, m_label in month_keys:
+                    parts = m_key.split('/')
+                    iso_month = f"20{parts[0]}-{parts[1]}"
+                    mask1 = df['dt'].dt.strftime('%y/%m') == m_key
+                    mask2 = df['dt'].dt.strftime('%Y-%m') == iso_month
+                    m_df = df[mask1 | mask2]
+
+                    if m_df.empty:
+                        monthly_data[m_label] = {
+                            "priority_calls": 0,
+                            "general_calls": 0,
+                            "priority_visits": 0,
+                            "general_visits": 0
+                        }
+                        continue
+
+                    p_calls = int((m_df['is_call'] & m_df['is_priority_cust']).sum())
+                    g_calls = int((m_df['is_call'] & ~m_df['is_priority_cust']).sum())
+                    p_visits = int((m_df['is_visit'] & m_df['is_priority_cust']).sum())
+                    g_visits = int((m_df['is_visit'] & ~m_df['is_priority_cust']).sum())
+
+                    monthly_data[m_label] = {
+                        "priority_calls": p_calls,
+                        "general_calls": g_calls,
+                        "priority_visits": p_visits,
+                        "general_visits": g_visits
+                    }
+
+                    tot_p_calls += p_calls
+                    tot_g_calls += g_calls
+                    tot_p_visits += p_visits
+                    tot_g_visits += g_visits
+
+                # 点数計算: 重点電話 + 一般電話/2 + 重点訪問*10 + 一般訪問*3
+                points = float(tot_p_calls) + (float(tot_g_calls) / 2.0) + (float(tot_p_visits) * 10.0) + (float(tot_g_visits) * 3.0)
+                
+                # 目標値 (月200点 * target_months_count)
+                target_score = float(200 * target_months_count)
+                achievement_rate = (points / target_score) * 100.0 if target_score > 0 else 0.0
+                rating = points / 140.0
+
+                records.append({
+                    "staff": staff_name,
+                    "priority_count": priority_count,
+                    "monthly_data": monthly_data,
+                    "totals": {
+                        "priority_calls": tot_p_calls,
+                        "general_calls": tot_g_calls,
+                        "total_calls": tot_p_calls + tot_g_calls,
+                        "priority_visits": tot_p_visits,
+                        "general_visits": tot_g_visits,
+                        "total_visits": tot_p_visits + tot_g_visits
+                    },
+                    "points": round(points, 1),
+                    "achievement_rate": round(achievement_rate, 1),
+                    "rating": round(rating, 1),
+                    "file": filename
+                })
+
+            except Exception as file_err:
+                logging.warning(f"Error processing points table for {filename}: {file_err}")
+                continue
+
+        return {
+            "months": [m_label for _, m_label in month_keys],
+            "records": records,
+            "target_months_count": target_months_count
+        }
+
+    except Exception as e:
+        logging.error(f"Error generating points table: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 if os.path.exists(STATIC_DIR):
     if os.path.exists(os.path.join(STATIC_DIR, "_next")):

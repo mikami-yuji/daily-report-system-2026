@@ -1981,29 +1981,143 @@ async def get_sales_data(customer_code: str):
 
 @app.get("/api/analytics/team-summary")
 def get_team_summary(month: str = None):
+    """
+    複数ファイルから全メンバーの活動状況を集計する。
+    month: "YY/MM" 形式 (例: "26/03")。
+    """
+    logging.info(f"Team Summary triggered for month: {month}")
+    if not os.path.exists(EXCEL_DIR):
+        raise HTTPException(status_code=500, detail="Excel directory not found")
+
+    # 除外リスト
+    EXCLUDE_FILES = [
+        "●20260117_2026年度用_日報【原本_2】.xlsm",
+        "【電話営業資料】電話　メール話題情報.xlsx",
+        "支店999_【津田_操作確認用】_2026年度用日報.xlsm",
+        "本社001_【中野次長】_2026年度用日報.xlsm"
+    ]
+
     try:
-        logging.info(f"--- Team Summary Aggregation Start: month={month} ---")
-        target_files = [f for f in os.listdir(EXCEL_DIR) if f.endswith('.xlsm') and not f.startswith('~$')]
-        results = []
-        for fname in target_files:
+        # ファイル一覧の取得
+        target_files = [
+            f for f in os.listdir(EXCEL_DIR) 
+            if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
+        ]
+        logging.info(f"Scanning {len(target_files)} files for aggregation.")
+
+        def extract_staff_name_py(filename: str) -> str:
+            import re
+            match = re.search(r'【(.+?)】', filename)
+            if not match: return "不明"
+            content = match.group(1)
+            name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
+            if name_with_paren: return name_with_paren.group(1) + name_with_paren.group(2)
+            surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
+            if surname: return surname.group(1)
+            return content[:4]
+
+        summary_results = []
+
+        # 月次ターゲットの正規化 (YY/MM -> 20YY-MM)
+        target_month_iso = ""
+        if month and '/' in month:
+            parts = month.split('/')
+            target_month_iso = f"20{parts[0]}-{parts[1]}"
+            logging.info(f"Normalized target month to: {target_month_iso}")
+
+        # 柔軟な日付解析ヘルパー
+        def parse_dt(x):
+            if pd.isna(x): return pd.NaT
+            s = str(x).strip()
+            if s == '' or s == 'nan' or s == '-': return pd.NaT
             try:
-                df = get_cached_dataframe(fname, '営業日報')
-                if df is None: continue
-                df.columns = [str(c).replace('\n', '').strip() for c in df.columns]
+                return pd.to_datetime(s, format='%y/%m/%d')
+            except:
+                pass
+            try:
+                return pd.to_datetime(s, format='%Y/%m/%d')
+            except:
+                pass
+            try:
+                return pd.to_datetime(s, format='%Y-%m-%d')
+            except:
+                pass
+            try:
+                return pd.to_datetime(s, errors='coerce')
+            except:
+                return pd.NaT
+
+        for filename in target_files:
+            try:
+                staff_name = extract_staff_name_py(filename)
+                df = get_cached_dataframe(filename, '営業日報')
+                if df is None or df.empty:
+                    logging.debug(f"File {filename}: Empty dataframe.")
+                    continue
+
+                # カラムクリーンアップ
+                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+                
                 date_col = next((c for c in df.columns if '日付' in c), '日付')
                 action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
-                df['dt'] = pd.to_datetime(df[date_col], errors='coerce')
+                priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
+                area_col = next((c for c in df.columns if 'エリア' in c), 'エリア')
+
+                # 日付パースとフィルタ
+                df['dt'] = df[date_col].apply(parse_dt)
+                df = df.dropna(subset=['dt'])
+
                 if month:
-                    df = df[df['dt'].dt.strftime('%y/%m') == month]
-                if not df.empty:
-                    staff = fname.replace('.xlsm', '')
-                    v = df[action_col].astype(str).str.contains('訪問', na=False).sum()
-                    c = len(df) - v
-                    results.append({"staff": staff, "total": len(df), "visits": int(v), "calls": int(c)})
-            except: continue
-        return {"records": results, "count": len(results)}
+                    # '26/03' などの文字列と比較するマスク
+                    mask1 = df['dt'].dt.strftime('%y/%m') == month
+                    mask2 = df['dt'].dt.strftime('%Y-%m') == target_month_iso if target_month_iso else pd.Series([False]*len(df))
+                    df = df[mask1 | mask2]
+
+                if df.empty:
+                    logging.debug(f"File {filename}: No records found after filtering for {month}.")
+                    continue
+
+                # 集計
+                df['エリア'] = df[area_col].apply(lambda x: str(x).strip() if pd.notnull(x) and str(x).strip() != '' else '未設定')
+                
+                def get_category(row):
+                    val = row.get(priority_col, '')
+                    if pd.notnull(val) and str(val).strip() != '' and str(val).strip() != '-':
+                        return '重点'
+                    return '一般'
+                
+                df['区分'] = df.apply(get_category, axis=1)
+                df['is_visit'] = df[action_col].apply(lambda x: 1 if pd.notnull(x) and '訪問' in str(x) else 0)
+                df['is_call'] = df[action_col].apply(lambda x: 1 if pd.notnull(x) and '電話' in str(x) else 0)
+
+                grouped = df.groupby(['エリア', '区分']).agg({
+                    'is_visit': 'sum',
+                    'is_call': 'sum'
+                }).reset_index()
+
+                for _, row in grouped.iterrows():
+                    summary_results.append({
+                        "staff": staff_name,
+                        "area": row['エリア'],
+                        "category": row['区分'],
+                        "visits": int(row['is_visit']),
+                        "calls": int(row['is_call']),
+                        "file": filename
+                    })
+                
+                logging.debug(f"File {filename}: Successfully aggregated {len(grouped)} area/category pairs.")
+
+            except Exception as file_err:
+                logging.warning(f"Error aggregating file {filename}: {file_err}")
+                continue
+
+        logging.info(f"Aggregation complete. Total records: {len(summary_results)}.")
+        return {"records": summary_results, "count": len(target_files)}
+
     except Exception as e:
-        logging.error(f"Team summary error: {e}")
+        logging.error(f"Error in get_team_summary: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/stats/dashboard")

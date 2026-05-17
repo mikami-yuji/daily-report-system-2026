@@ -30,3 +30,12 @@ export type PointsTableResponse = {
     records: PointsRecord[];
     target_months_count: number;
 };
+
+export type TeamSummaryRecord = {
+    staff: string;     // 担当者
+    area: string;      // エエリア
+    category: string;  // 区分
+    visits: number;    // 訪問件数
+    calls: number;     // 電話件数
+    file: string;      // ファイル名
+};

@@ -23,6 +23,7 @@ export default function DailyReportPointsTablePage() {
     const [teamSummaryRecords, setTeamSummaryRecords] = useState<TeamSummaryRecord[]>([]);
     const [sortField, setSortField] = useState<keyof TeamSummaryRecord | 'total'>('staff');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+    const [downloadingExcel, setDownloadingExcel] = useState(false);
 
     // 月度のリスト定義
     const monthOptions = useMemo(() => [
@@ -395,13 +396,54 @@ export default function DailyReportPointsTablePage() {
     };
 
     // Excel出力: 日報点数表 (.xlsx)
-    const handleExportPointsExcel = (): void => {
-        window.location.href = `/api/analytics/export/points-table?target_months_count=${targetMonths}`;
+    const handleExportPointsExcel = async (): Promise<void> => {
+        try {
+            setDownloadingExcel(true);
+            const res = await axios.get(`/api/analytics/export/points-table`, {
+                params: { target_months_count: targetMonths },
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `DailyReportPointsTable_${targetMonths}months.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            alert('Excelファイルの出力に失敗しました。');
+        } finally {
+            setDownloadingExcel(false);
+        }
     };
 
     // Excel出力: 活動集計 (.xlsx)
-    const handleExportTeamSummaryExcel = (): void => {
-        window.location.href = `/api/analytics/export/team-summary?month=${selectedMonth}`;
+    const handleExportTeamSummaryExcel = async (): Promise<void> => {
+        try {
+            setDownloadingExcel(true);
+            const res = await axios.get(`/api/analytics/export/team-summary`, {
+                params: { month: selectedMonth },
+                responseType: 'blob'
+            });
+            const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            const monthStr = selectedMonth.replace('/', '');
+            link.download = `ActivitySummary_${monthStr}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error(err);
+            alert('Excelファイルの出力に失敗しました。');
+        } finally {
+            setDownloadingExcel(false);
+        }
     };
 
     if (!mounted) {
@@ -534,11 +576,15 @@ export default function DailyReportPointsTablePage() {
                         {/* Excel Export */}
                         <button
                             onClick={activeTab === 'points' ? handleExportPointsExcel : handleExportTeamSummaryExcel}
-                            disabled={activeTab === 'points' ? filteredPointsRecords.length === 0 : filteredTeamSummary.length === 0}
+                            disabled={downloadingExcel || (activeTab === 'points' ? filteredPointsRecords.length === 0 : filteredTeamSummary.length === 0)}
                             className="flex items-center gap-1.5 px-4 py-2 w-full sm:w-auto justify-center bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-700 hover:bg-emerald-100/50 font-black text-xs shadow-sm transition-colors disabled:opacity-50"
                         >
-                            <Download size={14} className="text-emerald-600" />
-                            Excel出力 (.xlsx)
+                            {downloadingExcel ? (
+                                <RefreshCw size={14} className="text-emerald-600 animate-spin" />
+                            ) : (
+                                <Download size={14} className="text-emerald-600" />
+                            )}
+                            {downloadingExcel ? '出力中...' : 'Excel出力 (.xlsx)'}
                         </button>
 
                         {/* Recalculate */}

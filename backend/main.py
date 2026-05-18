@@ -2536,14 +2536,46 @@ def get_points_table(target_months_count: int = 7):
             try:
                 staff_name = extract_staff_name_py(filename)
                 
-                # 1. 重点件数（得意先_Listから重点の数を数える）
+                # 1. 重点件数（得意先_Listから個人の重点顧客の数を数える）
                 priority_count = 0
                 try:
                     cust_df = get_cached_dataframe(filename, '得意先_List')
                     if cust_df is not None and not cust_df.empty:
                         cust_df.columns = [str(col).replace('\n', '').strip() for col in cust_df.columns]
                         priority_col = next((c for c in cust_df.columns if '重点' in c), None)
-                        if priority_col:
+                        rep_col = cust_df.columns[8] if len(cust_df.columns) > 8 else None
+                        
+                        if priority_col and rep_col:
+                            is_priority = cust_df[priority_col].astype(str).str.contains('重点', na=False)
+                            
+                            def match_representative(rep_val, target_name):
+                                if pd.isna(rep_val): return False
+                                rep_val = str(rep_val).strip()
+                                target_name = str(target_name).strip()
+                                if rep_val == target_name: return True
+                                
+                                import re
+                                def clean_name(n):
+                                    n = re.sub(r'[\(（].*?[\)）]', '', n)
+                                    n = re.sub(r'(?:次長|課長|部長|常務|専務|社長|主任|係長|取締役|マネージャー|マネ|リーダー|担当)$', '', n)
+                                    return n.strip()
+                                    
+                                cleaned_rep = clean_name(rep_val)
+                                cleaned_staff = clean_name(target_name)
+                                if cleaned_rep == cleaned_staff: return True
+                                
+                                match = re.search(r'(.+?)[（\(](.+?)[）\)]', rep_val)
+                                if match:
+                                    base = match.group(1).strip()
+                                    inside = match.group(2).strip()
+                                    combined = base + inside
+                                    if clean_name(combined) == cleaned_staff: return True
+                                return False
+                                
+                            matches_rep = cust_df[rep_col].apply(lambda x: match_representative(x, staff_name))
+                            priority_count = int(cust_df[is_priority & matches_rep].shape[0])
+                        elif priority_col:
+                            # フォールバック: 担当者列が取れなければ全体の重点顧客数をカウント
                             priority_count = int(cust_df[cust_df[priority_col].astype(str).str.contains('重点', na=False)].shape[0])
                 except Exception as cust_err:
                     logging.warning(f"Error reading priority count for {filename}: {cust_err}")

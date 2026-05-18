@@ -2707,6 +2707,21 @@ def export_points_table_excel(target_months_count: int = 7):
     ws.title = "日報点数表"
     ws.views.sheetView[0].showGridLines = True
 
+    # 印刷設定: A4横1枚に収める
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = 9 # 9 = A4
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+
+    # 余白設定 (狭めにして印刷領域を最大化)
+    ws.page_margins.left = 0.25
+    ws.page_margins.right = 0.25
+    ws.page_margins.top = 0.3
+    ws.page_margins.bottom = 0.3
+    ws.page_margins.header = 0.1
+    ws.page_margins.footer = 0.1
+
     # スタイル定義
     font_title = Font(name="Meiryo UI", size=16, bold=True)
     font_header = Font(name="Meiryo UI", size=9, bold=True)
@@ -3048,6 +3063,21 @@ def export_team_summary_excel(month: str = None):
     ws = wb.active
     ws.title = "活動集計"
     ws.views.sheetView[0].showGridLines = True
+
+    # 印刷設定: A4横1枚に収める
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = 9 # 9 = A4
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+
+    # 余白設定 (狭めにして印刷領域を最大化)
+    ws.page_margins.left = 0.25
+    ws.page_margins.right = 0.25
+    ws.page_margins.top = 0.3
+    ws.page_margins.bottom = 0.3
+    ws.page_margins.header = 0.1
+    ws.page_margins.footer = 0.1
 
     # スタイル定義
     font_title = Font(name="Meiryo UI", size=14, bold=True)

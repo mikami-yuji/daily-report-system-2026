@@ -394,6 +394,16 @@ export default function DailyReportPointsTablePage() {
         document.body.removeChild(link);
     };
 
+    // Excel出力: 日報点数表 (.xlsx)
+    const handleExportPointsExcel = (): void => {
+        window.location.href = `/api/analytics/export/points-table?target_months_count=${targetMonths}`;
+    };
+
+    // Excel出力: 活動集計 (.xlsx)
+    const handleExportTeamSummaryExcel = (): void => {
+        window.location.href = `/api/analytics/export/team-summary?month=${selectedMonth}`;
+    };
+
     if (!mounted) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
@@ -519,6 +529,16 @@ export default function DailyReportPointsTablePage() {
                         >
                             <Download size={14} />
                             CSV出力
+                        </button>
+
+                        {/* Excel Export */}
+                        <button
+                            onClick={activeTab === 'points' ? handleExportPointsExcel : handleExportTeamSummaryExcel}
+                            disabled={activeTab === 'points' ? filteredPointsRecords.length === 0 : filteredTeamSummary.length === 0}
+                            className="flex items-center gap-1.5 px-4 py-2 w-full sm:w-auto justify-center bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-700 hover:bg-emerald-100/50 font-black text-xs shadow-sm transition-colors disabled:opacity-50"
+                        >
+                            <Download size={14} className="text-emerald-600" />
+                            Excel出力 (.xlsx)
                         </button>
 
                         {/* Recalculate */}

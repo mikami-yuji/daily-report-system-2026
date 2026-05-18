@@ -2665,6 +2665,515 @@ def get_points_table(target_months_count: int = 7):
         logging.error(f"Error generating points table: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/analytics/export/points-table")
+def export_points_table_excel(target_months_count: int = 7):
+    """
+    日報点数表の美しいExcelファイルをエクスポートする。
+    """
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io
+    from fastapi.responses import StreamingResponse
+
+    # 1. データの取得
+    try:
+        data = get_points_table(target_months_count=target_months_count)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to gather data: {e}")
+
+    records = data["records"]
+    months = data["months"]
+
+    # 実績がある月のみ抽出
+    active_months = []
+    for m in months:
+        has_act = False
+        for r in records:
+            act = r["monthly_data"].get(m, {})
+            if (act.get("priority_calls", 0) > 0 or 
+                act.get("general_calls", 0) > 0 or 
+                act.get("priority_visits", 0) > 0 or 
+                act.get("general_visits", 0) > 0):
+                has_act = True
+                break
+        if has_act:
+            active_months.append(m)
+
+    if not active_months:
+        active_months = ["2月", "3月", "4月", "5月"]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "日報点数表"
+    ws.views.sheetView[0].showGridLines = True
+
+    # スタイル定義
+    font_title = Font(name="Meiryo UI", size=16, bold=True)
+    font_header = Font(name="Meiryo UI", size=9, bold=True)
+    font_sub_header = Font(name="Meiryo UI", size=8, bold=True)
+    font_data = Font(name="Meiryo UI", size=9)
+    font_bold = Font(name="Meiryo UI", size=9, bold=True)
+
+    fill_blue_header = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    fill_gray_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    fill_sub_blue = PatternFill(start_color="F2F5F9", end_color="F2F5F9", fill_type="solid")
+    fill_yellow = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+    fill_light_blue = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
+    fill_green = PatternFill(start_color="E2EFDA", end_color="E2EFDA", fill_type="solid")
+
+    border_thin_side = Side(border_style="thin", color="D9D9D9")
+    border_thin = Border(left=border_thin_side, right=border_thin_side, top=border_thin_side, bottom=border_thin_side)
+    border_double_bottom = Border(top=Side(border_style="thin", color="000000"), bottom=Side(border_style="double", color="000000"))
+
+    align_center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    align_left = Alignment(horizontal="left", vertical="center")
+    align_right = Alignment(horizontal="right", vertical="center")
+
+    # タイトル行
+    ws.merge_cells("A1:C1")
+    ws["A1"] = "日報点数表 2026"
+    ws["A1"].font = font_title
+    ws["A1"].alignment = align_left
+    ws.row_dimensions[1].height = 30
+
+    # ヘッダー作成
+    ws.row_dimensions[3].height = 24
+    ws.row_dimensions[4].height = 20
+
+    ws.merge_cells("A3:A4")
+    ws["A3"] = "営業名"
+    ws["A3"].font = font_header
+    ws["A3"].fill = fill_gray_header
+    ws["A3"].alignment = align_center
+    ws["A3"].border = border_thin
+    ws["A4"].border = border_thin
+
+    ws.merge_cells("B3:B4")
+    ws["B3"] = "重点件数"
+    ws["B3"].font = font_header
+    ws["B3"].fill = fill_gray_header
+    ws["B3"].alignment = align_center
+    ws["B3"].border = border_thin
+    ws["B4"].border = border_thin
+
+    current_col = 3
+
+    # 各月のヘッダー
+    for m in active_months:
+        col_letter_start = get_column_letter(current_col)
+        col_letter_end = get_column_letter(current_col + 3)
+        ws.merge_cells(f"{col_letter_start}3:{col_letter_end}3")
+        cell_ref = f"{col_letter_start}3"
+        ws[cell_ref] = m
+        ws[cell_ref].font = font_header
+        ws[cell_ref].fill = fill_blue_header
+        ws[cell_ref].alignment = align_center
+
+        sub_headers = ["重点電話", "電話総数", "重点訪問", "訪問件数"]
+        for idx, sub in enumerate(sub_headers):
+            c_ref = f"{get_column_letter(current_col + idx)}4"
+            ws[c_ref] = sub
+            ws[c_ref].font = font_sub_header
+            ws[c_ref].fill = fill_sub_blue
+            ws[c_ref].alignment = align_center
+            ws[c_ref].border = border_thin
+            ws[f"{get_column_letter(current_col + idx)}3"].border = border_thin
+            
+        current_col += 4
+
+    # 計ヘッダー
+    tot_col_start = current_col
+    ws.merge_cells(f"{get_column_letter(current_col)}3:{get_column_letter(current_col + 5)}3")
+    cell_ref = f"{get_column_letter(current_col)}3"
+    ws[cell_ref] = "計"
+    ws[cell_ref].font = font_header
+    ws[cell_ref].fill = fill_gray_header
+    ws[cell_ref].alignment = align_center
+
+    sub_tots = ["重点電話総数", "電話総件数", "総電話件数", "重点訪問総数", "訪問総件数", "総訪問件数"]
+    for idx, sub in enumerate(sub_tots):
+        c_ref = f"{get_column_letter(current_col + idx)}4"
+        ws[c_ref] = sub
+        ws[c_ref].font = font_sub_header
+        ws[c_ref].fill = fill_gray_header
+        ws[c_ref].alignment = align_center
+        ws[c_ref].border = border_thin
+        ws[f"{get_column_letter(current_col + idx)}3"].border = border_thin
+        
+    current_col += 6
+
+    # 各種得点ヘッダー
+    points_col_idx = current_col
+    ws.merge_cells(f"{get_column_letter(current_col)}3:{get_column_letter(current_col)}4")
+    ws[f"{get_column_letter(current_col)}3"] = "点数"
+    ws[f"{get_column_letter(current_col)}3"].font = font_header
+    ws[f"{get_column_letter(current_col)}3"].fill = fill_yellow
+    ws[f"{get_column_letter(current_col)}3"].alignment = align_center
+    ws[f"{get_column_letter(current_col)}3"].border = border_thin
+    ws[f"{get_column_letter(current_col)}4"].border = border_thin
+    current_col += 1
+
+    ach_col_idx = current_col
+    ws.merge_cells(f"{get_column_letter(current_col)}3:{get_column_letter(current_col)}4")
+    ws[f"{get_column_letter(current_col)}3"] = f"月200点×{target_months_count}\n({200 * target_months_count})"
+    ws[f"{get_column_letter(current_col)}3"].font = font_header
+    ws[f"{get_column_letter(current_col)}3"].fill = fill_light_blue
+    ws[f"{get_column_letter(current_col)}3"].alignment = align_center
+    ws[f"{get_column_letter(current_col)}3"].border = border_thin
+    ws[f"{get_column_letter(current_col)}4"].border = border_thin
+    current_col += 1
+
+    rat_col_idx = current_col
+    ws.merge_cells(f"{get_column_letter(current_col)}3:{get_column_letter(current_col)}4")
+    ws[f"{get_column_letter(current_col)}3"] = "評価点"
+    ws[f"{get_column_letter(current_col)}3"].font = font_header
+    ws[f"{get_column_letter(current_col)}3"].fill = fill_green
+    ws[f"{get_column_letter(current_col)}3"].alignment = align_center
+    ws[f"{get_column_letter(current_col)}3"].border = border_thin
+    ws[f"{get_column_letter(current_col)}4"].border = border_thin
+
+    # データ行書き込み
+    row_num = 5
+    for r in records:
+        ws.row_dimensions[row_num].height = 18
+
+        ws[f"A{row_num}"] = r["staff"]
+        ws[f"A{row_num}"].font = font_bold
+        ws[f"A{row_num}"].alignment = align_left
+        ws[f"A{row_num}"].border = border_thin
+
+        ws[f"B{row_num}"] = r["priority_count"]
+        ws[f"B{row_num}"].font = font_data
+        ws[f"B{row_num}"].alignment = align_center
+        ws[f"B{row_num}"].border = border_thin
+
+        col_idx = 3
+        for m in active_months:
+            act = r["monthly_data"].get(m, {"priority_calls": 0, "general_calls": 0, "priority_visits": 0, "general_visits": 0})
+            for key in ["priority_calls", "general_calls", "priority_visits", "general_visits"]:
+                cell_ref = f"{get_column_letter(col_idx)}{row_num}"
+                ws[cell_ref] = act.get(key, 0)
+                ws[cell_ref].font = font_data
+                ws[cell_ref].alignment = align_right
+                ws[cell_ref].border = border_thin
+                col_idx += 1
+
+        # 各種集計用計算式（数式によるリアルタイム計算）
+        # 1. 重点電話総数
+        p_calls_parts = [f"{get_column_letter(3 + m_idx * 4)}{row_num}" for m_idx in range(len(active_months))]
+        ws[f"{get_column_letter(tot_col_start)}{row_num}"] = f"={'+'.join(p_calls_parts)}"
+        ws[f"{get_column_letter(tot_col_start)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(tot_col_start)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(tot_col_start)}{row_num}"].border = border_thin
+
+        # 2. 電話総件数
+        g_calls_parts = [f"{get_column_letter(4 + m_idx * 4)}{row_num}" for m_idx in range(len(active_months))]
+        ws[f"{get_column_letter(tot_col_start + 1)}{row_num}"] = f"={'+'.join(g_calls_parts)}"
+        ws[f"{get_column_letter(tot_col_start + 1)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(tot_col_start + 1)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(tot_col_start + 1)}{row_num}"].border = border_thin
+
+        # 3. 総電話件数 (重点＋一般)
+        p_c_col = get_column_letter(tot_col_start)
+        g_c_col = get_column_letter(tot_col_start + 1)
+        ws[f"{get_column_letter(tot_col_start + 2)}{row_num}"] = f"={p_c_col}{row_num}+{g_c_col}{row_num}"
+        ws[f"{get_column_letter(tot_col_start + 2)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(tot_col_start + 2)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(tot_col_start + 2)}{row_num}"].border = border_thin
+
+        # 4. 重点訪問総数
+        p_visits_parts = [f"{get_column_letter(5 + m_idx * 4)}{row_num}" for m_idx in range(len(active_months))]
+        ws[f"{get_column_letter(tot_col_start + 3)}{row_num}"] = f"={'+'.join(p_visits_parts)}"
+        ws[f"{get_column_letter(tot_col_start + 3)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(tot_col_start + 3)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(tot_col_start + 3)}{row_num}"].border = border_thin
+
+        # 5. 訪問総件数
+        g_visits_parts = [f"{get_column_letter(6 + m_idx * 4)}{row_num}" for m_idx in range(len(active_months))]
+        ws[f"{get_column_letter(tot_col_start + 4)}{row_num}"] = f"={'+'.join(g_visits_parts)}"
+        ws[f"{get_column_letter(tot_col_start + 4)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(tot_col_start + 4)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(tot_col_start + 4)}{row_num}"].border = border_thin
+
+        # 6. 総訪問件数 (重点＋一般)
+        p_v_col = get_column_letter(tot_col_start + 3)
+        g_v_col = get_column_letter(tot_col_start + 4)
+        ws[f"{get_column_letter(tot_col_start + 5)}{row_num}"] = f"={p_v_col}{row_num}+{g_v_col}{row_num}"
+        ws[f"{get_column_letter(tot_col_start + 5)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(tot_col_start + 5)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(tot_col_start + 5)}{row_num}"].border = border_thin
+
+        #活動得点計算式: 重点電話×1 ＋ 一般電話/2 ＋ 重点訪問×10 ＋ 一般訪問×3
+        points_formula = f"={p_c_col}{row_num}+({g_c_col}{row_num}/2)+({p_v_col}{row_num}*10)+({g_v_col}{row_num}*3)"
+        ws[f"{get_column_letter(points_col_idx)}{row_num}"] = points_formula
+        ws[f"{get_column_letter(points_col_idx)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(points_col_idx)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(points_col_idx)}{row_num}"].border = border_thin
+        ws[f"{get_column_letter(points_col_idx)}{row_num}"].fill = fill_yellow
+        ws[f"{get_column_letter(points_col_idx)}{row_num}"].number_format = "0.0"
+
+        # 達成率: 総合得点 ÷ (月200点×対象月数)
+        target_score = 200 * target_months_count
+        pts_col_let = get_column_letter(points_col_idx)
+        ach_formula = f"={pts_col_let}{row_num}/{target_score}"
+        ws[f"{get_column_letter(ach_col_idx)}{row_num}"] = ach_formula
+        ws[f"{get_column_letter(ach_col_idx)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(ach_col_idx)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(ach_col_idx)}{row_num}"].border = border_thin
+        ws[f"{get_column_letter(ach_col_idx)}{row_num}"].fill = fill_light_blue
+        ws[f"{get_column_letter(ach_col_idx)}{row_num}"].number_format = "0.0%"
+
+        # 評価点: 総合得点 ÷ 140.0
+        rat_formula = f"={pts_col_let}{row_num}/140.0"
+        ws[f"{get_column_letter(rat_col_idx)}{row_num}"] = rat_formula
+        ws[f"{get_column_letter(rat_col_idx)}{row_num}"].font = font_bold
+        ws[f"{get_column_letter(rat_col_idx)}{row_num}"].alignment = align_right
+        ws[f"{get_column_letter(rat_col_idx)}{row_num}"].border = border_thin
+        ws[f"{get_column_letter(rat_col_idx)}{row_num}"].fill = fill_green
+        ws[f"{get_column_letter(rat_col_idx)}{row_num}"].number_format = "0.0"
+
+        row_num += 1
+
+    # 「計」行の作成
+    ws.row_dimensions[row_num].height = 20
+    ws[f"A{row_num}"] = "計"
+    ws[f"A{row_num}"].font = font_bold
+    ws[f"A{row_num}"].alignment = align_left
+    ws[f"A{row_num}"].border = border_thin
+
+    ws[f"B{row_num}"] = f"=SUM(B5:B{row_num - 1})"
+    ws[f"B{row_num}"].font = font_bold
+    ws[f"B{row_num}"].alignment = align_center
+    ws[f"B{row_num}"].border = border_thin
+
+    for c_idx in range(3, rat_col_idx + 1):
+        col_let = get_column_letter(c_idx)
+        if c_idx == ach_col_idx:
+            tot_pts_cell = f"{get_column_letter(points_col_idx)}{row_num}"
+            ws[f"{col_let}{row_num}"] = f"={tot_pts_cell}/{200 * target_months_count}"
+            ws[f"{col_let}{row_num}"].number_format = "0.0%"
+            ws[f"{col_let}{row_num}"].fill = fill_light_blue
+        elif c_idx == rat_col_idx:
+            tot_pts_cell = f"{get_column_letter(points_col_idx)}{row_num}"
+            ws[f"{col_let}{row_num}"] = f"={tot_pts_cell}/140.0"
+            ws[f"{col_let}{row_num}"].number_format = "0.0"
+            ws[f"{col_let}{row_num}"].fill = fill_green
+        elif c_idx == points_col_idx:
+            ws[f"{col_let}{row_num}"] = f"=SUM({col_let}5:{col_let}{row_num - 1})"
+            ws[f"{col_let}{row_num}"].number_format = "0.0"
+            ws[f"{col_let}{row_num}"].fill = fill_yellow
+        else:
+            ws[f"{col_let}{row_num}"] = f"=SUM({col_let}5:{col_let}{row_num - 1})"
+
+        ws[f"{col_let}{row_num}"].font = font_bold
+        ws[f"{col_let}{row_num}"].alignment = align_right
+        ws[f"{col_let}{row_num}"].border = border_thin
+
+    row_num += 1
+
+    # 「平均点」行の作成
+    ws.row_dimensions[row_num].height = 20
+    ws[f"A{row_num}"] = "平均点"
+    ws[f"A{row_num}"].font = font_bold
+    ws[f"A{row_num}"].alignment = align_left
+    ws[f"A{row_num}"].border = border_double_bottom
+
+    ws[f"B{row_num}"] = f"=AVERAGE(B5:B{row_num - 2})"
+    ws[f"B{row_num}"].font = font_bold
+    ws[f"B{row_num}"].alignment = align_center
+    ws[f"B{row_num}"].border = border_double_bottom
+    ws[f"B{row_num}"].number_format = "0.0"
+
+    for c_idx in range(3, rat_col_idx + 1):
+        col_let = get_column_letter(c_idx)
+        if c_idx == ach_col_idx:
+            avg_pts_cell = f"{get_column_letter(points_col_idx)}{row_num}"
+            ws[f"{col_let}{row_num}"] = f"={avg_pts_cell}/{200 * target_months_count}"
+            ws[f"{col_let}{row_num}"].number_format = "0.0%"
+            ws[f"{col_let}{row_num}"].fill = fill_light_blue
+        elif c_idx == rat_col_idx:
+            avg_pts_cell = f"{get_column_letter(points_col_idx)}{row_num}"
+            ws[f"{col_let}{row_num}"] = f"={avg_pts_cell}/140.0"
+            ws[f"{col_let}{row_num}"].number_format = "0.0"
+            ws[f"{col_let}{row_num}"].fill = fill_green
+        elif c_idx == points_col_idx:
+            ws[f"{col_let}{row_num}"] = f"=AVERAGE({col_let}5:{col_let}{row_num - 2})"
+            ws[f"{col_let}{row_num}"].number_format = "0.0"
+            ws[f"{col_let}{row_num}"].fill = fill_yellow
+        else:
+            ws[f"{col_let}{row_num}"] = f"=AVERAGE({col_let}5:{col_let}{row_num - 2})"
+            ws[f"{col_let}{row_num}"].number_format = "0.0"
+
+        ws[f"{col_let}{row_num}"].font = font_bold
+        ws[f"{col_let}{row_num}"].alignment = align_right
+        ws[f"{col_let}{row_num}"].border = border_double_bottom
+
+    # 列幅の自動調整
+    ws.column_dimensions["A"].width = 15
+    ws.column_dimensions["B"].width = 10
+    for c_idx in range(3, points_col_idx):
+        ws.column_dimensions[get_column_letter(c_idx)].width = 11
+    ws.column_dimensions[get_column_letter(points_col_idx)].width = 11
+    ws.column_dimensions[get_column_letter(ach_col_idx)].width = 18
+    ws.column_dimensions[get_column_letter(rat_col_idx)].width = 10
+
+    # ストリーミングレスポンスで返却
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+
+    headers_dict = {
+        'Content-Disposition': f'attachment; filename="DailyReportPointsTable_{target_months_count}months.xlsx"'
+    }
+    return StreamingResponse(file_stream, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers_dict)
+
+@app.get("/api/analytics/export/team-summary")
+def export_team_summary_excel(month: str = None):
+    """
+    活動集計の美しいExcelファイルをエクスポートする。
+    """
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io
+    from fastapi.responses import StreamingResponse
+
+    try:
+        data = get_team_summary(month=month)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to gather data: {e}")
+
+    records = data["records"]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "活動集計"
+    ws.views.sheetView[0].showGridLines = True
+
+    # スタイル定義
+    font_title = Font(name="Meiryo UI", size=14, bold=True)
+    font_header = Font(name="Meiryo UI", size=9, bold=True)
+    font_data = Font(name="Meiryo UI", size=9)
+    font_bold = Font(name="Meiryo UI", size=9, bold=True)
+
+    fill_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+    fill_blue_total = PatternFill(start_color="DDEBF7", end_color="DDEBF7", fill_type="solid")
+
+    border_thin_side = Side(border_style="thin", color="D9D9D9")
+    border_thin = Border(left=border_thin_side, right=border_thin_side, top=border_thin_side, bottom=border_thin_side)
+    border_double_bottom = Border(top=Side(border_style="thin", color="000000"), bottom=Side(border_style="double", color="000000"))
+
+    align_center = Alignment(horizontal="center", vertical="center")
+    align_left = Alignment(horizontal="left", vertical="center")
+    align_right = Alignment(horizontal="right", vertical="center")
+
+    # タイトル行
+    ws["A1"] = f"活動集計 ({month})" if month else "活動集計"
+    ws["A1"].font = font_title
+    ws["A1"].alignment = align_left
+    ws.row_dimensions[1].height = 24
+
+    # ヘッダー列
+    headers = ["担当者", "エリア", "区分", "訪問件数", "電話件数", "合計", "ファイル名"]
+    ws.row_dimensions[3].height = 20
+    for idx, h in enumerate(headers):
+        col_let = get_column_letter(idx + 1)
+        ws[f"{col_let}3"] = h
+        ws[f"{col_let}3"].font = font_header
+        ws[f"{col_let}3"].fill = fill_header
+        ws[f"{col_let}3"].alignment = align_center if idx < 3 or idx == 6 else align_right
+        ws[f"{col_let}3"].border = border_thin
+
+    # データ行
+    row_num = 4
+    for r in records:
+        ws.row_dimensions[row_num].height = 18
+
+        ws[f"A{row_num}"] = r["staff"]
+        ws[f"A{row_num}"].font = font_bold
+        ws[f"A{row_num}"].alignment = align_left
+        ws[f"A{row_num}"].border = border_thin
+
+        ws[f"B{row_num}"] = r["area"]
+        ws[f"B{row_num}"].font = font_data
+        ws[f"B{row_num}"].alignment = align_center
+        ws[f"B{row_num}"].border = border_thin
+
+        ws[f"C{row_num}"] = r["category"]
+        ws[f"C{row_num}"].font = font_data
+        ws[f"C{row_num}"].alignment = align_center
+        ws[f"C{row_num}"].border = border_thin
+
+        ws[f"D{row_num}"] = r["visits"]
+        ws[f"D{row_num}"].font = font_data
+        ws[f"D{row_num}"].alignment = align_right
+        ws[f"D{row_num}"].border = border_thin
+
+        ws[f"E{row_num}"] = r["calls"]
+        ws[f"E{row_num}"].font = font_data
+        ws[f"E{row_num}"].alignment = align_right
+        ws[f"E{row_num}"].border = border_thin
+
+        # 合計（数式）
+        ws[f"F{row_num}"] = f"=D{row_num}+E{row_num}"
+        ws[f"F{row_num}"].font = font_bold
+        ws[f"F{row_num}"].fill = fill_blue_total
+        ws[f"F{row_num}"].alignment = align_right
+        ws[f"F{row_num}"].border = border_thin
+
+        ws[f"G{row_num}"] = r["file"]
+        ws[f"G{row_num}"].font = font_data
+        ws[f"G{row_num}"].alignment = align_left
+        ws[f"G{row_num}"].border = border_thin
+
+        row_num += 1
+
+    # 合計行
+    ws.row_dimensions[row_num].height = 20
+    ws[f"A{row_num}"] = "合計"
+    ws[f"A{row_num}"].font = font_bold
+    ws[f"A{row_num}"].alignment = align_left
+    ws[f"A{row_num}"].border = border_double_bottom
+
+    ws[f"B{row_num}"].border = border_double_bottom
+    ws[f"C{row_num}"].border = border_double_bottom
+
+    ws[f"D{row_num}"] = f"=SUM(D4:D{row_num - 1})"
+    ws[f"D{row_num}"].font = font_bold
+    ws[f"D{row_num}"].alignment = align_right
+    ws[f"D{row_num}"].border = border_double_bottom
+
+    ws[f"E{row_num}"] = f"=SUM(E4:E{row_num - 1})"
+    ws[f"E{row_num}"].font = font_bold
+    ws[f"E{row_num}"].alignment = align_right
+    ws[f"E{row_num}"].border = border_double_bottom
+
+    ws[f"F{row_num}"] = f"=SUM(F4:F{row_num - 1})"
+    ws[f"F{row_num}"].font = font_bold
+    ws[f"F{row_num}"].fill = fill_blue_total
+    ws[f"F{row_num}"].alignment = align_right
+    ws[f"F{row_num}"].border = border_double_bottom
+
+    ws[f"G{row_num}"].border = border_double_bottom
+
+    # 列幅調整
+    ws.column_dimensions["A"].width = 16
+    ws.column_dimensions["B"].width = 14
+    ws.column_dimensions["C"].width = 10
+    ws.column_dimensions["D"].width = 12
+    ws.column_dimensions["E"].width = 12
+    ws.column_dimensions["F"].width = 12
+    ws.column_dimensions["G"].width = 40
+
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+
+    month_fn = month.replace('/', '') if month else "total"
+    headers_dict = {
+        'Content-Disposition': f'attachment; filename="ActivitySummary_{month_fn}.xlsx"'
+    }
+    return StreamingResponse(file_stream, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers_dict)
+
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 if os.path.exists(STATIC_DIR):
     if os.path.exists(os.path.join(STATIC_DIR, "_next")):

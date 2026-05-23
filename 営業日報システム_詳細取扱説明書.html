@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>営業日報システム (Daily Report System) 詳細取扱説明書</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    /* CSS変数を用いたプレミアムデザインシステム */
+    :root {
+      --primary: #1e40af;
+      --primary-light: #eff6ff;
+      --secondary: #0ea5e9;
+      --accent: #f59e0b;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --warning: #f59e0b;
+      --warning-light: #fffbeb;
+      --danger: #ef4444;
+      --danger-light: #fef2f2;
+      --text-dark: #1e293b;
+      --text-muted: #64748b;
+      --bg-main: #f8fafc;
+      --bg-card: #ffffff;
+      --border-color: #e2e8f0;
+      --sidebar-width: 320px;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', 'Noto Sans JP', sans-serif;
+      color: var(--text-dark);
+      background-color: var(--bg-main);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 全体レイアウト */
+    .app-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* サイドバー（目次・ナビゲーション） */
+    .sidebar {
+      width: var(--sidebar-width);
+      background-color: #ffffff;
+      border-right: 1px solid var(--border-color);
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      transition: var(--transition);
+      box-shadow: 2px 0 8px rgb(0 0 0 / 0.02);
+    }
+
+    .sidebar-header {
+      padding: 24px;
+      border-bottom: 1px solid var(--border-color);
+      background: linear-gradient(135deg, var(--primary) 0%, #1d4ed8 100%);
+      color: #ffffff;
+    }
+
+    .sidebar-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sidebar-subtitle {
+      font-size: 0.8rem;
+      opacity: 0.8;
+    }
+
+    .sidebar-menu {
+      list-style: none;
+      padding: 16px 8px;
+    }
+
+    .menu-item {
+      margin-bottom: 4px;
+    }
+
+    .menu-link {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      color: var(--text-dark);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 8px;
+      transition: var(--transition);
+    }
+
+    .menu-link:hover {
+      background-color: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .menu-link.active {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .menu-link.active:hover {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .menu-sub-list {
+      list-style: none;
+      padding-left: 20px;
+      margin-top: 4px;
+      border-left: 1.5px dashed var(--border-color);
+      margin-left: 24px;
+    }
+
+    .menu-sub-link {
+      display: block;
+      padding: 6px 16px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      border-radius: 6px;
+      transition: var(--transition);
+    }
+
+    .menu-sub-link:hover {
+      color: var(--primary);
+      background-color: var(--primary-light);
+    }
+
+    /* メインコンテンツ */
+    .main-content {
+      flex: 1;
+      margin-left: var(--sidebar-width);
+      padding: 48px 64px;
+      max-width: 1200px;
+      transition: var(--transition);
+    }
+
+    /* ヘッダー */
+    .header-banner {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 40px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header-banner::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 6px;
+      height: 100%;
+      background-color: var(--primary);
+    }
+
+    .header-tag {
+      display: inline-block;
+      padding: 4px 12px;
+      background-color: var(--primary-light);
+      color: var(--primary);
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .header-title {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--text-dark);
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+
+    .header-desc {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    /* セクション */
+    section {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius);
+      padding: 40px;
+      margin-bottom: 40px;
+      box-shadow: var(--shadow);
+      scroll-margin-top: 40px;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border-color);
+      color: var(--text-dark);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-top: 32px;
+      margin-bottom: 16px;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-top: 24px;
+      margin-bottom: 12px;
+      color: var(--text-dark);
+    }
+
+    p {
+      margin-bottom: 16px;
+      color: #334155;
+    }
+
+    /* リスト */
+    ul, ol {
+      margin-bottom: 20px;
+      padding-left: 24px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      color: #334155;
+    }
+
+    li strong {
+      color: var(--text-dark);
+    }
+
+    /* インラインコード・強調 */
+    code {
+      font-family: Consolas, Monaco, 'Courier New', Courier, monospace;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9em;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre {
+      background-color: #0f172a;
+      color: #f8fafc;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 24px;
+      border: 1px solid #1e293b;
+    }
+
+    pre code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+      font-size: 0.9em;
+    }
+
+    .important-badge {
+      background-color: var(--danger);
+      color: #ffffff;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      border-radius: 4px;
+      display: inline-block;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* コールアウトブロック (GitHub Styles) */
+    .callout {
+      padding: 20px;
+      margin-bottom: 24px;
+      border-radius: 8px;
+      border-left: 4px solid;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .callout.note {
+      background-color: var(--primary-light);
+      border-color: var(--primary);
+      color: #1e3a8a;
+    }
+
+    .callout.tip {
+      background-color: var(--success-light);
+      border-color: var(--success);
+      color: #064e3b;
+    }
+
+    .callout.important {
+      background-color: var(--warning-light);
+      border-color: var(--warning);
+      color: #78350f;
+    }
+
+    .callout.warning {
+      background-color: var(--warning-light);
+      border-color: var(--warning);
+      color: #78350f;
+    }
+
+    .callout.caution {
+      background-color: var(--danger-light);
+      border-color: var(--danger);
+      color: #7f1d1d;
+    }
+
+    /* テーブル */
+    .table-container {
+      overflow-x: auto;
+      margin-bottom: 24px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background-color: #f8fafc;
+      color: var(--text-dark);
+      font-weight: 600;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      color: #334155;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+
+    tr:hover {
+      background-color: var(--primary-light);
+      transition: background-color 0.2s ease;
+    }
+
+    /* アコーディオン (トラブルシューティング) */
+    .accordion {
+      margin-bottom: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      background-color: #ffffff;
+      transition: var(--transition);
+    }
+
+    .accordion-header {
+      padding: 18px 24px;
+      background-color: #ffffff;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      color: var(--text-dark);
+      transition: var(--transition);
+      user-select: none;
+    }
+
+    .accordion-header:hover {
+      background-color: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .accordion-icon {
+      font-size: 1.2rem;
+      transition: transform 0.3s ease;
+      color: var(--text-muted);
+    }
+
+    .accordion-content {
+      padding: 0 24px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s cubic-bezier(0, 1, 0, 1), padding 0.3s ease;
+      background-color: #fafbfc;
+      border-top: 0 solid var(--border-color);
+    }
+
+    .accordion.open {
+      border-color: var(--primary);
+    }
+
+    .accordion.open .accordion-header {
+      background-color: var(--primary-light);
+      color: var(--primary);
+    }
+
+    .accordion.open .accordion-icon {
+      transform: rotate(180deg);
+      color: var(--primary);
+    }
+
+    .accordion.open .accordion-content {
+      padding: 24px;
+      max-height: 2000px; /* 十分な高さ */
+      border-top: 1px solid var(--border-color);
+      transition: max-height 0.5s ease-in, padding 0.3s ease;
+    }
+
+    /* SVG構成図 (Mermaid風) */
+    .flowchart-container {
+      background-color: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: center;
+      box-shadow: var(--shadow);
+    }
+
+    .flowchart {
+      width: 100%;
+      max-width: 680px;
+    }
+
+    /* ページトップに戻るボタン */
+    .back-to-top {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background-color: var(--primary);
+      color: #ffffff;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+      opacity: 0;
+      visibility: hidden;
+      transition: var(--transition);
+      z-index: 1000;
+    }
+
+    .back-to-top.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .back-to-top:hover {
+      background-color: #1d4ed8;
+      transform: translateY(-4px);
+    }
+
+    /* レスポンシブ対応 */
+    @media (max-width: 1024px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+      .sidebar.open {
+        transform: translateX(0);
+      }
+      .main-content {
+        margin-left: 0;
+        padding: 32px 24px;
+      }
+      .menu-btn {
+        display: flex !important;
+      }
+    }
+
+    /* ハンバーガーメニューボタン */
+    .menu-btn {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 48px;
+      height: 48px;
+      background-color: var(--primary);
+      color: #ffffff;
+      border-radius: 8px;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      z-index: 999;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(15, 23, 42, 0.4);
+      z-index: 99;
+      display: none;
+    }
+
+    .overlay.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ハンバーガーメニュー（モバイル用） -->
+  <div class="menu-btn" id="menuBtn">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </div>
+  <div class="overlay" id="overlay"></div>
+
+  <div class="app-container">
+    
+    <!-- サイドバー (目次) -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">
+          <span>📝 営業日報システム</span>
+        </div>
+        <div class="sidebar-subtitle">詳細取扱説明書 v2026.1</div>
+      </div>
+      
+      <ul class="sidebar-menu">
+        <li class="menu-item">
+          <a href="#quick-start" class="menu-link active">🔰 1分スタートガイド</a>
+          <ul class="menu-sub-list">
+            <li><a href="#step-1" class="menu-sub-link">ステップ 1: 起動する</a></li>
+            <li><a href="#step-2" class="menu-sub-link">ステップ 2: 入力する</a></li>
+            <li><a href="#step-3" class="menu-sub-link">ステップ 3: 終わる</a></li>
+          </ul>
+        </li>
+        <li class="menu-item">
+          <a href="#system-overview" class="menu-link">1. システム概要と特徴</a>
+        </li>
+        <li class="menu-item">
+          <a href="#environment" class="menu-link">2. 動作環境と事前準備</a>
+        </li>
+        <li class="menu-item">
+          <a href="#startup-method" class="menu-link">3. システム起動方法</a>
+        </li>
+        <li class="menu-item">
+          <a href="#screen-manual" class="menu-link">4. 各画面の構成と操作</a>
+          <ul class="menu-sub-list">
+            <li><a href="#screen-home" class="menu-sub-link">① ホーム (ダッシュボード)</a></li>
+            <li><a href="#screen-list" class="menu-sub-link">② 日報一覧</a></li>
+            <li><a href="#screen-new" class="menu-sub-link">③ 新規日報入力</a></li>
+            <li><a href="#screen-customer" class="menu-sub-link">④ 得意先一覧</a></li>
+            <li><a href="#screen-calendar" class="menu-sub-link">⑤ カレンダー</a></li>
+            <li><a href="#screen-design" class="menu-sub-link">⑥ デザイン検索</a></li>
+            <li><a href="#screen-survey" class="menu-sub-link">⑦ 量販店調査検索</a></li>
+            <li><a href="#screen-competitor" class="menu-sub-link">⑧ 競合他社情報</a></li>
+            <li><a href="#screen-claim" class="menu-sub-link">⑨ クレーム対応</a></li>
+            <li><a href="#screen-analytics" class="menu-sub-link">⑩ 分析・レポート機能群</a></li>
+            <li><a href="#screen-settings" class="menu-sub-link">⑪ 設定</a></li>
+            <li><a href="#sync-status" class="menu-sub-link">⑫ オフライン機能</a></li>
+          </ul>
+        </li>
+        <li class="menu-item">
+          <a href="#excel-spec" class="menu-link">5. Excel連携およびデータ仕様</a>
+        </li>
+        <li class="menu-item">
+          <a href="#troubleshooting" class="menu-link">6. お助けトラブルシューティング</a>
+        </li>
+        <li class="menu-item">
+          <a href="#admin-info" class="menu-link">7. 管理者・保守担当者向け情報</a>
+        </li>
+      </ul>
+    </aside>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+      
+      <!-- ヘッダーバナー -->
+      <div class="header-banner">
+        <span class="header-tag">Official Document</span>
+        <h1 class="header-title">営業日報システム (Daily Report System)<br>詳細取扱説明書</h1>
+        <p class="header-desc">本マニュアルは、エクセルベースの営業日報をモダンなWebインターフェースで効率的に管理・分析するための「営業日報システム」の導入・操作・保守に関する詳細な取扱説明書です。PCの操作に不慣れな一般ユーザー様からシステム管理者様まで、全員が迷わず安心して使用できるように構成されています。</p>
+      </div>
+
+      <!-- 🔰 PCが苦手な方向け：かんたん1分スタートガイド -->
+      <section id="quick-start">
+        <h2>🔰 PCが苦手な方向け：かんたん1分スタートガイド</h2>
+        <p>「パソコンの操作が少し苦手...」「難しい用語や設定はよく分からない...」という方は、<strong>まずここだけ読めば今日からすぐに日報システムを使えます！</strong></p>
+        
+        <h3 id="step-1">🌸 今日から使える！かんたん3ステップ</h3>
+        
+        <h4>1. 【ステップ 1】起動する（カチカチと2回押すだけ）</h4>
+        <ol>
+          <li>配布されたフォルダ内にある <strong>`DailyReportServer.exe`</strong> をダブルクリック（カチカチと2回左クリック）します。</li>
+          <li>自動的に黒い画面（コマンドプロンプト）が立ち上がり、システムサーバーが起動します。</li>
+          <li>インターネットブラウザ（Google ChromeやMicrosoft Edgeなど）を開き、アドレスバーに <strong>`http://localhost:8001`</strong> と入力してキーボード of 「Enter」を押すと、日報システムの画面が表示されます。</li>
+        </ol>
+
+        <div class="callout note">
+          <div class="callout-title">
+            <span>💡 黒い画面（コマンドプロンプト）は閉じないで</span>
+          </div>
+          <p>この黒い画面は「システムが裏側でがんばって動いている印」です。<strong>絶対に「×」ボタンで閉じないでください。</strong> 邪魔な場合は、画面右上にある「ー」（最小化）ボタンを押して、画面の一番下に隠しておいてください。</p>
+        </div>
+
+        <h4 id="step-2">2. 【ステップ 2】日報を入力する（手取り足取り解説！）</h4>
+        
+        <div class="callout caution">
+          <div class="callout-title">
+            <span>⚠️ 入力を始める前の超重要チェック！</span>
+          </div>
+          <p>必ず最初に、画面上部に表示されているファイル名が<strong>「自分専用のエクセル（例：日報_自分の名前.xlsm）」になっていることを確認</strong>してください。別人のファイル名になっていると、間違って他人のデータに書き込まれてしまいます！</p>
+        </div>
+
+        <ol>
+          <li><strong>最初に自分のエクセルになっているか確認する（★超重要！）</strong>:
+            <ul>
+              <li>画面の最上部を確認し、<strong>現在選択されているエクセルファイルの名前が「自分専用のエクセル（例：日報_自分の名前.xlsm）」になっていることを必ず確認してください。</strong></li>
+              <li>※もし別人のファイル名が表示されている場合は、間違って別のファイルに書き込まれてしまいます。その場合は、ホーム画面のファイル切り替え機能から正しいファイルを選び直すか、システム管理者へ連絡してください。</li>
+            </ul>
+          </li>
+          <li><strong>「新規日報入力」の画面を開く</strong>:
+            <ul>
+              <li>画面の左側にあるメニューの中から、<strong>「📝 新規日報入力」</strong>（画面上では「日報一括入力」）と書かれた文字を1回クリックします。</li>
+            </ul>
+          </li>
+          <li><strong>日付を確認・変更する</strong>:
+            <ul>
+              <li><strong>「日付」</strong> の白い枠には、最初から <strong>「今日の日付（当日）」が自動的に入っています。</strong></li>
+              <li>そのため、当日の日報を書く場合は<strong>何もしなくて大丈夫です。</strong></li>
+              <li>※昨日の日報を後から書くなど、「後日入力」をする場合だけ、枠をクリックして日付を変更してください。（枠の右側のカレンダーマークを押して日付を選ぶと簡単です）。</li>
+            </ul>
+          </li>
+          <li><strong>活動した「得意先」を入力する（自動検索できます！）</strong>:
+            <ul>
+              <li><strong>「得意先」</strong> の入力欄に、取引先の名前やコードをキーボードで入力します。</li>
+              <li>文字を入れると、<strong>データベース（エクセルファイル）から自動的に探し出して候補リストを表示してくれます。</strong> 表示されたリストの中から、当てはまる得意先をクリックして選びます。</li>
+              <li><strong>💡 リストにない場合</strong>: 新しい取引先など候補リストにない場合は、そのままキーボードで名前を入力し、キーボードの「Enter」キーを押すことで、<strong>自由に入力することも可能</strong>です。</li>
+              <li>※「社内（半日・１日）」や「量販店調査」、「外出時間」を登録したい場合は、この得意先欄は何も触らず空欄のままにして、次のステップへ進みます。</li>
+            </ul>
+          </li>
+          <li><strong>「商談内容（コメント）」や面談者、滞在時間を書く</strong>:
+            <ul>
+              <li><strong>「商談内容（コメント）」</strong> の広い枠をクリックし、その日の商談の様子や活動内容をキーボードで自由に書き込みます。</li>
+              <li><strong>「面談者」</strong> の枠に会った人の名前を書き、<strong>「滞在時間」</strong> も必要に応じてプルダウン（▼）から選びます。</li>
+              <li>（選択肢: `-` (選択なし), `10分未満`, `30分未満`, `60分未満`, `60分以上`）</li>
+            </ul>
+          </li>
+          <li><strong>デザインに関係する仕事をした場合（必要に応じて）</strong>:
+            <ul>
+              <li>デザイン提案欄のラジオボタンから「新規」または「既存」を選びます。</li>
+              <li><strong>「新規」を選んでデザイン種別を指定する場合</strong>: プルダウンから以下を選びます。<br>
+                （選択肢: `-`, `別注（新版）`, `別注（改版）`, `別注（再版）`, `SP（新版）`）</li>
+              <li><strong>「デザイン進捗状況」を指定する場合</strong>: プルダウンから以下を選びます。<br>
+                （選択肢: `-`, `新規`, `50％未満`, `80％未満`, `80％以上`, `出稿`, `不採用（コンペ負け）`, `不採用（企画倒れ）`, `保留`）</li>
+              <li>※デザインのやり取りがない場合は、ラジオボタン「なし」のままで大丈夫です。</li>
+            </ul>
+          </li>
+          <li><strong>最後に「行動内容」を選ぶ（★ここが一番のポイント！）</strong>:
+            <ul>
+              <li>ここまでの項目を入力し終えたら、<strong>「行動内容」</strong> のプルダウン（▼マーク）をクリックし、当てはまるものを1つ選びます。</li>
+              <li>（選択肢: `訪問（アポあり）`, `訪問（アポなし）`, `訪問（新規）`, `訪問（クレーム）`, `電話商談`, `電話アポ取り`, `メール商談`, `量販店調査`, `社内（半日）`, `社内（１日）`, `外出時間`, `その他`）</li>
+              <li><strong>💡 なぜ最後に入力するの？（システムの賢い機能）</strong>: 先に「得意先」を入力していると、プルダウンの中から「社内」や「外出時間」といった関係のない選択肢が<strong>自動的に非表示</strong>になり、訪問や電話アポなどの「今選ぶべき選択肢」だけがスッキリと残るため、迷うことがありません！</li>
+            </ul>
+          </li>
+          <li><strong>緑色の「保存する」ボタンを押す</strong>:
+            <ul>
+              <li>すべて入力し終えたら、画面を一番下までスクロールし、大きな緑色の <strong>「保存する」</strong> ボタンを1回クリックします。</li>
+              <li><strong>⚠️ ここで数秒お待ちください（重要）</strong>: ボタンを押してから、裏側でエクセルファイルに安全に書き込みを行い、同時にバックアップを作成するため、<strong>保存完了（次のステップの完了メッセージが出る）までに数秒程度の時間がかかります。</strong> ボタンが「保存中...」と表示されている間は、画面を閉じたり、連打したりせずにお待ちください。</li>
+            </ul>
+          </li>
+          <li><strong>「保存しました！」を確認する</strong>:
+            <ul>
+              <li>画面の上部に <strong>「1件の日報を保存しました」</strong> と書かれた緑色のメッセージが表示されたら、無事にエクセルへ書き込まれました。これで今日の入力は完了です！</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h4 id="step-3">3. 【ステップ 3】終わる（閉じるだけ）</h4>
+        <ol>
+          <li>入力が終わったら、インターネットの画面（ブラウザ）を「×」ボタンで閉じて終了して構いません。</li>
+          <li>もし【ステップ1】で黒い画面（コマンドプロンプト）がデスクトップ上に残っている場合は、最後にその黒い画面の「×」ボタンを押して閉じてください。これで完全に終了します。</li>
+        </ol>
+      </section>
+
+      <!-- 1. システム概要と特徴 -->
+      <section id="system-overview">
+        <h2>1. システム概要と特徴</h2>
+        <p>本システムは、従来のエクセル（`.xlsm`）による日報管理の良さ（関数やマクロ、ネットワーク共有による管理）をそのまま活かしつつ、入力作業のストレスを軽減し、データの検索・分析能力を大幅に強化したハイブリッド型業務システムです。</p>
+        
+        <!-- システム構成図 -->
+        <div class="flowchart-container">
+          <svg class="flowchart" viewBox="0 0 700 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- ユーザー -->
+            <rect x="10" y="70" width="120" height="60" rx="30" fill="#eff6ff" stroke="#1e40af" stroke-width="2"/>
+            <text x="70" y="105" fill="#1e293b" font-size="14" font-weight="700" text-anchor="middle">営業担当者</text>
+            
+            <!-- 矢印 1 -->
+            <path d="M130 100 H170" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+            
+            <!-- Web UI -->
+            <rect x="180" y="50" width="160" height="100" rx="8" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="2"/>
+            <text x="260" y="95" fill="#1e293b" font-size="14" font-weight="700" text-anchor="middle">Web 画面</text>
+            <text x="260" y="120" fill="#64748b" font-size="11" text-anchor="middle">(ブラウザ実行)</text>
+            
+            <!-- 矢印 2 -->
+            <path d="M340 100 H380" stroke="#64748b" stroke-width="2"/>
+            
+            <!-- Server -->
+            <rect x="390" y="50" width="140" height="100" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+            <text x="460" y="90" fill="#1e293b" font-size="14" font-weight="700" text-anchor="middle">起動サーバー</text>
+            <text x="460" y="115" fill="#64748b" font-size="10" text-anchor="middle">DailyReportServer.exe</text>
+            
+            <!-- 矢印 3 -->
+            <path d="M530 100 H570" stroke="#64748b" stroke-width="2"/>
+            
+            <!-- Excel -->
+            <rect x="580" y="50" width="110" height="100" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+            <text x="635" y="95" fill="#1e293b" font-size="14" font-weight="700" text-anchor="middle">日報原本</text>
+            <text x="635" y="120" fill="#64748b" font-size="11" text-anchor="middle">(.xlsm ファイル)</text>
+            
+            <!-- 定義 -->
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+
+        <h3>✨ 主な特徴とメリット</h3>
+        <ul>
+          <li><strong>既存エクセルの完全再利用</strong>: エクセル内に書き込まれた関数やマクロ、書式を壊すことなく、Web画面から直接データの読み書きを行います。</li>
+          <li><strong>直感的で洗練されたUI</strong>: 営業担当者がスマホやPCからストレスなく迅速に入力できるよう、モダンで美しいカード型デザインを採用しています。</li>
+          <li><strong>オフライン対応と自動同期</strong>: 移動中や圏外でも日報の下書き入力ができ、オンライン時に自動でエクセルへ反映・同期できます。</li>
+          <li><strong>高度な検索と見える化</strong>: 大量の日報データから、得意先やデザイン種別によるクロス検索、活動量グラフ、メンバーの状況比較などをビジュアルに分析可能です。</li>
+          <li><strong>安心のデータ保護</strong>: 保存時に自動的にバックアップ（`.bak`）を生成するため、不意のフリーズやネットワーク瞬断によるデータ破損を防ぎます。</li>
+        </ul>
+      </section>
+
+      <!-- 2. 動作環境と事前準備 -->
+      <section id="environment">
+        <h2>2. 動作環境と事前準備</h2>
+        <p>本システムを利用するにあたり、以下の環境および準備が必要です。</p>
+        
+        <h3>💻 クライアントPC環境</h3>
+        <ul>
+          <li><strong>OS</strong>: Windows 10 / 11 (64bit)</li>
+          <li><strong>ブラウザ</strong>: モダンなWebブラウザ (Google Chrome, Microsoft Edge 推奨)</li>
+          <li><strong>ネットワーク</strong>: 社内LAN環境（または社外からのVPN接続環境）
+            <ul>
+              <li>共有フォルダ上のエクセルファイル（`\\Asahipack02` 等）に直接読み書きを行うため、対象の共有サーバーにエクスプローラー等からアクセスできる状態である必要があります。</li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+
+      <!-- 3. システム起動・セットアップ方法 -->
+      <section id="startup-method">
+        <h2>3. システム起動・セットアップ方法（一般ユーザー向け）</h2>
+        <p>本システムは、複雑な環境構築（PythonやNode.jsのインストールなど）を行うことなく、パッケージ化された起動プログラムを実行するだけで簡単に起動できます。</p>
+        
+        <h3>🚀 推奨の起動方法</h3>
+        <ol>
+          <li>システムフォルダ内にある <strong>`DailyReportServer.exe`</strong> をダブルクリックして実行します。</li>
+          <li>黒いコマンドプロンプト画面が立ち上がり、自動的にシステムサーバーが起動します。</li>
+          <li>ブラウザ（Google ChromeやMicrosoft Edgeなど）を開き、アドレスバーに以下のURLを入力してアクセスします。<br>
+            <strong>URL</strong>: `http://localhost:8001`
+          </li>
+        </ol>
+
+        <div class="callout important">
+          <div class="callout-title">
+            <span>🤖 黒い画面（コマンドプロンプト）に関する超重要なお願い</span>
+          </div>
+          <ul>
+            <li>`DailyReportServer.exe` を起動した際に表示される「英語の文字がいろいろ書いてある黒い画面」は、システムの裏側で働くエンジンです。</li>
+            <li><strong>システムを使用している間は、絶対にこの黒い画面を「×」ボタンで閉じないでください！</strong> 閉じるとシステムが停止し、保存などの操作ができなくなります。</li>
+            <li>画面が邪魔なときは、右上にある「ー」（最小化）ボタンを押して、画面の一番下に隠してお使いください。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 4. 各画面の構成と操作マニュアル -->
+      <section id="screen-manual">
+        <h2>4. 各画面の構成と操作マニュアル</h2>
+        <p>本システムは、左側のナビゲーションメニュー（サイドバー）から各機能へ簡単にアクセスできます。サイドバーが縮小（折りたたみ）されている場合は、上部の三本線（メニュー）アイコンを押すことで開閉可能です。</p>
+        
+        <h3 id="screen-home">📊 ① ホーム（ダッシュボード）</h3>
+        <p>起動後に最初に表示される、全体の活動状況の「見える化」を行う画面です。<br>
+        ※なお、Excel ファイルの管理（アクティブファイルの確認・切り替え）は、ホーム画面だけでなく、どの画面からでも操作できるように「画面上部のヘッダー」に配置されています。</p>
+        
+        <h4>🔹 主な機能と活用方法:</h4>
+        <ol>
+          <li><strong>アクティブファイルの切り替え（上部ヘッダーでどこからでも可能）</strong>:
+            <ul>
+              <li>現在システムが読み書きしているエクセルファイル名（例：`日報_2026.xlsm`）が、どの画面でも常に最上部（ヘッダー）に表示されます。</li>
+              <li>別のエクセルに切り替えるには、上部ヘッダーのファイル名部分を操作するか、ホーム画面からファイルを枠内に直接ドラッグ＆ドロップ（またはアップロード）することで簡単に行えます。</li>
+            </ul>
+          </li>
+          <li><strong>活動サマリーカード</strong>:
+            <ul>
+              <li>今月の「訪問件数」および「電話連絡数」の合計値がカード形式で強調表示されます。</li>
+            </ul>
+          </li>
+          <li><strong>月次活動実績推移グラフ</strong>:
+            <ul>
+              <li>月別の訪問数・電話連絡数の推移がビジュアルグラフで描画され、営業活動の波やアプローチ実績を一目で把握できます。</li>
+            </ul>
+          </li>
+        </ol>
+
+        <h3 id="screen-list">📋 ② 日報一覧</h3>
+        <p>過去に登録された日報を、一覧表形式で閲覧・検索する画面です。</p>
+        
+        <h4>🔹 主な機能と活用方法:</h4>
+        <ul>
+          <li><strong>複合フィルター検索</strong>:
+            <ul>
+              <li>右上の検索フィルターを利用し、日付や担当者名、得意先名で瞬時に絞り込みが可能です。</li>
+            </ul>
+          </li>
+          <li><strong>商談内容のポップアップ表示</strong>:
+            <ul>
+              <li>各行をクリックすると、その日に登録された具体的な商談内容や詳しい状況のポップアップが開き、その場で詳細を確認できます。</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3 id="screen-new">📝 ③ 新規日報入力</h3>
+        <p>エクセルを開くことなく、直感的なWebフォームから日報を直接エクセルに追加できるメインの入力画面です。</p>
+        
+        <h4>💡 入力をサポートするスマート動的フォーム:</h4>
+        <p>本画面は、入力の手間をできる限り省き、間違いのない登録ができるよう、様々な支援機能を搭載しています。</p>
+        
+        <ul>
+          <li><strong>📁 選択されているエクセルファイルの自動・常時確認（★超重要）</strong>:
+            <ul>
+              <li>画面の最上部には、現在選択されているエクセルファイルの名前が常に大きく表示されています。</li>
+              <li><strong>「入力を始める前に、自分専用のエクセルファイルになっているか」を視覚的に一目で確認できる</strong>ため、誤って他人のファイルに書き込んでしまうミスを未然に防ぎます。</li>
+            </ul>
+          </li>
+          <li><strong>📅 当日の日付の自動初期入力</strong>:
+            <ul>
+              <li>画面を開いた際、<strong>「日付」入力欄にはあらかじめ「今日の日付（当日）」が自動的に入っています。</strong></li>
+              <li>そのため、当日の日報を書く場合は<strong>日付を入力・変更する必要はありません。</strong> 昨日の分を後から登録する「後日入力」などの場合のみ、枠をクリックして日付を変更してください。</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h4 style="margin-top: 16px;">1. 行動内容によるフォームの動的切り替え（※入力の最後に行う重要ルール）</h4>
+        <ul>
+          <li><strong>入力順序の重要なルール</strong>:
+            <ul>
+              <li>本画面では、<strong>「行動内容」の選択は日報入力の『最後』に行います。</strong></li>
+              <li>先に「得意先」や「訪問先名」を入力しておくことで、プルダウン内の選択肢から「社内業務」や「外出時間」などの関係ない項目が自動的にフィルタリング（非表示）され、選択ミスを未然に防ぐ仕組み（動的フィルタリング）になっています。</li>
+            </ul>
+          </li>
+          <li><strong>「社内（半日）」「社内（１日）」「量販店調査」「外出時間」などを選択した場合</strong>:
+            <ul>
+              <li>訪問先名、面談者、デザイン仕様などの営業用入力項目が<strong>自動的に非表示</strong>になり、無駄な入力を省きます。</li>
+            </ul>
+          </li>
+          <li><strong>「外出時間」を選択した場合</strong>:
+            <ul>
+              <li>専用項目である<strong>「出発時間」「帰社時間」</strong>（30分単位の選択肢）と、<strong>「満足度（ランク）」</strong>（`0%`, `25%`, `50%`, `75%`, `100%` の5段階）が自動的に出現します。</li>
+              <li>ここで入力された時間と満足度は、保存時に「商談内容」の欄へ `【外出時間】 09:00〜18:00 【満足度】 75%` の形式で自動的にマージされ、エクセル側の集計整合性を崩さない形で美しく記録されます。</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h4 style="margin-top: 16px;">2. エクセルの仕様に準拠した各プルダウンの選択肢一覧（誤りを完全排除）</h4>
+        
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 25%;">入力項目</th>
+                <th style="width: 75%;">選択肢一覧</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>📂 行動内容 (13種)</strong></td>
+                <td>`-` (選択なし), `訪問（アポあり）`, `訪問（アポなし）`, `訪問（新規）`, `訪問（クレーム）`, `電話商談`, `電話アポ取り`, `メール商談`, `量販店調査`, `社内（半日）`, `社内（１日）`, `外出時間`, `その他`</td>
+              </tr>
+              <tr>
+                <td><strong>⏱️ 滞在時間 (5種)</strong></td>
+                <td>`-` (選択なし), `10分未満`, `30分未満`, `60分未満`, `60分以上`</td>
+              </tr>
+              <tr>
+                <td><strong>⭐ 満足度 (5段階)</strong></td>
+                <td>`0%`, `25%`, `50%`, `75%`, `100%` (※行動内容「外出時間」の選択時のみ表示)</td>
+              </tr>
+              <tr>
+                <td><strong>🎨 デザイン種別 (5種)</strong></td>
+                <td>`-` (選択なし), `別注（新版）`, `別注（改版）`, `別注（再版）`, `SP（新版）`</td>
+              </tr>
+              <tr>
+                <td><strong>📈 デザイン進捗 (9種)</strong></td>
+                <td>`-` (選択なし), `新規`, `50％未満`, `80％未満`, `80％以上`, `出稿`, `不採用（コンペ負け）`, `不採用（企画倒れ）`, `保留`</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="screen-customer">👥 ④ 得意先一覧</h3>
+        <p>登録されているクライアント（得意先）の基本情報やアプローチ実績を確認する画面です。</p>
+        
+        <h4>🔹 主な機能と活用方法:</h4>
+        <ul>
+          <li><strong>訪問実績の可視化</strong>: 各得意先の「過去の総訪問件数」や「最終訪問日」が一覧化されています。</li>
+          <li><strong>ピンポイント履歴</strong>: 得意先を選択すると、その会社に対するこれまでのアプローチ履歴のみを抽出して確認できます。</li>
+        </ul>
+
+        <h3 id="screen-calendar">📅 ⑤ カレンダー</h3>
+        <p>カレンダー形式で、いつ・誰が・どの得意先へ訪問や連絡を行ったかを視覚的に管理・把握する画面です。</p>
+
+        <h3 id="screen-design">📦 ⑥ デザイン検索</h3>
+        <p>過去に蓄積されたデザイン依頼書、別注手配、SP手配などの案件情報を多角的に検索・管理する画面です。</p>
+        <ul>
+          <li><strong>クロスフィルター検索</strong>: 「デザインNo」「得意先名」「デザイン名」「デザイン種別」を組み合わせて複合検索できます。</li>
+          <li><strong>動的フィルタリング</strong>: 特定の得意先を選ぶと、その得意先が過去に依頼した「デザイン種別」のみがプルダウンの選択肢として動的に絞り込まれます。</li>
+        </ul>
+
+        <h3 id="screen-survey">🏢 ⑦ 量販店調査検索</h3>
+        <p>日報の行動内容が「量販店調査」である活動データを自動的に抽出し、キーワードやエリアで検索・閲覧する画面です。</p>
+
+        <h3 id="screen-competitor">⚠️ ⑧ 競合他社情報</h3>
+        <p>日報の「競合他社情報」欄に記載されたデータを自動的に抽出し、タイムライン形式で一覧検索する画面です。</p>
+
+        <h3 id="screen-claim">🚨 ⑨ クレーム対応</h3>
+        <p>日報データの中から、行動内容や商談内容に「クレーム」を含む活動記録を自動的に抽出し、対応履歴をタイムライン形式で検索・閲覧する画面です。</p>
+
+        <h3 id="screen-analytics">📈 ⑩ 分析・レポート機能群</h3>
+        <p>入力された日報データを自動集計し、様々な角度から営業活動の効果や売上結果をグラフ・集計表で分析する画面群です。</p>
+        <ul>
+          <li><strong>📊 月次サマリー (`/reports/summary`)</strong>: 月ごとの活動量（訪問、電話、社内等）の集計表。営業月報の作成にそのままコピーできます。</li>
+          <li><strong>👥 全メンバー分析 (`/analytics/members`)</strong>: メンバー同士の活動件数比較、得意先への偏りの有無をチーム全体で分析します。</li>
+          <li><strong>💰 売上分析 (`/sales-analysis`)</strong>: 日報データと売上目標を紐付け、活動件数が売上達成率にどう影響しているかをグラフ化します。</li>
+        </ul>
+
+        <h3 id="screen-settings">⚙️ ⑪ 設定</h3>
+        <p>システムの動作状態の確認、通知設定、および売上データの管理（CSVファイルアップロード）を行う画面です。</p>
+
+        <h3 id="sync-status">☁️ ⑫ 【便利機能】電波がなくても大丈夫！一時保存と自動送信</h3>
+        <p>出張先や移動中などで、インターネットや社内ネットワークに繋がっていない状態（オフライン）でも、日報の入力や下書き保存が可能です。</p>
+        <ul>
+          <li><strong>どこでも入力OK</strong>: ネットに繋がっていなくても、画面からいつも通り日報を入力して「保存する」を押すことができます。</li>
+          <li><strong>パソコン内に「下書き」保存</strong>: ネットがない状態で保存すると、データは消えず、あなたのパソコンの中に安全に「下書き」として一時保存されます。このとき、画面の左下に「☁️ オフライン (○件未送信)」と表示されます。</li>
+          <li><strong>ネットに繋がると自動送信</strong>: 会社に戻ったり、VPNに接続してインターネットがオンラインになると、システムが自動的にオンライン復帰を検知し、一時保存されていた日報を自動的にエクセル原本へ書き込み（同期）ます。</li>
+        </ul>
+      </section>
+
+      <!-- 5. Excel連携およびデータ管理の仕様 -->
+      <section id="excel-spec">
+        <h2>5. Excel連携およびデータ管理の仕様（一般ユーザー向け）</h2>
+        <p>本システムは、データベース（SQL等）を使用せず、<strong>エクセルファイルを直接データベースの代わりとして使用</strong>します。このため、以下の仕様と注意点をご理解の上ご利用ください。</p>
+        
+        <div class="callout caution">
+          <div class="callout-title">
+            <span>📢 エクセルを同時に直接開かないでください！（超重要）</span>
+          </div>
+          <p>本システムが日報を保存する際、裏側でエクセルファイルに直接書き込みを行っています。<br>
+          ため、<strong>対象のエクセルファイル（例：`日報_2026.xlsm`）を、誰かが直接エクセル（Excel）のソフトで開いて作業していると、システムが書き込みできず、保存エラー（Permission Error / アクセス拒否）になってしまいます。</strong></p>
+          <ul>
+            <li>日報を登録する際は、<strong>直接エクセルファイルを開かない</strong>ようにしてください。</li>
+            <li>もし直接エクセルでデータを見たい場合は、確認が終わったら<strong>すぐにファイルを閉じる</strong>よう、部署内でのご協力をお願いいたします。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 6. お助けトラブルシューティング -->
+      <section id="troubleshooting">
+        <h2>6. お助けトラブルシューティング（症状から探す）</h2>
+        <p>「いつもと違う画面になった！」「エラーが出て動かない！」というときは、慌てずに以下の症状から解決方法を見つけてください。</p>
+        
+        <!-- アコーディオン型Q&A -->
+        <div class="accordion">
+          <div class="accordion-header">
+            <span>❓ 画面が真っ白、または「このページにアクセスできません」と出る</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p><strong>チェック 1：黒い画面を閉じていませんか？</strong><br>
+            システムのエンジンである「黒い画面（コマンドプロンプト）」を「×」で閉じてしまうと、画面が出なくなります。<br>
+            <strong>対策</strong>: もう一度 <code>DailyReportServer.exe</code> をダブルクリックして起動し直してください。</p>
+            <p><strong>チェック 2：社内ネットワーク（VPN）が切れていませんか？</strong><br>
+            会社の共有フォルダにあるエクセルにアクセスするため、社内ネットやVPNに繋がっていないと画面が開きません。<br>
+            <strong>対策</strong>: パソコンが社内Wi-Fiや有線LAN、またはVPNに正しく接続されているか確認してください。</p>
+          </div>
+        </div>
+
+        <div class="accordion">
+          <div class="accordion-header">
+            <span>❓ 保存ボタンを押すと英語のエラー（Permission Error / Permission Denied）が出る</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p><strong>原因：エクセルファイルが「使用中」になっていて書き込めません。</strong><br>
+            自分、または部署の他の誰かが、対象の日報エクセルファイルを直接Excelソフトで開いたままにしている可能性が非常に高いです。<br>
+            <strong>対策</strong>: エクセルファイルを開いている人は全員ファイルを閉じてください。全員が閉じた状態で、もう一度保存ボタンを押すと正常に保存されます。</p>
+          </div>
+        </div>
+
+        <div class="accordion">
+          <div class="accordion-header">
+            <span>❓ パソコンのセキュリティソフトから「安全ではない」と警告画面が出た</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p><strong>原因：会社独自で作られたシステムのため、パソコンが一時的に警戒しています。</strong><br>
+            ウイルスや有害なソフトではありませんのでご安心ください。<br>
+            <strong>対策</strong>: 警告画面に表示されている <strong>「詳細情報」</strong> という青い文字をクリックし、その後に出現する <strong>「実行」</strong> ボタンを押してください。次回からは警告が出なくなります。</p>
+          </div>
+        </div>
+
+        <div class="accordion">
+          <div class="accordion-header">
+            <span>❓ 入力したはずの日報が、エクセルファイルに反映されていない</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p><strong>原因：まだ「下書き（一時保存）」状態の可能性があります。</strong><br>
+            インターネットに繋がっていない場所で保存した場合、データは一時的にパソコン内に保存され、まだエクセルには届いていません。<br>
+            <strong>対策</strong>: 画面の左下を確認し、<code>☁️ オフライン</code> と書かれている場合は、そこをクリックして手動送信するか、ネットが繋がる環境（社内LAN等）にPCを接続してしばらくお待ちください（自動で送信されます）。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. 管理者・保守担当者向け情報 -->
+      <section id="admin-info">
+        <h2>7. 管理者・保守担当者向け情報（※一般ユーザーは読まなくてOK）</h2>
+        <div class="callout warning">
+          <div class="callout-title">
+            <span>⚠️ 注意</span>
+          </div>
+          <p>この章に書かれている内容は、システムの導入設定やメンテナンスを行う「システム管理者」専用の情報です。<strong>一般のユーザー様がこの設定を操作・変更する必要はありません。</strong></p>
+        </div>
+
+        <h3>⚙️ `config.json` の設定仕様と初期設定</h3>
+        <p>社内共有のネットワークフォルダを利用して複数名で日報を管理する場合、以下の設定を実行してください。</p>
+        <ol>
+          <li>`DailyReportServer.exe` と同じフォルダ内にある <strong>`config.json`</strong> をメモ帳などで開きます。</li>
+          <li>`"excel_dir"` の値を、社内共有フォルダ上の日報エクセルファイルが保存されているディレクトリのパス（絶対パス）に書き換えます。<br>
+            例: `"excel_dir": "\\\\Asahipack02\\Shared\\営業部\\日報\\2026年度"`<br>
+            <em>※JSON形式の仕様上、バックスラッシュ（`\`）は必ず二重（`\\`）で記述してください。</em>
+          </li>
+          <li>`config.json` を保存して閉じ、改めて `DailyReportServer.exe` を起動します。</li>
+        </ol>
+
+        <h3>📅 新年度（年度変更時）の切り替え手順</h3>
+        <ol>
+          <li><strong>新しい年度用エクセルファイルの準備</strong>: 前年度のファイル（またはひな形テンプレート）をコピーし、新しい年度の名前（例：`日報_2027.xlsm`）で共有サーバーまたはローカルに保存します。</li>
+          <li><strong>`config.json` の書き換え</strong>: `config.json` を開き、`"excel_dir"` の値を新しいファイルのディレクトリパスに書き換えます。</li>
+          <li><strong>システムの再起動</strong>: 起動している `DailyReportServer.exe`（黒い画面）とブラウザを一度閉じ、再起動します。</li>
+        </ol>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ページトップに戻るボタン -->
+  <div class="back-to-top" id="backToTop">▲</div>
+
+  <script>
+    // スムーススクロールとアクティブメニューの切り替え
+    const links = document.querySelectorAll('.menu-link, .menu-sub-link');
+    const sections = document.querySelectorAll('section');
+
+    links.forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = link.getAttribute('href');
+        const targetSection = document.querySelector(targetId);
+        
+        if (targetSection) {
+          window.scrollTo({
+            top: targetSection.offsetTop - 20,
+            behavior: 'smooth'
+          });
+        }
+        
+        // モバイルサイドバーを閉じる
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('overlay').classList.remove('show');
+      });
+    });
+
+    // スクロール時のアクティブメニュー自動判定
+    window.addEventListener('scroll', () => {
+      let current = '';
+      sections.forEach(section => {
+        const sectionTop = section.offsetTop;
+        const sectionHeight = section.clientHeight;
+        if (pageYOffset >= (sectionTop - 150)) {
+          current = '#' + section.getAttribute('id');
+        }
+      });
+
+      links.forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === current) {
+          link.classList.add('active');
+          
+          // 親のmenu-linkもアクティブにする
+          const parentItem = link.closest('.menu-item');
+          if (parentItem) {
+            const parentLink = parentItem.querySelector('.menu-link');
+            if (parentLink) parentLink.classList.add('active');
+          }
+        }
+      });
+
+      // ページトップに戻るボタンの表示・非表示
+      const backToTop = document.getElementById('backToTop');
+      if (window.pageYOffset > 300) {
+        backToTop.classList.add('show');
+      } else {
+        backToTop.classList.remove('show');
+      }
+    });
+
+    // ページトップに戻る実行
+    document.getElementById('backToTop').addEventListener('click', () => {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    });
+
+    // トラブルシューティングのアコーディオン開閉ロジック
+    const accordions = document.querySelectorAll('.accordion');
+    accordions.forEach(acc => {
+      const header = acc.querySelector('.accordion-header');
+      header.addEventListener('click', () => {
+        const isOpen = acc.classList.contains('open');
+        
+        // 他のアコーディオンを閉じる（オプション：スッキリさせるため）
+        accordions.forEach(item => item.classList.remove('open'));
+        
+        if (!isOpen) {
+          acc.classList.add('open');
+        }
+      });
+    });
+
+    // モバイルメニューの開閉ロジック
+    const menuBtn = document.getElementById('menuBtn');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+
+    menuBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('show');
+    });
+
+    overlay.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('show');
+    });
+  </script>
+</body>
+</html>

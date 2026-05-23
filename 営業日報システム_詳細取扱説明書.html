@@ -512,37 +512,6 @@
       transform: translateY(-4px);
     }
 
-    /* 画像用プレミアムコンテナ */
-    .screenshot-container {
-      text-align: center;
-      margin: 32px 0;
-      background-color: #ffffff;
-      border: 1px solid var(--border-color);
-      border-radius: var(--radius);
-      padding: 16px;
-      box-shadow: var(--shadow);
-    }
-
-    .screenshot-image {
-      max-width: 100%;
-      height: auto;
-      border-radius: 8px;
-      box-shadow: var(--shadow-lg);
-      border: 1px solid #e2e8f0;
-      transition: var(--transition);
-    }
-
-    .screenshot-image:hover {
-      transform: scale(1.01);
-    }
-
-    .screenshot-caption {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-top: 12px;
-      font-weight: 500;
-    }
-
     /* レスポンシブ対応 */
     @media (max-width: 1024px) {
       .sidebar {
@@ -1039,14 +1008,9 @@
         <p>出張先や移動中などで、インターネットや社内ネットワークに繋がっていない状態（オフライン）でも、日報の入力や下書き保存が可能です。</p>
         <ul>
           <li><strong>どこでも入力OK</strong>: ネットに繋がっていなくても、画面からいつも通り日報を入力して「保存する」を押すことができます。</li>
-          <li><strong>パソコン内に「下書き」保存</strong>: ネットがない状態で保存すると、データは消えず、あなたのパソコンの中に安全に「下書き」として一時保存されます。このとき、画面の左下に「☁️ オフライン (○件未送信)」と表示されます。</li>
+          <li><strong>パソコン内に「下書き」保存</strong>: ネットがない状態で保存すると,データは消えず、あなたのパソコンの中に安全に「下書き」として一時保存されます。このとき、画面の左下に「☁️ オフライン (○件未送信)」と表示されます。</li>
           <li><strong>ネットに繋がると自動送信</strong>: 会社に戻ったり、VPNに接続してインターネットがオンラインになると、システムが自動的にオンライン復帰を検知し、一時保存されていた日報を自動的にエクセル原本へ書き込み（同期）ます。</li>
         </ul>
-
-        <div class="screenshot-container">
-          <img src="screenshots/offline_sync.png" alt="オフライン一時保存と自動同期機能" class="screenshot-image">
-          <p class="screenshot-caption">▲ 電波がない環境下での一時保存およびオンライン復帰時の自動同期の仕組み</p>
-        </div>
       </section>
 
       <!-- 5. Excel連携およびデータ管理の仕様 -->

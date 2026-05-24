@@ -1197,17 +1197,34 @@
       <!-- 5. Excel連携およびデータ管理の仕様 -->
       <section id="excel-spec">
         <h2>5. Excel連携およびデータ管理の仕様（一般ユーザー向け）</h2>
-        <p>本システムは、データベース（SQL等）を使用せず、<strong>エクセルファイルを直接データベースの代わりとして使用</strong>します。このため、以下の仕様と注意点をご理解の上ご利用ください。</p>
+        <p>本システムは、データベース（SQL等）を使用せず、<strong>エクセルファイルを直接データベースの代わりとして使用</strong>します。このため、以下の安全仕様と注意点をご理解の上ご利用ください。</p>
         
+        <h3>📁 データの書き込み・読み込みプロセス</h3>
+        <ol>
+          <li>画面の起動や再読み込み時に、指定されたディレクトリ内のエクセルファイル（<code>.xlsm</code>）を自動検出し、ファイルに変更があれば最新の全行を自動で読み込んで表示します（高速化のため、変更がない場合はキャッシュから一瞬で読み込まれます）。</li>
+          <li>新規追加や編集が行われると、バックエンド側で高速データ処理を実行し、書式やエクセル関数・マクロを保持したまま書き込みを実行します。</li>
+        </ol>
+
+        <h3>🛡️ データの破損を防ぐ安全対策とバックアップ</h3>
+        <ul>
+          <li><strong>安全な保存（セーフセーブ）仕様</strong><br>
+            データの書き込み時、ネットワーク切断等によるファイル破損を防ぐため、一度別の一時ファイルに保存して正常性を検証してから元のファイルに置き換える「セーフセーブ」機構を採用しています。</li>
+          <li><strong>自動バックアップ仕様</strong><br>
+            保存処理が正常に完了した直後、自動的に元のエクセルファイルがあるフォルダ内の <code>backup</code> フォルダへ、実行日時のついたバックアップファイル（例: <code>日報_2026_YYYYMMDD_HHMMSS.xlsm</code>）を自動作成します。万が一のトラブル時も、バックアップから即座に復旧可能です。</li>
+          <li><strong>同時編集の競合回避（楽観的ロック）</strong><br>
+            同じ日報データを複数の人が同時に編集して上書きしてしまうのを防ぐため、保存時にデータの衝突を検知すると「他の方が編集しました」とエラー警告を表示し、上書きを防止します。</li>
+        </ul>
+
         <div class="callout caution">
           <div class="callout-title">
             <span>📢 エクセルを同時に直接開かないでください！（超重要）</span>
           </div>
           <p>本システムが日報を保存する際、裏側でエクセルファイルに直接書き込みを行っています。<br>
-          ため、<strong>対象のエクセルファイル（例：`日報_2026.xlsm`）を、誰かが直接エクセル（Excel）のソフトで開いて作業していると、システムが書き込みできず、保存エラー（Permission Error / アクセス拒否）になってしまいます。</strong></p>
+          そのため、<strong>対象のエクセルファイル（例：<code>日報_2026.xlsm</code>）を、誰かが直接エクセル（Excel）のソフトで開いて作業していると、システムが書き込みできず、保存エラー（アクセス拒否）になってしまいます。</strong></p>
           <ul>
-            <li>日報を登録する際は、<strong>直接エクセルファイルを開かない</strong>ようにしてください。</li>
+            <li>日報を登録・編集する際は、<strong>直接エクセルファイルを開かない</strong>ようにしてください。</li>
             <li>もし直接エクセルでデータを見たい場合は、確認が終わったら<strong>すぐにファイルを閉じる</strong>よう、部署内でのご協力をお願いいたします。</li>
+            <li>ファイルが開かれていて保存できなかった場合、画面に「Excelファイルを閉じてから再度実行してください」という旨のエラーが表示されますので、ファイルを閉じた後に再度保存をお試しください。</li>
           </ul>
         </div>
       </section>
@@ -1268,6 +1285,30 @@
             <strong>対策</strong>: 画面の左下を確認し、<code>☁️ オフライン</code> と書かれている場合は、そこをクリックして手動送信するか、ネットが繋がる環境（社内LAN等）にPCを接続してしばらくお待ちください（自動で送信されます）。</p>
           </div>
         </div>
+
+        <div class="accordion">
+          <div class="accordion-header">
+            <span>❓ 「他の方が編集しました」という警告メッセージが出て保存できない</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p><strong>原因：同じ日報を他の人がほぼ同時に編集・保存しました。</strong><br>
+            あなたが画面を開いてから保存ボタンを押すまでの間に、上長や他の営業担当者がその日報（同じ管理番号）を更新したため、上書きによるデータ消失を防ぐ安全装置（楽観的ロック）が動きました。<br>
+            <strong>対策</strong>: 一度画面を再読み込み（リフレッシュ）して最新の状態に戻し、他の人が編集した内容を確認してから、必要に応じて再度編集・保存を行ってください。</p>
+          </div>
+        </div>
+
+        <div class="accordion">
+          <div class="accordion-header">
+            <span>❓ 得意先を選択したのに、面談者（または過去のデザイン依頼）の候補がリストに出ない</span>
+            <span class="accordion-icon">▼</span>
+          </div>
+          <div class="accordion-content">
+            <p><strong>原因：その得意先に対して、過去に一度も面談者（またはデザイン）の登録がありません。</strong><br>
+            システムは過去の入力履歴から候補を自動で探して表示しています。初めて活動する得意先の場合は候補が表示されません。<br>
+            <strong>対策</strong>: 候補が表示されない場合は、直接キーボードで手入力してください。一度登録して保存すれば、次回以降は自動で候補リストに表示されるようになります。</p>
+          </div>
+        </div>
       </section>
 
       <!-- 7. 管理者・保守担当者向け情報 -->
@@ -1297,6 +1338,100 @@
           <li><strong>`config.json` の書き換え</strong>: `config.json` を開き、`"excel_dir"` の値を新しいファイルのディレクトリパスに書き換えます。</li>
           <li><strong>システムの再起動</strong>: 起動している `DailyReportServer.exe`（黒い画面）とブラウザを一度閉じ、再起動します。</li>
         </ol>
+
+        <h3>🛠️ システムの全体構造とプログラムの流れ</h3>
+        <p>本システムは、以下の2層のアーキテクチャで構成されています。</p>
+        <ul>
+          <li><strong>フロントエンド (Next.js / React / TypeScript)</strong>: 画面の表示とユーザー入力を担当。本番配布時は静的HTML（<code>output: 'export'</code>）としてビルドされます。</li>
+          <li><strong>バックエンド (FastAPI / Python)</strong>: Excelの読み書き、売上CSVの処理、画像データの探索を担当。</li>
+          <li><strong>パッケージング (PyInstaller)</strong>: バックエンドのPythonスクリプトと、フロントエンドのビルド結果（<code>static/</code> フォルダ）を丸ごと1つの実行ファイル（<code>DailyReportServer.exe</code>）に同梱して配布します。起動時に内部でローカルサーバー（<code>localhost:8001</code>）が自動で立ち上がります。</li>
+        </ul>
+
+        <h3>🏗️ 配布用EXE（`DailyReportServer.exe`）のビルド・パッケージング手順</h3>
+        <p>画面レイアウトやプログラムの修正を行い、新しい配布用EXEを作成する手順は以下の通りです。</p>
+        
+        <h4>1. フロントエンドのビルド</h4>
+        <pre><code>cd frontend
+npm install   # 依存パッケージが未導入の場合のみ
+npm run build</code></pre>
+        <p>これにより、<code>frontend/out</code> フォルダに静的なHTML/CSS/JavaScriptが出力されます。</p>
+
+        <h4>2. 静的ファイルのコピー</h4>
+        <p>プロジェクトルートの <code>static</code> フォルダの中身を一度空にし、<code>frontend/out</code> フォルダ内のすべてのファイル・フォルダをプロジェクトルートの <code>static</code> フォルダへそのままコピー（上書き）します。</p>
+
+        <h4>3. PyInstallerによるEXE化</h4>
+        <p>プロジェクトのルートディレクトリで以下のコマンドを実行します（事前に <code>pip install pyinstaller</code> 等で導入が必要）。</p>
+        <pre><code>pyinstaller DailyReportServer.spec</code></pre>
+        <p>ビルドが完了すると、プロジェクトルートの <code>dist/DailyReportServer.exe</code> に新しい実行ファイルが作成されます。このEXEファイルをユーザーに配布してください。</p>
+
+        <h3>💻 デバッグ・開発環境の個別起動手順</h3>
+        <p>開発や調査目的で、EXE化せずにソースコードのまま実行する場合は、別々のターミナルで以下のコマンドを実行してください。</p>
+        
+        <h4>1. バックエンドサーバーの起動</h4>
+        <pre><code>cd backend
+python main.py</code></pre>
+        
+        <h4>2. フロントエンドサーバーの起動</h4>
+        <pre><code>cd frontend
+npm run dev</code></pre>
+
+        <h3>📊 Excel原本のシート・列レイアウト構造と注意事項</h3>
+        <p>本システムは、Excelのシート構造や列順が<strong>プログラム内に列インデックス番号で直接定義（ハードコード）されています</strong>。</p>
+        
+        <h4>「営業日報」シートのカラム配置（A列〜AC列）:</h4>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 20%;">列名</th>
+                <th style="width: 15%;">インデックス</th>
+                <th style="width: 65%;">用途・カラム名</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>A列</td><td>1</td><td>管理番号</td></tr>
+              <tr><td>B列</td><td>2</td><td>日付</td></tr>
+              <tr><td>C列</td><td>3</td><td>行動内容</td></tr>
+              <tr><td>D列</td><td>4</td><td>エリア</td></tr>
+              <tr><td>E列</td><td>5</td><td>得意先CD.</td></tr>
+              <tr><td>F列</td><td>6</td><td>直送先CD.</td></tr>
+              <tr><td>G列</td><td>7</td><td>訪問先名/得意先名</td></tr>
+              <tr><td>H列</td><td>8</td><td>直送先名</td></tr>
+              <tr><td>I列</td><td>9</td><td>重点顧客</td></tr>
+              <tr><td>J列</td><td>10</td><td>ランク</td></tr>
+              <tr><td>K列</td><td>11</td><td>得意先目標</td></tr>
+              <tr><td>L列</td><td>12</td><td>面談者</td></tr>
+              <tr><td>M列</td><td>13</td><td>滞在時間</td></tr>
+              <tr><td>N列</td><td>14</td><td>デザイン提案有無</td></tr>
+              <tr><td>O列</td><td>15</td><td>デザイン種別</td></tr>
+              <tr><td>P列</td><td>16</td><td>デザイン名</td></tr>
+              <tr><td>Q列</td><td>17</td><td>デザイン進捗状況</td></tr>
+              <tr><td>R列</td><td>18</td><td>デザイン依頼No.</td></tr>
+              <tr><td>S列</td><td>19</td><td>商談内容</td></tr>
+              <tr><td>T列</td><td>20</td><td>提案物</td></tr>
+              <tr><td>U列</td><td>21</td><td>次回プラン</td></tr>
+              <tr><td>V列</td><td>22</td><td>競合他社情報</td></tr>
+              <tr><td>W列</td><td>23</td><td>コメント（上長コメント）</td></tr>
+              <tr><td>X列</td><td>24</td><td>コメント返信欄</td></tr>
+              <tr><td>Y列〜AC列</td><td>25〜29</td><td>承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout warning">
+          <div class="callout-title">
+            <span>⚠️ 列の追加・削除・並べ替えの禁止</span>
+          </div>
+          <p>Excelファイルを直接開いて<strong>列の順序を入れ替えたり、勝手に列を挿入・削除したりすると、システムが全く異なる列にデータを書き込んだり、読み込み時にエラー（列数不足や型エラー）が発生します</strong>。絶対にExcel原本の構造を変更しないでください。</p>
+          <p>もしどうしても列の増減が必要な場合は、必ず <code>backend/main.py</code> の <code>add_report</code> や <code>update_report</code> 関数の <code>columns_to_write</code> マッピングなどをコード修正し、EXEを再ビルドする必要があります。</p>
+        </div>
+
+        <h3>🔍 トラブル発生時のログ調査手順</h3>
+        <p>システムが起動しない、あるいは保存時にエラーが発生するなどの不具合が起きた場合は、以下のログファイルを真っ先に確認してエラー詳細を調査してください。</p>
+        <ul>
+          <li><strong>ログファイルの場所</strong>: <code>DailyReportServer.exe</code> を起動して実行したディレクトリ（通常はEXEファイルと同じ場所）に、<strong><code>server_debug.log</code></strong> というテキストファイルが自動生成されます。</li>
+          <li><strong>調査方法</strong>: エラー発生時にバックエンドで出力されたPythonのスタックトレース（詳細なエラー箇所と原因）が記録されています。「<code>PermissionError</code>」や「<code>KeyError</code>」などのキーワードでログを検索し、どの処理で失敗しているかを特定してください。</li>
+        </ul>
       </section>
 
     </main>

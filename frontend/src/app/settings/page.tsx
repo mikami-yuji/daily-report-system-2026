@@ -3,30 +3,33 @@
 import { useState, useEffect } from 'react';
 import { Bell, BellOff, Smartphone, Wifi, WifiOff } from 'lucide-react';
 
-export default function SettingsPage() {
+export default function SettingsPage(): React.JSX.Element {
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [isOnline, setIsOnline] = useState(true);
     const [isStandalone, setIsStandalone] = useState(false);
 
     useEffect(() => {
-        // Check online status
-        setIsOnline(navigator.onLine);
-        const handleOnline = () => setIsOnline(true);
-        const handleOffline = () => setIsOnline(false);
+        // Check online status and standalone status asynchronously to avoid cascading renders
+        requestAnimationFrame(() => {
+            setIsOnline(navigator.onLine);
+
+            // Check if running as PWA
+            const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
+                (window.navigator as Navigator & { standalone?: boolean }).standalone ||
+                document.referrer.includes('android-app://');
+            setIsStandalone(isPWA);
+
+            // Check notification permission
+            if ('Notification' in window) {
+                setNotificationsEnabled(Notification.permission === 'granted');
+            }
+        });
+
+        const handleOnline = (): void => setIsOnline(true);
+        const handleOffline = (): void => setIsOnline(false);
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
-
-        // Check if running as PWA
-        const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
-            (window.navigator as any).standalone ||
-            document.referrer.includes('android-app://');
-        setIsStandalone(isPWA);
-
-        // Check notification permission
-        if ('Notification' in window) {
-            setNotificationsEnabled(Notification.permission === 'granted');
-        }
 
         return () => {
             window.removeEventListener('online', handleOnline);

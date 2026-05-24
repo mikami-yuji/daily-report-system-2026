@@ -8,6 +8,11 @@
 ### 修正 (Fixed)
 - **売上分析のテーブルセル描画エラー（Reactコンポーネント内レンダリング違反）の解消**: 『SalesTable.tsx』にて、ソートアイコン表示用コンポーネント `SortIcon` およびヘッダーセル表示用コンポーネント `HeaderCell` が `SalesTable` のレンダリング関数内部で定義されていた問題（React hooksのフック・ステート破損リスクを引き起こすアンチパターン）を解消。コンポーネント定義をファイル内モジュールの最上位に移動させ、明確なプロパティ定義と明示的な戻り値の型アノテーション（`React.JSX.Element`）を適用したうえで、安全かつクリーンに描画されるよう修正しました。
 - **新規・編集日報作成モーダル内でのESLint prefer-const警告の解消**: 『NewReportModal.tsx』および『EditReportModal.tsx』内の日報送信処理（`handleSubmit`）にて、再代入されないローカル変数 `finalFormData` が `let` で宣言されていた問題に対し、`const` 宣言へ変更し、リンター警告を解消しました。
+- **各種ページ（売上分析、設定、日報一覧、月次活動サマリー）における副作用中の同期状態更新（cascading renders）エラーの解消**:
+  * 『sales-analysis/page.tsx』にて、フィルター条件の切り替え時に `useEffect` 内で同期的に `currentPage` をリセットしていたのを、React推奨の「レンダリング中の状態調整パターン（レンダリングパス内でのState直接更新）」へ移行し、副作用（`useEffect`）の使用を完全に廃止しました。それに伴い、未使用の `useEffect` インポート警告も解消しました。
+  * 『settings/page.tsx』、『reports/page.tsx』および『reports/summary/page.tsx』におけるマウント時のクライアント専用状態（オンラインステータス、PWA判定、マウント検知フラグ）の更新処理において、`useEffect` 内で同期的に `setState` を呼び出して再レンダリングを引き起こしていた問題に対し、`requestAnimationFrame` による非同期遅延実行を導入。初回のハイドレーションやレンダリングパスを邪魔することなく安全に動作するよう最適化しました。
+  * 『settings/page.tsx』の PWA standalone 判定における TypeScript `as any` 型定義警告に対し、適切な Navigator 拡張キャスト（`as Navigator & { standalone?: boolean }`）を適用し、リンター警告（`no-explicit-any`）を解消しました。
+  * すべての該当するページコンポーネント（`SalesAnalysisPage`, `SettingsPage`, `ReportsPage`）の関数定義に、ユーザーの全体ルールに即して明示的な戻り値の型アノテーション（`React.JSX.Element`）を適用しました。
 
 ### 変更 (Changed)
 - **カレンダー機能の抽出対象仕様（訪問・社内業務のみ）の正確化（取扱説明書）**: 『営業日報システム_詳細取扱説明書.md』および『営業日報システム_詳細取扱説明書.html』の第4章「📅 ⑤ カレンダー」セクションにおいて、従来の「訪問や連絡」という不正確な表現を是正し、実際のプログラム側のフィルタリング仕様に即して「訪問（アポあり/なし/新規/クレーム）および社内業務（半日/1日）」のみが自動抽出・表示対象となること、および電話・メール連絡や量販店調査などは表示対象外となる旨を明記。

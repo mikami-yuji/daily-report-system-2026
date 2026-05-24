@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useSales } from '@/hooks/useQueryHooks';
 import { SalesData } from '@/lib/api';
 import SalesTable from '@/components/sales/SalesTable';
 import { Search, RotateCcw } from 'lucide-react';
 
-export default function SalesAnalysisPage() {
+export default function SalesAnalysisPage(): React.JSX.Element {
     // React Queryでデータ取得（自動キャッシュ）
     const { data: rawSalesData = [], isLoading } = useSales();
 
@@ -116,10 +116,23 @@ export default function SalesAnalysisPage() {
     const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
     const paginatedData = filteredAndSortedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-    // フィルター変更時にページをリセット
-    useEffect(() => {
+    // フィルター変更時にページをリセットするための状態保存（レンダリング中の状態調整パターン）
+    const [prevFilters, setPrevFilters] = useState({
+        filterRank,
+        filterArea,
+        filterSalesRep,
+        searchTerm
+    });
+
+    if (
+        prevFilters.filterRank !== filterRank ||
+        prevFilters.filterArea !== filterArea ||
+        prevFilters.filterSalesRep !== filterSalesRep ||
+        prevFilters.searchTerm !== searchTerm
+    ) {
+        setPrevFilters({ filterRank, filterArea, filterSalesRep, searchTerm });
         setCurrentPage(1);
-    }, [filterRank, filterArea, filterSalesRep, searchTerm]);
+    }
 
     // 合計計算（フィルター適用後のデータ）
     const totals = useMemo(() => {

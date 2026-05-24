@@ -37,7 +37,9 @@ export default function MonthlySummaryPage(): React.ReactElement {
     };
 
     useEffect(() => {
-        setMounted(true);
+        requestAnimationFrame(() => {
+            setMounted(true);
+        });
     }, []);
 
     // 選択中の年月パーツ

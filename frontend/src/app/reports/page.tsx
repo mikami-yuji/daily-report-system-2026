@@ -14,7 +14,7 @@ import { cleanText, compareDates } from '@/lib/reportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 
-export default function ReportsPage() {
+export default function ReportsPage(): React.JSX.Element {
     const router = useRouter();
     const { files, selectedFile, setSelectedFile } = useFile();
     const queryClient = useQueryClient();
@@ -31,7 +31,9 @@ export default function ReportsPage() {
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        setMounted(true);
+        requestAnimationFrame(() => {
+            setMounted(true);
+        });
     }, []);
 
     // ページネーション

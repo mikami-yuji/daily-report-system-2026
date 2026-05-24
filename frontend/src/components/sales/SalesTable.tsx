@@ -9,35 +9,54 @@ type SalesTableProps = {
     onSort: (field: keyof SalesData) => void;
 }
 
-const SalesTable = memo(function SalesTable({ data, sortField, sortDirection, onSort }: SalesTableProps) {
-    const formatCurrency = (val: number | null) => {
+type SortIconProps = {
+    field: keyof SalesData;
+    sortField: keyof SalesData;
+    sortDirection: 'asc' | 'desc';
+};
+
+// ソート用のアイコンを表示するコンポーネント
+const SortIcon = ({ field, sortField, sortDirection }: SortIconProps): React.JSX.Element => {
+    if (sortField !== field) return <ArrowUpDown size={14} className="ml-1 text-gray-400 opacity-50" />;
+    return sortDirection === 'desc' ?
+        <ArrowDown size={14} className="ml-1 text-sf-light-blue" /> :
+        <ArrowUp size={14} className="ml-1 text-sf-light-blue" />;
+};
+
+type HeaderCellProps = {
+    field: keyof SalesData;
+    label: string;
+    align?: 'left' | 'center' | 'right';
+    sortField: keyof SalesData;
+    sortDirection: 'asc' | 'desc';
+    onSort: (field: keyof SalesData) => void;
+};
+
+// テーブルのヘッダーセルを表示するコンポーネント
+const HeaderCell = ({ field, label, align = 'left', sortField, sortDirection, onSort }: HeaderCellProps): React.JSX.Element => (
+    <th
+        className={`px-4 py-3 font-medium text-xs text-sf-text-weak cursor-pointer hover:bg-gray-100 transition-colors select-none text-${align}`}
+        onClick={() => onSort(field)}
+    >
+        <div className={`flex items-center ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}>
+            {label}
+            <SortIcon field={field} sortField={sortField} sortDirection={sortDirection} />
+        </div>
+    </th>
+);
+
+const SalesTable = memo(function SalesTable({ data, sortField, sortDirection, onSort }: SalesTableProps): React.JSX.Element {
+    // 金額を通貨フォーマットに変換する関数
+    const formatCurrency = (val: number | null): string => {
         if (val === null || val === undefined) return '-';
         return new Intl.NumberFormat('ja-JP').format(val);
     };
 
-    const formatPercent = (val: number | null) => {
+    // 割合をパーセント表示に変換する関数
+    const formatPercent = (val: number | null): string => {
         if (val === null || val === undefined) return '-';
         return `${val.toFixed(1)}%`;
     };
-
-    const SortIcon = ({ field }: { field: keyof SalesData }) => {
-        if (sortField !== field) return <ArrowUpDown size={14} className="ml-1 text-gray-400 opacity-50" />;
-        return sortDirection === 'desc' ?
-            <ArrowDown size={14} className="ml-1 text-sf-light-blue" /> :
-            <ArrowUp size={14} className="ml-1 text-sf-light-blue" />;
-    };
-
-    const HeaderCell = ({ field, label, align = 'left' }: { field: keyof SalesData, label: string, align?: 'left' | 'center' | 'right' }) => (
-        <th
-            className={`px-4 py-3 font-medium text-xs text-sf-text-weak cursor-pointer hover:bg-gray-100 transition-colors select-none text-${align}`}
-            onClick={() => onSort(field)}
-        >
-            <div className={`flex items-center ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}>
-                {label}
-                <SortIcon field={field} />
-            </div>
-        </th>
-    );
 
     return (
         <div className="bg-white rounded-lg border border-sf-border shadow-sm overflow-hidden">
@@ -45,15 +64,15 @@ const SalesTable = memo(function SalesTable({ data, sortField, sortDirection, on
                 <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-sf-border">
                         <tr>
-                            <HeaderCell field="rank" label="順位" align="center" />
-                            <HeaderCell field="rank_class" label="ランク" align="center" />
-                            <HeaderCell field="customer_code" label="CD" />
-                            <HeaderCell field="customer_name" label="得意先名" />
-                            <HeaderCell field="area" label="エリア" />
-                            <HeaderCell field="sales_amount" label="売上金額" align="right" />
-                            <HeaderCell field="gross_profit" label="粗利金額" align="right" />
-                            <HeaderCell field="sales_yoy" label="前年比" align="right" />
-                            <HeaderCell field="sales_last_year" label="前年売上" align="right" />
+                            <HeaderCell field="rank" label="順位" align="center" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="rank_class" label="ランク" align="center" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="customer_code" label="CD" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="customer_name" label="得意先名" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="area" label="エリア" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="sales_amount" label="売上金額" align="right" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="gross_profit" label="粗利金額" align="right" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="sales_yoy" label="前年比" align="right" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+                            <HeaderCell field="sales_last_year" label="前年売上" align="right" sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">

@@ -104,7 +104,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
         const { 管理番号, ...rest } = report;
 
-        let finalFormData = { 
+        const finalFormData = { 
             ...formData,
             日付: normalizeDateInput(formData.日付)
         };

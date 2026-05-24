@@ -1311,126 +1311,170 @@
         </div>
       </section>
 
-      <!-- 7. 管理者・保守担当者向け情報 -->
+      <!-- 7. システム管理者・保守開発者向け技術仕様 -->
       <section id="admin-info">
-        <h2>7. 管理者・保守担当者向け情報（※一般ユーザーは読まなくてOK）</h2>
+        <h2>7. システム管理者・保守開発者向け技術仕様 (Technical Reference)</h2>
         <div class="callout warning">
           <div class="callout-title">
             <span>⚠️ 注意</span>
           </div>
-          <p>この章に書かれている内容は、システムの導入設定やメンテナンスを行う「システム管理者」専用の情報です。<strong>一般のユーザー様がこの設定を操作・変更する必要はありません。</strong></p>
+          <p>この章に書かれている内容は、システムの導入設定、機能改修、およびメンテナンスを行う「システム管理者」および「保守開発エンジニア」専用の技術情報です。<strong>一般のユーザー様がこの設定やコードを操作・変更する必要はありません。</strong>誤って変更するとシステム全体が正常に起動しなくなる恐れがあります。</p>
         </div>
 
-        <h3>⚙️ `config.json` の設定仕様と初期設定</h3>
-        <p>社内共有のネットワークフォルダを利用して複数名で日報を管理する場合、以下の設定を実行してください。</p>
-        <ol>
-          <li>`DailyReportServer.exe` と同じフォルダ内にある <strong>`config.json`</strong> をメモ帳などで開きます。</li>
-          <li>`"excel_dir"` の値を、社内共有フォルダ上の日報エクセルファイルが保存されているディレクトリのパス（絶対パス）に書き換えます。<br>
-            例: `"excel_dir": "\\\\Asahipack02\\Shared\\営業部\\日報\\2026年度"`<br>
-            <em>※JSON形式の仕様上、バックスラッシュ（`\`）は必ず二重（`\\`）で記述してください。</em>
-          </li>
-          <li>`config.json` を保存して閉じ、改めて `DailyReportServer.exe` を起動します。</li>
-        </ol>
-
-        <h3>📅 新年度（年度変更時）の切り替え手順</h3>
-        <ol>
-          <li><strong>新しい年度用エクセルファイルの準備</strong>: 前年度のファイル（またはひな形テンプレート）をコピーし、新しい年度の名前（例：`日報_2027.xlsm`）で共有サーバーまたはローカルに保存します。</li>
-          <li><strong>`config.json` の書き換え</strong>: `config.json` を開き、`"excel_dir"` の値を新しいファイルのディレクトリパスに書き換えます。</li>
-          <li><strong>システムの再起動</strong>: 起動している `DailyReportServer.exe`（黒い画面）とブラウザを一度閉じ、再起動します。</li>
-        </ol>
-
-        <h3>🛠️ システムの全体構造とプログラムの流れ</h3>
-        <p>本システムは、以下の2層のアーキテクチャで構成されています。</p>
+        <h3>7.1 アーキテクチャおよびデータフロー概要 (System Architecture & Dataflow)</h3>
+        <p>本システムは、軽量性と配布の容易さを最大化するため、<strong>Next.jsの静的エクスポート機能 (SSG/SPA) と、FastAPIによるローカルWebサーバー</strong>を組み合わせたハイブリッド構成を採用しています。</p>
+        
+        <p style="margin-top: 10px;"><strong>📦 配布パッケージ (DailyReportServer.exe) の内部動作原理</strong></p>
+        <p>PyInstaller を使用し、Python環境（FastAPI, pandas, openpyxl等）とビルド済みのフロントエンド静的資産（<code>static/</code> フォルダ）を単一の実行可能ファイル（EXE）に同梱しています。</p>
         <ul>
-          <li><strong>フロントエンド (Next.js / React / TypeScript)</strong>: 画面の表示とユーザー入力を担当。本番配布時は静的HTML（<code>output: 'export'</code>）としてビルドされます。</li>
-          <li><strong>バックエンド (FastAPI / Python)</strong>: Excelの読み書き、売上CSVの処理、画像データの探索を担当。</li>
-          <li><strong>パッケージング (PyInstaller)</strong>: バックエンドのPythonスクリプトと、フロントエンドのビルド結果（<code>static/</code> フォルダ）を丸ごと1つの実行ファイル（<code>DailyReportServer.exe</code>）に同梱して配布します。起動時に内部でローカルサーバー（<code>localhost:8001</code>）が自動で立ち上がります。</li>
+          <li><strong>ベースパスの動的解決 (sys.frozen のハンドリング)</strong>:
+            <ul>
+              <li><strong>外部読み込みパス (Config/Log等)</strong>: <code>DailyReportServer.exe</code> と同一階層にある <code>config.json</code> や <code>server_debug.log</code> のパスは、<code>sys.executable</code> (実行ファイルのパス) を基準に解決されます (<code>backend/main.py</code> 内の <code>get_base_path()</code> を参照)。</li>
+              <li><strong>内部バンドルパス (Static/Assets等)</strong>: PyInstallerが起動時にテンポラリフォルダ（<code>_MEIPASS</code>）に展開する静的ファイルは、<code>sys._MEIPASS</code> を基準に解決されます (<code>get_bundle_path()</code> を参照)。これによって、開発環境（ソース起動）と本番環境（EXE起動）の両方でシームレスなパス解決を実現しています。</li>
+            </ul>
+          </li>
         </ul>
 
-        <h3>🏗️ 配布用EXE（`DailyReportServer.exe`）のビルド・パッケージング手順</h3>
-        <p>画面レイアウトやプログラムの修正を行い、新しい配布用EXEを作成する手順は以下の通りです。</p>
-        
-        <h4>1. フロントエンドのビルド</h4>
-        <pre><code>cd frontend
-npm install   # 依存パッケージが未導入の場合のみ
-npm run build</code></pre>
-        <p>これにより、<code>frontend/out</code> フォルダに静的なHTML/CSS/JavaScriptが出力されます。</p>
+        <h3>7.2 Excel擬似データベースの制御仕様 (Excel Database Engine & Cache System)</h3>
+        <p>本システムは、リレーショナルデータベース（RDB）を導入せず、既存のExcelファイル（<code>.xlsm</code>）をデータストレージとしてダイレクトに読み書きする構造を持っています。</p>
 
-        <h4>2. 静的ファイルのコピー</h4>
-        <p>プロジェクトルートの <code>static</code> フォルダの中身を一度空にし、<code>frontend/out</code> フォルダ内のすべてのファイル・フォルダをプロジェクトルートの <code>static</code> フォルダへそのままコピー（上書き）します。</p>
+        <h4 style="margin-top: 16px;">⚡ マルチレイヤ・キャッシュ機構 (Cache Invalidation Logic)</h4>
+        <p>動作が重くなりがちなネットワーク共有フォルダ上のExcel読み込みを高速化するため、<strong>メモリ (In-Memory)</strong> と <strong>ディスク (Disk)</strong> の2層キャッシュ機構を実装しています。</p>
+        <ol>
+          <li><strong>タイムスタンプ自動監視 (st_mtime による判定)</strong>: APIリクエスト時にExcelファイルの最終更新日時（<code>os.path.getmtime()</code>）を毎回ミリ秒単位で取得し、キャッシュの有効性をチェックします。</li>
+          <li><strong>メモリキャッシュ (CACHE 辞書)</strong>: FastAPI起動中、一度読み込んだデータフレームを <code>CACHE</code> グローバル辞書に保持。タイムスタンプが一致する限り、メモリから即座にコピーを返します。</li>
+          <li><strong>ディスクキャッシュ (backend/.cache/)</strong>: メモリから溢れた場合やアプリ再起動時に備え、シートごとに一意のハッシュキーを生成し、<code>pickle</code> 形式でシリアライズ保存しています。</li>
+          <li><strong>キャッシュ破棄 (Invalidation)</strong>: 日報の追加・更新・削除APIが正常に完了した直後、該当ファイルのキャッシュキーをメモリおよびディスクから即座に破棄（<code>del CACHE[cache_key]</code>）し、次回のデータ整合性を完全に担保します。</li>
+        </ol>
 
-        <h4>3. PyInstallerによるEXE化</h4>
-        <p>プロジェクトのルートディレクトリで以下のコマンドを実行します（事前に <code>pip install pyinstaller</code> 等で導入が必要）。</p>
-        <pre><code>pyinstaller DailyReportServer.spec</code></pre>
-        <p>ビルドが完了すると、プロジェクトルートの <code>dist/DailyReportServer.exe</code> に新しい実行ファイルが作成されます。このEXEファイルをユーザーに配布してください。</p>
+        <h4 style="margin-top: 16px;">🔒 楽観的同時実行制御 (Optimistic Concurrency Control)</h4>
+        <p>複数メンバーが同じ共有Excelに日報を保存する際のデータ先祖返りを防ぐため、<strong>「楽観的ロック」</strong>を実装しています。</p>
+        <ul>
+          <li><code>update_report()</code> 内で、クライアント側が編集開始時に保持していた <code>original_values</code>（上長コメント、返信欄、商談内容など）と、保存直前にExcelから直接ロードしたセルの値を比較。</li>
+          <li>万が一、編集中に他のユーザーによって該当セルが変更されていた場合は、<code>409 Conflict</code> エラーを発生させ、強制上書きを防ぎます。</li>
+        </ul>
 
-        <h3>💻 デバッグ・開発環境の個別起動手順</h3>
-        <p>開発や調査目的で、EXE化せずにソースコードのまま実行する場合は、別々のターミナルで以下のコマンドを実行してください。</p>
-        
-        <h4>1. バックエンドサーバーの起動</h4>
-        <pre><code>cd backend
-python main.py</code></pre>
-        
-        <h4>2. フロントエンドサーバーの起動</h4>
-        <pre><code>cd frontend
-npm run dev</code></pre>
+        <h4 style="margin-top: 16px;">🔑 ファイルロック競合への対処</h4>
+        <p>他のユーザーが直接Excelソフトでファイルを開いていて編集ロックがかかっている場合、Pythonの <code>openpyxl</code> による <code>wb.save()</code> 実行時に <code>PermissionError</code> が発生します。</p>
+        <ul>
+          <li>システムはこの例外を適切にキャッチし、クライアントへ <code>409 Conflict</code> (エラーメッセージ: <code>"ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"</code>) を返してデータ入力内容が消失しないように保護します。</li>
+        </ul>
 
-        <h3>📊 Excel原本のシート・列レイアウト構造と注意事項</h3>
-        <p>本システムは、Excelのシート構造や列順が<strong>プログラム内に列インデックス番号で直接定義（ハードコード）されています</strong>。</p>
-        
-        <h4>「営業日報」シートのカラム配置（A列〜AC列）:</h4>
+        <h4 style="margin-top: 16px;">📅 自動非同期バックアップ (Asynchronous Backup System)</h4>
+        <p>保存処理のオーバーヘッドを削減し、UIの応答性を保つため、Excelの保存直後に FastAPI の <code>BackgroundTasks</code> を使用して、バックアップコピー（<code>/backup</code> サブフォルダ内へのタイムスタンプ付き保存）を非同期実行します。</p>
+
+        <h3>7.3 営業日報シートおよび得意先シートの物理レイアウト (Physical Excel Schema)</h3>
+        <p>本システムは、Excel原本の物理レイアウトに強く依存しています。各項目の列位置は <code>backend/main.py</code> の <code>columns_to_write</code> マッピング辞書内にインデックス番号（1-indexed）でハードコーディングされています。</p>
+
+        <h4 style="margin-top: 16px;">📊 「営業日報」シート カラム構造定義</h4>
         <div class="table-container">
           <table>
             <thead>
               <tr>
-                <th style="width: 20%;">列名</th>
+                <th style="width: 15%;">列 (英名)</th>
                 <th style="width: 15%;">インデックス</th>
-                <th style="width: 65%;">用途・カラム名</th>
+                <th style="width: 35%;">フィールド名</th>
+                <th style="width: 35%;">Pydanticモデル属性</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td>A列</td><td>1</td><td>管理番号</td></tr>
-              <tr><td>B列</td><td>2</td><td>日付</td></tr>
-              <tr><td>C列</td><td>3</td><td>行動内容</td></tr>
-              <tr><td>D列</td><td>4</td><td>エリア</td></tr>
-              <tr><td>E列</td><td>5</td><td>得意先CD.</td></tr>
-              <tr><td>F列</td><td>6</td><td>直送先CD.</td></tr>
-              <tr><td>G列</td><td>7</td><td>訪問先名/得意先名</td></tr>
-              <tr><td>H列</td><td>8</td><td>直送先名</td></tr>
-              <tr><td>I列</td><td>9</td><td>重点顧客</td></tr>
-              <tr><td>J列</td><td>10</td><td>ランク</td></tr>
-              <tr><td>K列</td><td>11</td><td>得意先目標</td></tr>
-              <tr><td>L列</td><td>12</td><td>面談者</td></tr>
-              <tr><td>M列</td><td>13</td><td>滞在時間</td></tr>
-              <tr><td>N列</td><td>14</td><td>デザイン提案有無</td></tr>
-              <tr><td>O列</td><td>15</td><td>デザイン種別</td></tr>
-              <tr><td>P列</td><td>16</td><td>デザイン名</td></tr>
-              <tr><td>Q列</td><td>17</td><td>デザイン進捗状況</td></tr>
-              <tr><td>R列</td><td>18</td><td>デザイン依頼No.</td></tr>
-              <tr><td>S列</td><td>19</td><td>商談内容</td></tr>
-              <tr><td>T列</td><td>20</td><td>提案物</td></tr>
-              <tr><td>U列</td><td>21</td><td>次回プラン</td></tr>
-              <tr><td>V列</td><td>22</td><td>競合他社情報</td></tr>
-              <tr><td>W列</td><td>23</td><td>コメント（上長コメント）</td></tr>
-              <tr><td>X列</td><td>24</td><td>コメント返信欄</td></tr>
-              <tr><td>Y列〜AC列</td><td>25〜29</td><td>承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）</td></tr>
+              <tr><td><strong>A列</strong></td><td>1</td><td>管理番号 (PK)</td><td><code>management_number</code> (自動最大値+1)</td></tr>
+              <tr><td><strong>B列</strong></td><td>2</td><td>日付</td><td><code>日付</code> (YYYY-MM-DD 形式)</td></tr>
+              <tr><td><strong>C列</strong></td><td>3</td><td>行動内容</td><td><code>行動内容</code></td></tr>
+              <tr><td><strong>D列</strong></td><td>4</td><td>エリア</td><td><code>エリア</code></td></tr>
+              <tr><td><strong>E列</strong></td><td>5</td><td>得意先CD.</td><td><code>得意先CD</code></td></tr>
+              <tr><td><strong>F列</strong></td><td>6</td><td>直送先CD.</td><td><code>直送先CD</code></td></tr>
+              <tr><td><strong>G列</strong></td><td>7</td><td>訪問先名/得意先名</td><td><code>訪問先名</code></td></tr>
+              <tr><td><strong>H列</strong></td><td>8</td><td>直送先名</td><td><code>直送先名</code></td></tr>
+              <tr><td><strong>I列</strong></td><td>9</td><td>重点顧客</td><td><code>重点顧客</code></td></tr>
+              <tr><td><strong>J列</strong></td><td>10</td><td>ランク</td><td><code>ランク</code></td></tr>
+              <tr><td><strong>K列</strong></td><td>11</td><td>得意先目標</td><td>(※得意先マスタより読み取りマッピング)</td></tr>
+              <tr><td><strong>L列</strong></td><td>12</td><td>面談者</td><td><code>面談者</code></td></tr>
+              <tr><td><strong>M列</strong></td><td>13</td><td>滞在時間</td><td><code>滞在時間</code></td></tr>
+              <tr><td><strong>N列</strong></td><td>14</td><td>デザイン提案有無</td><td><code>デザイン提案有無</code></td></tr>
+              <tr><td><strong>O列</strong></td><td>15</td><td>デザイン種別</td><td><code>デザイン種別</code></td></tr>
+              <tr><td><strong>P列</strong></td><td>16</td><td>デザイン名</td><td><code>デザイン名</code></td></tr>
+              <tr><td><strong>Q列</strong></td><td>17</td><td>デザイン進捗状況</td><td><code>デザイン進捗状況</code></td></tr>
+              <tr><td><strong>R列</strong></td><td>18</td><td>デザイン依頼No.</td><td><code>デザイン依頼No</code></td></tr>
+              <tr><td><strong>S列</strong></td><td>19</td><td>商談内容</td><td><code>商談内容</code> (外出時はマージ)</td></tr>
+              <tr><td><strong>T列</strong></td><td>20</td><td>提案物</td><td><code>提案物</code></td></tr>
+              <tr><td><strong>U列</strong></td><td>21</td><td>次回プラン</td><td><code>次回プラン</code></td></tr>
+              <tr><td><strong>V列</strong></td><td>22</td><td>競合他社情報</td><td><code>競合他社情報</code></td></tr>
+              <tr><td><strong>W列</strong></td><td>23</td><td>コメント</td><td><code>上長コメント</code></td></tr>
+              <tr><td><strong>X列</strong></td><td>24</td><td>コメント返信欄</td><td><code>コメント返信欄</code></td></tr>
+              <tr><td><strong>Y列〜AC列</strong></td><td>25〜29</td><td>承認チェック欄</td><td>(承認操作時フラグ更新)</td></tr>
             </tbody>
           </table>
         </div>
 
-        <div class="callout warning">
+        <h4 style="margin-top: 16px;">🏢 「得意先_List」シートからの目標マッピング</h4>
+        <p>新規日報追加（<code>add_report</code>）時に、<code>得意先CD</code> と <code>直送先CD</code> をキーにして `得意先_List` シート（A列:得意先CD, B列:直送先CD）を走査し、一致した行の<strong>J列（10列目）「現目標」</strong>を自動抽出し、日報側のK列へ書き込むロジックが組み込まれています。</p>
+
+        <div class="callout danger" style="margin-top: 16px;">
           <div class="callout-title">
-            <span>⚠️ 列の追加・削除・並べ替えの禁止</span>
+            <span>📢 スキーマ変更時（列の増減・並べ替え）の厳重注意</span>
           </div>
-          <p>Excelファイルを直接開いて<strong>列の順序を入れ替えたり、勝手に列を挿入・削除したりすると、システムが全く異なる列にデータを書き込んだり、読み込み時にエラー（列数不足や型エラー）が発生します</strong>。絶対にExcel原本の構造を変更しないでください。</p>
-          <p>もしどうしても列の増減が必要な場合は、必ず <code>backend/main.py</code> の <code>add_report</code> や <code>update_report</code> 関数の <code>columns_to_write</code> マッピングなどをコード修正し、EXEを再ビルドする必要があります。</p>
+          <p>Excel原本の列を挿入・削除・移動する場合、<code>backend/main.py</code> の <code>add_report()</code> および <code>update_report()</code> 内に定義された <code>columns_to_write</code> マッピングインデックスを<strong>完全に一致するよう修正し、EXEファイルを再ビルドする</strong>必要があります。これを行わずにExcel原本の構造だけを修正すると、意図しない列にデータが書き込まれ、数式やデータ破損の原因となります。</p>
         </div>
 
-        <h3>🔍 トラブル発生時のログ調査手順</h3>
-        <p>システムが起動しない、あるいは保存時にエラーが発生するなどの不具合が起きた場合は、以下のログファイルを真っ先に確認してエラー詳細を調査してください。</p>
+        <h3>7.4 デバッグおよび開発環境の個別起動手順 (Development & Debugging Setup)</h3>
+        <p>ソースコードのデバッグや機能拡張を行う開発者向け環境構築および起動手順です。</p>
+        
+        <p style="margin-top: 10px;"><strong>📋 推奨前提要件</strong></p>
         <ul>
-          <li><strong>ログファイルの場所</strong>: <code>DailyReportServer.exe</code> を起動して実行したディレクトリ（通常はEXEファイルと同じ場所）に、<strong><code>server_debug.log</code></strong> というテキストファイルが自動生成されます。</li>
-          <li><strong>調査方法</strong>: エラー発生時にバックエンドで出力されたPythonのスタックトレース（詳細なエラー箇所と原因）が記録されています。「<code>PermissionError</code>」や「<code>KeyError</code>」などのキーワードでログを検索し、どの処理で失敗しているかを特定してください。</li>
+          <li><strong>Node.js</strong>: v18.0.0 以上</li>
+          <li><strong>Python</strong>: 3.10 以上</li>
+          <li><strong>パッケージマネージャー</strong>: <code>npm</code> (frontend) / <code>pip</code> (backend)</li>
+        </ul>
+
+        <p style="margin-top: 10px;"><strong>🚀 起動手順</strong></p>
+        <ol>
+          <li><strong>バックエンドサーバーの起動 (Port: 8001)</strong>:
+            <pre><code>cd backend
+pip install -r requirements.txt
+python main.py</code></pre>
+            <p><em>※FastAPIサーバーが起動し、<code>http://localhost:8001</code> でAPIサービスがリスン状態になります。</em></p>
+          </li>
+          <li><strong>フロントエンド開発サーバーの起動 (Port: 3000)</strong>:
+            <pre><code>cd frontend
+npm install
+npm run dev</code></pre>
+            <p><em><ctrl94>p>※Next.js開発サーバーが立ち上がり、<code>http://localhost:3000</code> でUIプレビューが可能になります（CORS設定によりローカル開発時は自動的に 8001番ポートのAPIへフォワードされます）。</em></p>
+          </li>
+        </ol>
+
+        <h3>7.5 配布用EXEのビルド・パッケージング手順 (Build & Packaging Flow)</h3>
+        <p>ソースコードの修正後、ユーザーへ配布するための単一EXEファイル (<code>DailyReportServer.exe</code>) を生成するプロセスです。</p>
+
+        <h4 style="margin-top: 16px;">1. フロントエンドのビルド (静的HTML出力)</h4>
+        <p>Next.js アプリケーションをスタンドアロンのシングルページアプリケーション (SPA) としてビルドします。</p>
+        <pre><code>cd frontend
+npm run build</code></pre>
+        <p><em>※ビルドが正常に完了すると、<code>frontend/out</code> ディレクトリに HTML, CSS, JavaScript の静的ファイルが出力されます。</em></p>
+
+        <h4 style="margin-top: 16px;">2. 静的ファイルのバックエンド配置</h4>
+        <p>FastAPI がローカルで静的アセットをマウントして配信できるように、出力されたファイルをバックエンド配下へコピーします。</p>
+        <ol>
+          <li>プロジェクトルートの <code>static</code> フォルダの中身を一度空にします。</li>
+          <li><code>frontend/out</code> フォルダ内のすべてのファイル・フォルダを、プロジェクトルートの <code>static</code> フォルダへそのまま上書きコピーします。</li>
+        </ol>
+
+        <h4 style="margin-top: 16px;">3. PyInstaller によるワンライナーパッケージング</h4>
+        <p>FastAPIサーバーと静的資産フォルダ（<code>static/</code>）を単一の実行可能ファイルにまとめます。</p>
+        <pre><code>pyinstaller DailyReportServer.spec</code></pre>
+        <p><em>※ビルドが完了すると、プロジェクトルートの <code>dist/DailyReportServer.exe</code> に新しい実行ファイルが作成されます。このEXEファイルのみを営業ユーザーへ配布してください。</em></p>
+
+        <h3>7.6 トラブルシューティングおよびログ調査手順 (Troubleshooting & Logging)</h3>
+        <p>本システムは標準の<code>logging</code> モジュールを使用し、リアルタイムでの障害解析が可能です。</p>
+        <ul>
+          <li><strong>ログファイルの格納場所</strong>: <code>DailyReportServer.exe</code> が実行されているカレントディレクトリ（通常は起動用EXEと同階層）に、<strong><code>server_debug.log</code></strong> というファイル名で自動生成されます。</li>
+          <li><strong>主要なエラーキーワードとデバッグの着眼点</strong>:
+            <ul>
+              <li><code>PermissionError</code>: 誰かがExcelを開いているための保存ブロック。ファイルが排他ロックされていないか確認を促してください。</li>
+              <li><code>HTTPException: 409</code>: 楽観的ロックの衝突。同時編集された差分箇所を確認し、クライアント側のキャッシュをクリア（リフレッシュ）させてください。</li>
+              <li><code>UnicodeDecodeError</code> / <code>KeyError</code>: Excel原本のシート構造や列名が勝手に変更された、あるいはCSVマスタのエンコーディング（ABS出力のShift-JIS）が不一致の可能性があります。</li>
+            </ul>
+          </li>
         </ul>
       </section>
 

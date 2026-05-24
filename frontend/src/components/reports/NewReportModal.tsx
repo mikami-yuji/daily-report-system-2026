@@ -454,19 +454,32 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             >
                                 <option value="">選択してください</option>
-                                <option value="-">-</option>
-                                <option value="訪問（アポあり）">訪問（アポあり）</option>
-                                <option value="訪問（アポなし）">訪問（アポなし）</option>
-                                <option value="訪問（新規）">訪問（新規）</option>
-                                <option value="訪問（クレーム）">訪問（クレーム）</option>
-                                <option value="電話商談">電話商談</option>
-                                <option value="電話アポ取り">電話アポ取り</option>
-                                <option value="メール商談">メール商談</option>
-                                <option value="量販店調査">量販店調査</option>
-                                <option value="社内（半日）">社内（半日）</option>
-                                <option value="社内（１日）">社内（１日）</option>
-                                <option value="外出時間">外出時間</option>
-                                <option value="その他">その他</option>
+                                {[
+                                    '-',
+                                    '訪問（アポあり）',
+                                    '訪問（アポなし）',
+                                    '訪問（新規）',
+                                    '訪問（クレーム）',
+                                    '電話商談',
+                                    '電話アポ取り',
+                                    'メール商談',
+                                    '量販店調査',
+                                    '社内（半日）',
+                                    '社内（１日）',
+                                    '外出時間',
+                                    'その他'
+                                ]
+                                    .filter(action => {
+                                        // 得意先や訪問先が入力されている場合は、社内業務や外出時間を除外
+                                        if (formData.得意先CD || formData.訪問先名) {
+                                            return !['社内（半日）', '社内（１日）', '外出時間'].includes(action);
+                                        }
+                                        return true;
+                                    })
+                                    .map(action => (
+                                        <option key={action} value={action}>{action}</option>
+                                    ))
+                                }
                             </select>
                         </div>
 
@@ -635,6 +648,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                     className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                                 >
                                     <option value="">選択してください</option>
+                                    <option value="0%">0%</option>
                                     <option value="25%">25%</option>
                                     <option value="50%">50%</option>
                                     <option value="75%">75%</option>

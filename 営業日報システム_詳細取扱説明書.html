@@ -573,6 +573,65 @@
       font-size: 0.85rem;
       font-weight: 500;
     }
+
+    /* スクリーンショット埋め込みおよびプレースホルダー装飾 */
+    .screenshot-container {
+      margin: 20px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      border: 1px solid var(--slate-200);
+      background-color: var(--slate-50);
+      position: relative;
+    }
+
+    .screenshot-img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .screenshot-placeholder {
+      display: none; /* デフォルトは非表示。画像ロードエラー時にJSで表示 */
+      padding: 30px 20px;
+      text-align: center;
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      margin: 10px;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .screenshot-placeholder:hover {
+      border-color: var(--primary);
+      background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+      color: var(--primary);
+    }
+
+    .screenshot-placeholder-icon {
+      font-size: 1.8rem;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .screenshot-placeholder-text {
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .screenshot-placeholder-filename {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 8px;
+      background-color: #e2e8f0;
+      color: #475569;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
@@ -896,6 +955,14 @@
         <p>本システムは、左側のナビゲーションメニュー（サイドバー）から各機能へ簡単にアクセスできます。サイドバーが縮小（折りたたみ）されている場合は、上部の三本線（メニュー）アイコンを押すことで開閉可能です。</p>
         
         <h3 id="screen-home">📊 ① ホーム（ダッシュボード）</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/01_dashboard.png" alt="① ホーム（ダッシュボード）" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】ホーム（ダッシュボード）画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/01_dashboard.png</span>
+          </div>
+        </div>
         <p>起動後に最初に表示される、全体の活動状況の「見える化」を行う画面です。<br>
         ※なお、Excel ファイルの管理（アクティブファイルの確認・切り替え）は、ホーム画面だけでなく、どの画面からでも操作できるように「画面上部のヘッダー」に配置されています。</p>
         
@@ -928,6 +995,14 @@
         </ol>
 
         <h3 id="screen-list">📋 ② 日報一覧</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/02_report_list.png" alt="② 日報一覧" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】日報一覧画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/02_report_list.png</span>
+          </div>
+        </div>
         <p>過去に登録された日報を、一覧表形式で閲覧・検索する画面です。</p>
         
         <h4>🔹 主な機能と詳細な活用方法:</h4>
@@ -1009,6 +1084,14 @@
         </ul>
 
         <h3 id="screen-new">📝 ③ 新規日報入力</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/03_report_input.png" alt="③ 新規日報入力" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】新規日報入力画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/03_report_input.png</span>
+          </div>
+        </div>
         <p>エクセルを開くことなく、直感的なWebフォームから日報を直接エクセルに追加できるメインの入力画面です。</p>
         
         <h4>💡 入力をサポートするスマート動的フォーム:</h4>
@@ -1167,6 +1250,14 @@
         </ul>
 
         <h3 id="screen-customer">👥 ④ 得意先一覧</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/04_customer_list.png" alt="④ 得意先一覧" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】得意先一覧画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/04_customer_list.png</span>
+          </div>
+        </div>
         <p>登録されているクライアント（得意先）の基本情報や活動状況、および登録された目標（現目標）を確認・管理する画面です。</p>
         
         <h4>🔹 主な機能と活用方法:</h4>
@@ -1194,6 +1285,14 @@
         </ul>
 
         <h3 id="screen-calendar">📅 ⑤ カレンダー</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/05_calendar.png" alt="⑤ カレンダー" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】カレンダー画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/05_calendar.png</span>
+          </div>
+        </div>
         <p>カレンダー形式で、いつ・どの得意先へ訪問、あるいはどのような社内業務を行ったかを視覚的に把握する画面です。<br>
         ※営業活動の記録としては<strong>「訪問」のみが自動抽出・表示され、電話やメールなどの「連絡」はカレンダー上には表示されない仕様</strong>となっています。</p>
         <ul>
@@ -1219,6 +1318,14 @@
         </ul>
 
         <h3 id="screen-design">📦 ⑥ デザイン検索</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/06_design_search.png" alt="⑥ デザイン検索" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】デザイン検索画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/06_design_search.png</span>
+          </div>
+        </div>
         <p>過去に蓄積されたデザイン依頼書、別注手配、SP手配などの案件情報を多角的に検索・管理する画面です。</p>
         <ul>
           <li><strong>クロスフィルター検索</strong>: 「デザインNo」「得意先名」「デザイン名」「デザイン種別」を組み合わせて複合検索できます。</li>
@@ -1230,6 +1337,14 @@
         </ul>
 
         <h3 id="screen-survey">🏢 ⑦ 量販店調査検索</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/07_survey_search.png" alt="⑦ 量販店調査検索" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】量販店調査検索画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/07_survey_search.png</span>
+          </div>
+        </div>
         <p>日報の行動内容が「量販店調査」である活動データを自動的に抽出し、キーワードやエリアで検索・閲覧する画面です。</p>
         
         <h4>🔹 主な機能と活用方法:</h4>
@@ -1240,6 +1355,14 @@
         </ul>
 
         <h3 id="screen-competitor">⚠️ ⑧ 競合他社情報</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/08_competitor_info.png" alt="⑧ 競合他社情報" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】競合他社情報画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/08_competitor_info.png</span>
+          </div>
+        </div>
         <p>日報の「競合他社情報」欄に記載されたデータを自動的に抽出し、タイムライン形式で一覧検索する画面です。</p>
         
         <h4>🔹 主な機能と活用方法:</h4>
@@ -1250,6 +1373,14 @@
         </ul>
 
         <h3 id="screen-claim">🚨 ⑨ クレーム対応</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/09_claim_handling.png" alt="⑨ クレーム対応" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】クレーム対応画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/09_claim_handling.png</span>
+          </div>
+        </div>
         <p>日報データの中から、行動内容や商談内容に「クレーム」を含む活動記録を自動的に抽出し、対応履歴をタイムライン形式で検索・閲覧する画面です。</p>
         
         <h4>🔹 主な機能と活用方法:</h4>
@@ -1261,6 +1392,14 @@
         </ul>
 
         <h3 id="screen-analytics">📈 ⑩ 分析・レポート機能群</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/10_analytics.png" alt="⑩ 分析・レポート機能群" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】分析・レポート機能群画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/10_analytics.png</span>
+          </div>
+        </div>
         <p>入力された日報データを自動集計し、様々な角度から営業活動の効果や売上結果をグラフ・集計表で分析する画面群です。</p>
         <ul>
           <li><strong>📊 月次活動サマリー (`/reports/summary`)</strong>:
@@ -1300,6 +1439,14 @@
         </ul>
 
         <h3 id="screen-settings">⚙️ ⑪ 設定</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/11_settings.png" alt="⑪ 設定" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】設定画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/11_settings.png</span>
+          </div>
+        </div>
         <p>アプリケーションの動作状況の確認、通知設定、および売上分析用のマスタデータ管理（CSVアップロード）を一括で行う画面です。</p>
         
         <h4>🔹 主な機能と詳細な仕様:</h4>
@@ -1325,6 +1472,14 @@
         </ul>
 
         <h3 id="sync-status">☁️ ⑫ 【便利機能】電波がなくても大丈夫！一時保存と自動送信</h3>
+        <div class="screenshot-container">
+          <img src="docs_images/12_sync_status.png" alt="⑫ 一時保存と自動送信" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="screenshot-placeholder">
+            <span class="screenshot-placeholder-icon">📸</span>
+            <span class="screenshot-placeholder-text">【画像未配置】一時保存と自動送信画面のスクリーンショットを撮影し、以下のファイル名で保存してください。</span><br>
+            <span class="screenshot-placeholder-filename">docs_images/12_sync_status.png</span>
+          </div>
+        </div>
         <p>出張先や移動中などで、インターネットや社内ネットワークに繋がっていない状態（オフライン）でも、日報の入力や下書き保存が可能です。</p>
         <ul>
           <li><strong>どこでも入力OK</strong>: ネットに繋がっていなくても、画面からいつも通り日報を入力して「保存する」を押すことができます。</li>

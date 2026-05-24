@@ -1321,7 +1321,30 @@
           <p>この章に書かれている内容は、システムの導入設定、機能改修、およびメンテナンスを行う「システム管理者」および「保守開発エンジニア」専用の技術情報です。<strong>一般のユーザー様がこの設定やコードを操作・変更する必要はありません。</strong>誤って変更するとシステム全体が正常に起動しなくなる恐れがあります。</p>
         </div>
 
-        <h3>7.1 アーキテクチャおよびデータフロー概要 (System Architecture & Dataflow)</h3>
+        <h3>7.1 `config.json` の設定仕様と初期設定 (System Configuration)</h3>
+        <p>社内共有のネットワークフォルダを利用して、複数名で同じ日報エクセルファイルを管理・共有する場合、システム起動前に以下の設定を必ず実行してください。</p>
+        <ol>
+          <li><code>DailyReportServer.exe</code> と同じフォルダ内にある <strong><code>config.json</code></strong> をメモ帳などのテキストエディタで開きます。</li>
+          <li><code>"excel_dir"</code> の値を、社内共有フォルダ上の日報エクセルファイルが保存されているディレクトリのパス（絶対パス）に書き換えます。<br>
+            例: <code>"excel_dir": "\\Asahipack02\Shared\営業部\日報\2026年度"</code><br>
+            <em>💡 <strong>JSON形式の厳重注意</strong>: JSON形式の仕様上、パス区切りのバックスラッシュ（`\`）は必ず二重（<code>\\</code>）で記述してください。一重で記述した場合、設定ファイルのパースエラーとなりシステムが起動しません。</em>
+          </li>
+          <li><code>config.json</code> を保存して閉じ、改めて <code>DailyReportServer.exe</code> を起動します。</li>
+        </ol>
+
+        <h3>7.2 新年度（年度変更時）の切り替え手順 (Annual Rollover Process)</h3>
+        <p>年度が新しくなり、日報の保存先エクセルファイルを新年度用に切り替える場合は、システム管理者が以下の手順に従って設定を行ってください。</p>
+        <ol>
+          <li><strong>新しい年度用エクセルファイルの準備</strong>: 前年度のファイル（またはひな形テンプレート）をコピーし、新しい年度の名前（例：<code>日報_2027.xlsm</code>）で共有サーバーまたはローカルに保存します。</li>
+          <li><strong>`config.json` の書き換え</strong>: <code>config.json</code> を開き、<code>"excel_dir"</code> の値を新しいファイルのディレクトリパスに書き換えます。<br>
+            例（2026年度から2027年度への変更）:<br>
+            <pre><code>"excel_dir": "\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2027年度"</code></pre>
+            <em>※バックスラッシュ（`\`）は必ず二重で記述してください。</em>
+          </li>
+          <li><strong>システムの再起動</strong>: 起動している <code>DailyReportServer.exe</code>（黒い画面）とブラウザを一度閉じ、再起動します。ダッシュボード画面上部の「アクティブファイル」が新しいパスに切り替わっていれば完了です。</li>
+        </ol>
+
+        <h3>7.3 アーキテクチャおよびデータフロー概要 (System Architecture & Dataflow)</h3>
         <p>本システムは、軽量性と配布の容易さを最大化するため、<strong>Next.jsの静的エクスポート機能 (SSG/SPA) と、FastAPIによるローカルWebサーバー</strong>を組み合わせたハイブリッド構成を採用しています。</p>
         
         <p style="margin-top: 10px;"><strong>📦 配布パッケージ (DailyReportServer.exe) の内部動作原理</strong></p>
@@ -1335,7 +1358,7 @@
           </li>
         </ul>
 
-        <h3>7.2 Excel擬似データベースの制御仕様 (Excel Database Engine & Cache System)</h3>
+        <h3>7.4 Excel擬似データベースの制御仕様 (Excel Database Engine & Cache System)</h3>
         <p>本システムは、リレーショナルデータベース（RDB）を導入せず、既存のExcelファイル（<code>.xlsm</code>）をデータストレージとしてダイレクトに読み書きする構造を持っています。</p>
 
         <h4 style="margin-top: 16px;">⚡ マルチレイヤ・キャッシュ機構 (Cache Invalidation Logic)</h4>
@@ -1355,15 +1378,12 @@
         </ul>
 
         <h4 style="margin-top: 16px;">🔑 ファイルロック競合への対処</h4>
-        <p>他のユーザーが直接Excelソフトでファイルを開いていて編集ロックがかかっている場合、Pythonの <code>openpyxl</code> による <code>wb.save()</code> 実行時に <code>PermissionError</code> が発生します。</p>
-        <ul>
-          <li>システムはこの例外を適切にキャッチし、クライアントへ <code>409 Conflict</code> (エラーメッセージ: <code>"ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"</code>) を返してデータ入力内容が消失しないように保護します。</li>
-        </ul>
+        <p>物理的なExcel排他ロックによる <code>PermissionError</code> を適切にキャッチし、クライアントへ <code>409 Conflict</code> (エラーメッセージ: <code>"ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"</code>) を返してデータ入力内容が消失しないように保護します。</p>
 
         <h4 style="margin-top: 16px;">📅 自動非同期バックアップ (Asynchronous Backup System)</h4>
         <p>保存処理のオーバーヘッドを削減し、UIの応答性を保つため、Excelの保存直後に FastAPI の <code>BackgroundTasks</code> を使用して、バックアップコピー（<code>/backup</code> サブフォルダ内へのタイムスタンプ付き保存）を非同期実行します。</p>
 
-        <h3>7.3 営業日報シートおよび得意先シートの物理レイアウト (Physical Excel Schema)</h3>
+        <h3>7.5 営業日報シートおよび得意先シートの物理レイアウト (Physical Excel Schema)</h3>
         <p>本システムは、Excel原本の物理レイアウトに強く依存しています。各項目の列位置は <code>backend/main.py</code> の <code>columns_to_write</code> マッピング辞書内にインデックス番号（1-indexed）でハードコーディングされています。</p>
 
         <h4 style="margin-top: 16px;">📊 「営業日報」シート カラム構造定義</h4>
@@ -1417,7 +1437,7 @@
           <p>Excel原本の列を挿入・削除・移動する場合、<code>backend/main.py</code> の <code>add_report()</code> および <code>update_report()</code> 内に定義された <code>columns_to_write</code> マッピングインデックスを<strong>完全に一致するよう修正し、EXEファイルを再ビルドする</strong>必要があります。これを行わずにExcel原本の構造だけを修正すると、意図しない列にデータが書き込まれ、数式やデータ破損の原因となります。</p>
         </div>
 
-        <h3>7.4 デバッグおよび開発環境の個別起動手順 (Development & Debugging Setup)</h3>
+        <h3>7.6 デバッグおよび開発環境の個別起動手順 (Development & Debugging Setup)</h3>
         <p>ソースコードのデバッグや機能拡張を行う開発者向け環境構築および起動手順です。</p>
         
         <p style="margin-top: 10px;"><strong>📋 推奨前提要件</strong></p>
@@ -1439,11 +1459,11 @@ python main.py</code></pre>
             <pre><code>cd frontend
 npm install
 npm run dev</code></pre>
-            <p><em><ctrl94>p>※Next.js開発サーバーが立ち上がり、<code>http://localhost:3000</code> でUIプレビューが可能になります（CORS設定によりローカル開発時は自動的に 8001番ポートのAPIへフォワードされます）。</em></p>
+            <p><em>※Next.js開発サーバーが立ち上がり、<code>http://localhost:3000</code> でUIプレビューが可能になります（CORS設定によりローカル開発時は自動的に 8001番ポートのAPIへフォワードされます）。</em></p>
           </li>
         </ol>
 
-        <h3>7.5 配布用EXEのビルド・パッケージング手順 (Build & Packaging Flow)</h3>
+        <h3>7.7 配布用EXEのビルド・パッケージング手順 (Build & Packaging Flow)</h3>
         <p>ソースコードの修正後、ユーザーへ配布するための単一EXEファイル (<code>DailyReportServer.exe</code>) を生成するプロセスです。</p>
 
         <h4 style="margin-top: 16px;">1. フロントエンドのビルド (静的HTML出力)</h4>
@@ -1464,8 +1484,8 @@ npm run build</code></pre>
         <pre><code>pyinstaller DailyReportServer.spec</code></pre>
         <p><em>※ビルドが完了すると、プロジェクトルートの <code>dist/DailyReportServer.exe</code> に新しい実行ファイルが作成されます。このEXEファイルのみを営業ユーザーへ配布してください。</em></p>
 
-        <h3>7.6 トラブルシューティングおよびログ調査手順 (Troubleshooting & Logging)</h3>
-        <p>本システムは標準の<code>logging</code> モジュールを使用し、リアルタイムでの障害解析が可能です。</p>
+        <h3>7.8 トラブルシューティングおよびログ調査手順 (Troubleshooting & Logging)</h3>
+        <p>本システムは標準の <code>logging</code> モジュールを使用し、リアルタイムでの障害解析が可能です。</p>
         <ul>
           <li><strong>ログファイルの格納場所</strong>: <code>DailyReportServer.exe</code> が実行されているカレントディレクトリ（通常は起動用EXEと同階層）に、<strong><code>server_debug.log</code></strong> というファイル名で自動生成されます。</li>
           <li><strong>主要なエラーキーワードとデバッグの着眼点</strong>:

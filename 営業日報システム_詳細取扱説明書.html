@@ -561,6 +561,18 @@
     .overlay.show {
       display: block;
     }
+
+    .choice-tag {
+      display: inline-block;
+      padding: 3px 8px;
+      margin: 3px 4px;
+      background-color: var(--slate-100);
+      color: var(--slate-800);
+      border: 1px solid var(--slate-200);
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -1055,23 +1067,66 @@
             <tbody>
               <tr>
                 <td><strong>📂 行動内容 (13種)</strong></td>
-                <td>`-` (選択なし), `訪問（アポあり）`, `訪問（アポなし）`, `訪問（新規）`, `訪問（クレーム）`, `電話商談`, `電話アポ取り`, `メール商談`, `量販店調査`, `社内（半日）`, `社内（１日）`, `外出時間`, `その他`</td>
+                <td>
+                  <span class="choice-tag">- (選択なし)</span>
+                  <span class="choice-tag">訪問（アポあり）</span>
+                  <span class="choice-tag">訪問（アポなし）</span>
+                  <span class="choice-tag">訪問（新規）</span>
+                  <span class="choice-tag">訪問（クレーム）</span>
+                  <span class="choice-tag">電話商談</span>
+                  <span class="choice-tag">電話アポ取り</span>
+                  <span class="choice-tag">メール商談</span>
+                  <span class="choice-tag">量販店調査</span>
+                  <span class="choice-tag">社内（半日）</span>
+                  <span class="choice-tag">社内（１日）</span>
+                  <span class="choice-tag">外出時間</span>
+                  <span class="choice-tag">その他</span>
+                </td>
               </tr>
               <tr>
                 <td><strong>⏱️ 滞在時間 (5種)</strong></td>
-                <td>`-` (選択なし), `10分未満`, `30分未満`, `60分未満`, `60分以上`</td>
+                <td>
+                  <span class="choice-tag">- (選択なし)</span>
+                  <span class="choice-tag">10分未満</span>
+                  <span class="choice-tag">30分未満</span>
+                  <span class="choice-tag">60分未満</span>
+                  <span class="choice-tag">60分以上</span>
+                </td>
               </tr>
               <tr>
                 <td><strong>⭐ 満足度 (5段階)</strong></td>
-                <td>`0%`, `25%`, `50%`, `75%`, `100%` (※行動内容「外出時間」の選択時のみ表示)</td>
+                <td>
+                  <span class="choice-tag">0%</span>
+                  <span class="choice-tag">25%</span>
+                  <span class="choice-tag">50%</span>
+                  <span class="choice-tag">75%</span>
+                  <span class="choice-tag">100%</span>
+                  <span style="font-size: 0.85em; color: var(--slate-500); margin-left: 8px;">(※行動内容「外出時間」の選択時のみ表示)</span>
+                </td>
               </tr>
               <tr>
                 <td><strong>🎨 デザイン種別 (5種)</strong></td>
-                <td>`-` (選択なし), `別注（新版）`, `別注（改版）`, `別注（再版）`, `SP（新版）`</td>
+                <td>
+                  <span class="choice-tag">- (選択なし)</span>
+                  <span class="choice-tag">別注（新版）</span>
+                  <span class="choice-tag">別注（改版）</span>
+                  <span class="choice-tag">別注（再版）</span>
+                  <span class="choice-tag">SP（新版）</span>
+                </td>
               </tr>
               <tr>
                 <td><strong>📈 デザイン進捗 (9種)</strong></td>
-                <td>`-` (選択なし), `新規`, `50％未満`, `80％未満`, `80％以上`, `出稿`, `不採用（コンペ負け）`, `不採用（企画倒れ）`, `保留`</td>
+                <td>
+                  <span class="choice-tag">- (選択なし)</span>
+                  <span class="choice-tag">新規</span>
+                  <span class="choice-tag">50％未満</span>
+                  <span class="choice-tag">80％未満</span>
+                  <span class="choice-tag">80％以上</span>
+                  <span class="choice-tag">出稿</span>
+                  <span class="choice-tag">不採用（コンペ負け）</span>
+                  <span class="choice-tag">不採用（企画倒れ）</span>
+                  <span class="choice-tag">保留</span>
+                </td>
               </tr>
             </tbody>
           </table>

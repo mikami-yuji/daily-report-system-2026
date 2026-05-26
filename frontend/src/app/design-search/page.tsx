@@ -5,7 +5,6 @@ import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, X, Download, PenSquare } from 'lucide-react';
-import Link from 'next/link';
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 
@@ -557,13 +556,7 @@ export default function DesignSearchPage() {
                                                 </td>
                                                 <td className="px-4 py-3 text-sf-text">{req.customerCode}</td>
                                                 <td className="px-4 py-3 text-sf-text font-medium">
-                                                    <Link
-                                                        href={`/customers/${req.customerCode}`}
-                                                        className="text-sf-light-blue hover:underline"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        {req.customerName}
-                                                    </Link>
+                                                    {req.customerName}
                                                 </td>
                                                 <td className="px-4 py-3 text-sf-text">{req.designName || '-'}</td>
                                                 <td className="px-4 py-3 text-sf-text-weak text-xs">{req.designType || '-'}</td>

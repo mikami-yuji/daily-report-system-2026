@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Report, getDesignImages, DesignImage, getImageUrl, updateReportReply } from '@/lib/api';
+import { Report, getDesignImages, DesignImage, getImageUrl, updateReportReply, updateReportApproval } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { useDashboardStats } from '@/hooks/useStatsHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon } from 'lucide-react';
-import EditReportModal from '../components/reports/EditReportModal';
+import EditReportModal from '@/components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Check } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
@@ -92,7 +92,7 @@ export default function Home() {
     queryClient.invalidateQueries({ queryKey: ['stats'] });
   };
 
-  const handleSubmitReply = async (report: Report) => {
+  const handleSubmitReply = async (report: Report): Promise<void> => {
     if (!replyText.trim()) return;
     const replyContent = replyText.trim();
     setReplyingTo(null);
@@ -114,10 +114,10 @@ export default function Home() {
     }
   };
 
-  const handleDismissNotification = async (report: Report) => {
+  const handleDismissNotification = async (report: Report): Promise<void> => {
     setProcessingNotifications(prev => new Set(prev).add(report.管理番号));
     try {
-      await updateReportReply(report.管理番号, '確認済み', selectedFile);
+      await updateReportApproval(report.管理番号, { 既読チェック: 'ü' }, selectedFile);
       await queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
       await queryClient.invalidateQueries({ queryKey: ['stats'] });
       toast.success('既読にしました');
@@ -164,7 +164,7 @@ export default function Home() {
             {(showAllNotifications ? unreadComments : unreadComments.slice(0, 3)).map((report) => (
               <div key={report.管理番号} className="bg-white p-3 rounded border border-red-100 shadow-sm">
                 <div className="flex justify-between items-start">
-                  <div className="flex-1 cursor-pointer hover:bg-red-50/50 transition-colors rounded p-1 -m-1" onClick={() => setEditingReport(report)}>
+                  <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-red-600">{report.日付}</span>
                       <span className="text-sf-text font-medium">{report.訪問先名 || '訪問先なし'}</span>
@@ -176,12 +176,22 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                    {replyingTo !== report.管理番号 && (
+                    {processingNotifications.has(report.管理番号) ? (
+                      <span className="text-xs text-sf-light-blue font-bold animate-pulse">保存中...</span>
+                    ) : replyingTo !== report.管理番号 && (
                       <>
-                        <button onClick={(e) => { e.stopPropagation(); setReplyingTo(report.管理番号); setReplyText(''); }} className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200 flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setReplyingTo(report.管理番号); setReplyText(''); }}
+                          disabled={processingNotifications.size > 0}
+                          className="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold hover:bg-red-200 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                           <Send size={12} />返信
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDismissNotification(report); }} className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold hover:bg-green-200 flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDismissNotification(report); }}
+                          disabled={processingNotifications.size > 0}
+                          className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold hover:bg-green-200 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                           <Check size={12} />既読
                         </button>
                       </>
@@ -189,10 +199,43 @@ export default function Home() {
                   </div>
                 </div>
                 {replyingTo === report.管理番号 && (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="mt-3 pt-3 border-t border-gray-200" onClick={(e) => e.stopPropagation()}>
+                    {/* 商談内容の表示 */}
+                    {report.商談内容 && (
+                      <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                        <div className="font-bold text-blue-700 mb-1">📝 商談内容:</div>
+                        <div className="text-gray-700 whitespace-pre-wrap">{report.商談内容}</div>
+                      </div>
+                    )}
                     <div className="flex gap-2">
-                      <input type="text" value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="返信を入力..." className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded" />
-                      <button onClick={() => handleSubmitReply(report)} disabled={!replyText.trim()} className="px-4 py-2 bg-red-500 text-white text-sm rounded font-bold">送信</button>
+                      <input
+                        type="text"
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        disabled={processingNotifications.has(report.管理番号)}
+                        placeholder="返信を入力..."
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded disabled:opacity-50"
+                      />
+                      <button
+                        onClick={() => handleSubmitReply(report)}
+                        disabled={!replyText.trim() || processingNotifications.has(report.管理番号)}
+                        className="px-4 py-2 bg-red-500 text-white text-sm rounded font-bold disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {processingNotifications.has(report.管理番号) ? (
+                          <>
+                            <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            送信中...
+                          </>
+                        ) : '送信'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setReplyingTo(null); setReplyText(''); }}
+                        disabled={processingNotifications.has(report.管理番号)}
+                        className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded font-bold disabled:opacity-50"
+                      >
+                        キャンセル
+                      </button>
                     </div>
                   </div>
                 )}
@@ -296,6 +339,40 @@ export default function Home() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* 画像ギャラリー */}
+      <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex items-center gap-2">
+          <ImageIcon size={20} className="text-pink-500" />
+          <h2 className="font-semibold text-sm text-sf-text">デザインデータ ({imageFolder || 'フォルダ検索中...'})</h2>
+        </div>
+        <div className="p-4">
+          {images.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {images.map((img, i) => (
+                <div key={i} className="group relative aspect-square bg-gray-100 rounded overflow-hidden border border-gray-200">
+                  <a href={getImageUrl(img.path)} target="_blank" rel="noopener noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={getImageUrl(img.path)}
+                      alt={img.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                      {img.name}
+                    </div>
+                  </a>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              {imageFolder ? '画像が見つかりませんでした' : '関連するデザインデータフォルダが見つかりません'}
+            </div>
+          )}
         </div>
       </div>
 

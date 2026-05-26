@@ -40,15 +40,15 @@ const convertToDisplay = (value: string | undefined): string => {
 export default function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, onEdit, onUpdate }: ReportDetailModalProps) {
     const { selectedFile } = useFile();
     const [approvals, setApprovals] = useState({
-        上長: convertToDisplay(report.上長),
-        山澄常務: convertToDisplay(report.山澄常務),
-        岡本常務: convertToDisplay(report.岡本常務),
-        中野次長: convertToDisplay(report.中野次長),
-        既読チェック: convertToDisplay(report.既読チェック)
+        上長: convertToDisplay(report?.上長),
+        山澄常務: convertToDisplay(report?.山澄常務),
+        岡本常務: convertToDisplay(report?.岡本常務),
+        中野次長: convertToDisplay(report?.中野次長),
+        既読チェック: convertToDisplay(report?.既読チェック)
     });
     const [comments, setComments] = useState({
-        上長コメント: report.上長コメント || report.コメント || '',
-        コメント返信欄: report.コメント返信欄 || ''
+        上長コメント: report?.上長コメント || report?.コメント || '',
+        コメント返信欄: report?.コメント返信欄 || ''
     });
     const [saving, setSaving] = useState(false);
     const [processingApproval, setProcessingApproval] = useState<string | null>(null); // 処理中の承認フィールド
@@ -58,15 +58,15 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     // レポート変更時にステートを更新
     useEffect(() => {
         setApprovals({
-            上長: convertToDisplay(report.上長),
-            山澄常務: convertToDisplay(report.山澄常務),
-            岡本常務: convertToDisplay(report.岡本常務),
-            中野次長: convertToDisplay(report.中野次長),
-            既読チェック: convertToDisplay(report.既読チェック)
+            上長: convertToDisplay(report?.上長),
+            山澄常務: convertToDisplay(report?.山澄常務),
+            岡本常務: convertToDisplay(report?.岡本常務),
+            中野次長: convertToDisplay(report?.中野次長),
+            既読チェック: convertToDisplay(report?.既読チェック)
         });
         setComments({
-            上長コメント: report.上長コメント || report.コメント || '',
-            コメント返信欄: report.コメント返信欄 || ''
+            上長コメント: report?.上長コメント || report?.コメント || '',
+            コメント返信欄: report?.コメント返信欄 || ''
         });
     }, [report]);
 
@@ -167,6 +167,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             setSaving(false);
         }
     };
+    if (!report) return null;
 
     // デザイン情報の表示条件をグリッド表示と統一（いずれかのフィールドに値があれば表示）
     const hasDesign = !!(

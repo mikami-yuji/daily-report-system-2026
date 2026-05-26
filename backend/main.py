@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import pandas as pd
 import openpyxl
 from datetime import datetime, timedelta
@@ -86,25 +86,58 @@ from fastapi import Request
 
 
 # Load configuration
-def load_config():
+def load_config() -> str:
     config_path = os.path.join(BASE_DIR, 'config.json')
     # 2026年度版のデフォルトパス
     default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度'
+    
+    path = None
     
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r', encoding='utf-8-sig') as f:
                 config = json.load(f)
-                path = config.get('excel_dir', default_path)
-                logging.info(f"Successfully loaded config. Excel Path: {path}")
-                return path
+                path = config.get('excel_dir')
+                if path:
+                    logging.info(f"Loaded raw config path: {path}")
         except Exception as e:
             logging.warning(f"Failed to load config.json: {e}")
-            logging.info(f"Using default path: {default_path}")
-            return default_path
-    
-    logging.info(f"config.json not found. Using default path: {default_path}")
-    return default_path
+
+    # もしpathが設定されている場合は、パスの正規化と存在チェックを行う
+    if path:
+        # 相対パスの場合はBASE_DIR基準で絶対パス化する
+        if not os.path.isabs(path):
+            path = os.path.abspath(os.path.join(BASE_DIR, path))
+            logging.info(f"Resolved relative path to absolute: {path}")
+            
+        # パスが存在するかチェック
+        if os.path.exists(path):
+            logging.info(f"Using configured Excel path: {path}")
+            return path
+        else:
+            logging.warning(f"Configured Excel path does not exist: {path}")
+
+    # パスが存在しないか指定されていない場合、順次フォールバック探索を行う
+    # フォールバック1: デフォルトの共有フォルダ（社内LAN接続時を最優先とする）
+    if os.path.exists(default_path):
+        logging.info(f"Fallback 1: Using network shared directory: {default_path}")
+        return default_path
+
+    # フォールバック2: 実行ディレクトリ配下の 'data'（オフライン・ローカル動作時）
+    local_data_path = os.path.abspath(os.path.join(BASE_DIR, 'data'))
+    if os.path.exists(local_data_path):
+        logging.info(f"Fallback 2: Using local data directory: {local_data_path}")
+        return local_data_path
+
+    # フォールバック3: パッケージ配下の 'DailyReportSystem_2026_Simple/data' (あれば)
+    simple_data_path = os.path.abspath(os.path.join(BASE_DIR, 'DailyReportSystem_2026_Simple', 'data'))
+    if os.path.exists(simple_data_path):
+        logging.info(f"Fallback 3: Using simple package data directory: {simple_data_path}")
+        return simple_data_path
+
+    # 最終的なフォールバック（作成可能なようにlocal_data_pathを返して自動で作成させる）
+    logging.info(f"No existing paths found. Fallback to default local data path: {local_data_path}")
+    return local_data_path
 
 EXCEL_DIR = load_config()
 logging.info(f"STARTUP: Working with EXCEL_DIR: {EXCEL_DIR}")
@@ -190,7 +223,26 @@ class ReportInput(BaseModel):
     岡本常務: str = ""
     中野次長: str = ""
     既読チェック: str = ""
-    original_values: Optional[dict] = None # For optimistic locking
+    original_values: Optional[Any] = None # For optimistic locking
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_all_to_string(cls, data: Any) -> Any:
+        # すべての文字列フィールドに対して、数値やnullを安全に文字列へ変換する
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if key == 'original_values':
+                    continue
+                if value is None:
+                    data[key] = ""
+                elif isinstance(value, (int, float)):
+                    if isinstance(value, float) and value.is_integer():
+                        data[key] = str(int(value))
+                    else:
+                        data[key] = str(value)
+                elif not isinstance(value, str):
+                    data[key] = str(value)
+        return data
 
     @field_validator('得意先CD', '直送先CD', mode='before')
     @classmethod
@@ -1014,9 +1066,16 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
         # Find the row
         target_row = None
         for row in range(2, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == management_number:
-                target_row = row
-                break
+            val = ws.cell(row=row, column=1).value
+            if val is not None:
+                try:
+                    if int(float(str(val))) == int(management_number):
+                        target_row = row
+                        break
+                except (ValueError, TypeError):
+                    if val == management_number:
+                        target_row = row
+                        break
         
         logging.debug(f"target_row: {target_row}")
         if not target_row:
@@ -1087,9 +1146,16 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
         # Find the row
         target_row = None
         for row in range(2, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == management_number:
-                target_row = row
-                break
+            val = ws.cell(row=row, column=1).value
+            if val is not None:
+                try:
+                    if int(float(str(val))) == int(management_number):
+                        target_row = row
+                        break
+                except (ValueError, TypeError):
+                    if val == management_number:
+                        target_row = row
+                        break
         
         if not target_row:
             wb.close()
@@ -1159,9 +1225,16 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
         # Find the row
         target_row = None
         for row in range(2, ws.max_row + 1):
-            if ws.cell(row=row, column=1).value == management_number:
-                target_row = row
-                break
+            val = ws.cell(row=row, column=1).value
+            if val is not None:
+                try:
+                    if int(float(str(val))) == int(management_number):
+                        target_row = row
+                        break
+                except (ValueError, TypeError):
+                    if val == management_number:
+                        target_row = row
+                        break
         
         if not target_row:
             wb.close()
@@ -1241,10 +1314,16 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
         # Find the row with the matching management number
         target_row = None
         for row in range(2, ws.max_row + 1):
-            cell_value = ws.cell(row=row, column=1).value
-            if cell_value == management_number:
-                target_row = row
-                break
+            val = ws.cell(row=row, column=1).value
+            if val is not None:
+                try:
+                    if int(float(str(val))) == int(management_number):
+                        target_row = row
+                        break
+                except (ValueError, TypeError):
+                    if val == management_number:
+                        target_row = row
+                        break
         
         if not target_row:
             raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
@@ -1353,10 +1432,16 @@ def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
         # Find the row with the matching management number
         target_row = None
         for row in range(2, ws.max_row + 1):
-            cell_value = ws.cell(row=row, column=1).value
-            if cell_value == management_number:
-                target_row = row
-                break
+            val = ws.cell(row=row, column=1).value
+            if val is not None:
+                try:
+                    if int(float(str(val))) == int(management_number):
+                        target_row = row
+                        break
+                except (ValueError, TypeError):
+                    if val == management_number:
+                        target_row = row
+                        break
         
         if not target_row:
             raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")

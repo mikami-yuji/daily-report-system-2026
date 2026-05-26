@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Report, updateReport } from '@/lib/api';
+import React, { useState, useEffect } from 'react';
+import { Report, updateReport, getDesigns, Design } from '@/lib/api';
 import { sanitizeReport, normalizeDateInput } from '@/lib/reportUtils';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -17,8 +17,8 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
 
     // Parse initial time and clean content from 商談内容
-    const parseInitialData = (content: string) => {
-        if (!content) return { start: '', end: '', content: '', satisfaction: '' };
+    const parseInitialData = (content: any) => {
+        if (!content || typeof content !== 'string') return { start: '', end: '', content: '', satisfaction: '' };
 
         let newContent = content;
         let start = '';
@@ -43,31 +43,100 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         return { start, end, content: newContent, satisfaction };
     };
 
-    const initialParsed = (report.行動内容 === '外出時間' && report.商談内容)
+    const initialParsed = (report?.行動内容 === '外出時間' && report?.商談内容)
         ? parseInitialData(report.商談内容)
-        : { start: '', end: '', content: report.商談内容 || '', satisfaction: '' };
+        : { start: '', end: '', content: report?.商談内容 || '', satisfaction: '' };
 
     const [formData, setFormData] = useState({
-        日付: report.日付 || '',
-        行動内容: report.行動内容 || '',
-        エリア: report.エリア || '',
-        得意先CD: report.得意先CD || '',
-        直送先CD: report.直送先CD || '',
-        訪問先名: report.訪問先名 || '',
-        直送先名: report.直送先名 || '',
-        面談者: report.面談者 || '',
-        滞在時間: report.滞在時間 || '',
+        日付: report?.日付 || '',
+        行動内容: report?.行動内容 || '',
+        エリア: report?.エリア || '',
+        得意先CD: report?.得意先CD || '',
+        直送先CD: report?.直送先CD || '',
+        訪問先名: report?.訪問先名 || '',
+        直送先名: report?.直送先名 || '',
+        面談者: report?.面談者 || '',
+        滞在時間: report?.滞在時間 || '',
         商談内容: initialParsed.content,
-        提案物: report.提案物 || '',
-        次回プラン: report.次回プラン || '',
-        競合他社情報: report.競合他社情報 || '',
-        重点顧客: report.重点顧客 || '',
-        ランク: initialParsed.satisfaction || report.ランク || '', // ランクカラムが空でも本文から復元
-        上長コメント: report.上長コメント || report.コメント || '',
-        コメント返信欄: report.コメント返信欄 || ''
+        提案物: report?.提案物 || '',
+        次回プラン: report?.次回プラン || '',
+        競合他社情報: report?.競合他社情報 || '',
+        重点顧客: report?.重点顧客 || '',
+        ランク: initialParsed.satisfaction || report?.ランク || '', // ランクカラムが空でも本文から復元
+        上長コメント: report?.上長コメント || report?.コメント || '',
+        コメント返信欄: report?.コメント返信欄 || '',
+        デザイン提案有無: report?.デザイン提案有無 || '',
+        デザイン種別: report?.デザイン種別 || '',
+        デザイン名: report?.デザイン名 || '',
+        デザイン進捗状況: report?.デザイン進捗状況 || '',
+        'デザイン依頼No.': report?.['デザイン依頼No.'] || ''
     });
     const [startOutTime, setStartOutTime] = useState(initialParsed.start);
     const [endOutTime, setEndOutTime] = useState(initialParsed.end);
+    const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(() => {
+        if (report?.デザイン提案有無 === 'あり') {
+            return report?.['デザイン依頼No.'] ? 'existing' : 'new';
+        }
+        return 'none';
+    });
+    const [designs, setDesigns] = useState<Design[]>([]);
+
+    useEffect(() => {
+        if (formData.得意先CD) {
+            getDesigns(formData.得意先CD, selectedFile, formData.直送先名 || undefined)
+                .then(data => setDesigns(data))
+                .catch(err => {
+                    console.error('Failed to fetch designs in EditReportModal:', err);
+                    setDesigns([]);
+                });
+        }
+    }, [formData.得意先CD, selectedFile, formData.直送先名]);
+
+    const handleDesignModeChange = (mode: 'none' | 'new' | 'existing') => {
+        setDesignMode(mode);
+        if (mode === 'none') {
+            setFormData(prev => ({
+                ...prev,
+                デザイン提案有無: '',
+                デザイン種別: '',
+                デザイン名: '',
+                デザイン進捗状況: '',
+                'デザイン依頼No.': ''
+            }));
+        } else if (mode === 'new') {
+            setFormData(prev => ({
+                ...prev,
+                デザイン提案有無: 'あり',
+                デザイン種別: '',
+                デザイン名: '',
+                デザイン進捗状況: '新規',
+                'デザイン依頼No.': ''
+            }));
+        } else if (mode === 'existing') {
+            setFormData(prev => ({
+                ...prev,
+                デザイン提案有無: 'あり',
+                デザイン種別: '',
+                デザイン名: '',
+                デザイン進捗状況: '',
+                'デザイン依頼No.': ''
+            }));
+        }
+    };
+
+    const handleDesignSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const designNo = e.target.value;
+        const selectedDesign = designs.find(d => String(d.デザイン依頼No) === designNo);
+        if (selectedDesign) {
+            setFormData(prev => ({
+                ...prev,
+                'デザイン依頼No.': String(selectedDesign.デザイン依頼No),
+                デザイン種別: selectedDesign.デザイン種別,
+                デザイン名: selectedDesign.デザイン名,
+                デザイン進捗状況: selectedDesign.デザイン進捗状況
+            }));
+        }
+    };
 
     // 時間の選択肢を生成 (08:00 - 23:00)
     const timeOptions = [];
@@ -81,9 +150,9 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
     // Capture initial critical values for conflict detection
     const initialCriticalValues = React.useMemo(() => ({
-        '上長コメント': report.上長コメント,
-        'コメント返信欄': report.コメント返信欄,
-        '商談内容': report.商談内容
+        '上長コメント': report?.上長コメント || '',
+        'コメント返信欄': report?.コメント返信欄 || '',
+        '商談内容': report?.商談内容 || ''
     }), [report]);
 
 
@@ -94,15 +163,13 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         e.preventDefault();
 
         // 管理番号の検証
-        if (!report.管理番号) {
+        if (!report?.管理番号) {
             toast.error('管理番号が無効です。日報を再読み込みしてください。');
             setSubmitting(false);
             return;
         }
 
         setSubmitting(true);
-
-        const { 管理番号, ...rest } = report;
 
         const finalFormData = { 
             ...formData,
@@ -123,18 +190,19 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             finalFormData.ランク = '';
         }
 
-        const fullReport = { ...rest, ...finalFormData, original_values: initialCriticalValues };
-        const sanitized = sanitizeReport(fullReport);
+        // バックエンドのReportInputに対応するフィールドのみ送信（余分なフィールドで422を防ぐ）
+        const sanitized = sanitizeReport({ ...finalFormData, original_values: initialCriticalValues });
 
         try {
-            await updateReport(report.管理番号, sanitized, selectedFile);
-            toast.success(`日報を更新しました (No. ${report.管理番号})`);
+            await updateReport(report?.管理番号, sanitized, selectedFile);
+            toast.success(`日報を更新しました (No. ${report?.管理番号})`);
             onSuccess();
         } catch (error: any) {
+            // エラーログを出力（既存の console.error を維持）
             console.error('Error updating report:', error);
 
             if (error.response && error.response.status === 409) {
-                // Conflict detected
+                // 競合エラーの検出
                 toast.error(error.response.data.detail || '他の方が編集しました。最新の情報を読み込んでからやり直してください。', {
                     duration: 6000,
                     style: {
@@ -148,7 +216,12 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                     },
                 });
             } else {
-                toast.error('日報の更新に失敗しました');
+                const errorDetail = error.response?.data?.detail 
+                    ? (typeof error.response.data.detail === 'string' 
+                        ? error.response.data.detail 
+                        : JSON.stringify(error.response.data.detail))
+                    : error.message;
+                toast.error(`日報の更新に失敗しました: ${errorDetail}`);
             }
         } finally {
             setSubmitting(false);
@@ -165,13 +238,14 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
     const isOuting = formData.行動内容 === '外出時間';
 
+    if (!report) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
                     <h2 className="text-xl font-bold text-sf-text">
-                        日報編集 (No. {report.管理番号})
+                        日報編集 (No. {report?.管理番号})
                         {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
                     </h2>
                     <button
@@ -330,7 +404,129 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         )}
                     </div>
 
+                    {/* デザイン情報セクション */}
+                    {!isMinimalUI && (
+                        <div className="md:col-span-2 border-t border-sf-border pt-4 mt-2">
+                            <h3 className="font-medium text-sf-text mb-3">デザイン情報</h3>
+                            <div className="space-y-4">
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="radio"
+                                            name="designMode"
+                                            value="none"
+                                            checked={designMode === 'none'}
+                                            onChange={() => handleDesignModeChange('none')}
+                                            className="text-sf-light-blue focus:ring-sf-light-blue"
+                                        />
+                                        <span>なし</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="radio"
+                                            name="designMode"
+                                            value="new"
+                                            checked={designMode === 'new'}
+                                            onChange={() => handleDesignModeChange('new')}
+                                            className="text-sf-light-blue focus:ring-sf-light-blue"
+                                        />
+                                        <span>新規</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="radio"
+                                            name="designMode"
+                                            value="existing"
+                                            checked={designMode === 'existing'}
+                                            onChange={() => handleDesignModeChange('existing')}
+                                            className="text-sf-light-blue focus:ring-sf-light-blue"
+                                        />
+                                        <span>既存</span>
+                                    </label>
+                                </div>
 
+                                {designMode === 'existing' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-sf-text mb-1">過去のデザイン案件</label>
+                                        <select
+                                            onChange={handleDesignSelect}
+                                            value={formData['デザイン依頼No.']}
+                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                        >
+                                            <option value="">選択してください</option>
+                                            {designs.map((design) => (
+                                                <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
+                                                    {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {(designMode === 'new' || designMode === 'existing') && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン依頼No.</label>
+                                            <input
+                                                type="text"
+                                                name="デザイン依頼No."
+                                                value={formData['デザイン依頼No.']}
+                                                onChange={handleChange}
+                                                readOnly={designMode === 'existing'}
+                                                className={`w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue ${designMode === 'existing' ? 'bg-gray-100' : ''}`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン種別</label>
+                                            <select
+                                                name="デザイン種別"
+                                                value={formData.デザイン種別}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            >
+                                                <option value="">選択してください</option>
+                                                <option value="-">-</option>
+                                                <option value="別注（新版）">別注（新版）</option>
+                                                <option value="別注（改版）">別注（改版）</option>
+                                                <option value="別注（再版）">別注（再版）</option>
+                                                <option value="SP（新版）">SP（新版）</option>
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン名</label>
+                                            <input
+                                                type="text"
+                                                name="デザイン名"
+                                                value={formData.デザイン名}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン進捗状況</label>
+                                            <select
+                                                name="デザイン進捗状況"
+                                                value={formData.デザイン進捗状況}
+                                                onChange={handleChange}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            >
+                                                <option value="">選択してください</option>
+                                                <option value="-">-</option>
+                                                <option value="新規">新規</option>
+                                                <option value="50％未満">50％未満</option>
+                                                <option value="80％未満">80％未満</option>
+                                                <option value="80％以上">80％以上</option>
+                                                <option value="出稿">出稿</option>
+                                                <option value="不採用（コンペ負け）">不採用（コンペ負け）</option>
+                                                <option value="不採用（企画倒れ）">不採用（企画倒れ）</option>
+                                                <option value="保留">保留</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-sf-text mb-1">商談内容</label>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { getReports, getCustomers, Report, Customer } from '@/lib/api';
+import { getReports, getCustomers, Report, Customer, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import {
     User,
@@ -18,11 +18,18 @@ import {
     AlertTriangle,
     DollarSign,
     Upload,
-    Database
+    Database,
+    Image as ImageIcon,
+    X,
+    Download,
+    Search,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { compareDates } from '@/lib/reportUtils';
+import toast from 'react-hot-toast';
 
 interface DesignRequest {
     designNo: number;
@@ -66,6 +73,38 @@ function CustomerDetailContent() {
     const [salesData, setSalesData] = useState<SalesData | null>(null);
     const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
     const [mounted, setMounted] = useState(false);
+
+    // デザイン画像プレビュー用のステート
+    const [searchingImage, setSearchingImage] = useState<boolean>(false);
+    const [imageResults, setImageResults] = useState<DesignImage[]>([]);
+    const [showImageModal, setShowImageModal] = useState<boolean>(false);
+    const [searchQueryDebug, setSearchQueryDebug] = useState<string>('');
+    const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+
+    // デザイン画像検索ハンドラ
+    const handleImageSearch = async (designNo: string | number, e: React.MouseEvent): Promise<void> => {
+        e.stopPropagation(); // アコーディオンの開閉を防ぐ
+        if (!designNo) return;
+
+        setSearchingImage(true);
+        setSearchQueryDebug(String(designNo));
+        try {
+            const result = await searchDesignImages(String(designNo), selectedFile || undefined);
+            if (result.images && result.images.length > 0) {
+                setImageResults(result.images);
+                setShowImageModal(true);
+                toast.success(`${result.images.length}件の画像が見つかりました`);
+            } else {
+                toast.error('画像が見つかりませんでした');
+                setImageResults([]);
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+            toast.error('画像検索中にエラーが発生しました');
+        } finally {
+            setSearchingImage(false);
+        }
+    };
 
     useEffect(() => {
         setMounted(true);
@@ -538,7 +577,17 @@ function CustomerDetailContent() {
                                     <div key={req.designNo} className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
                                         <div className="p-4 border-b border-sf-border bg-gray-50 flex justify-between items-center">
                                             <div className="flex items-center gap-3">
-                                                <span className="font-bold text-lg text-sf-light-blue">#{req.designNo}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-lg text-sf-light-blue">#{req.designNo}</span>
+                                                    <button
+                                                        onClick={(e) => handleImageSearch(req.designNo, e)}
+                                                        disabled={searchingImage}
+                                                        className="p-1 rounded hover:bg-sf-light-blue/10 text-pink-500 transition-colors disabled:opacity-50"
+                                                        title="関連画像を検索"
+                                                    >
+                                                        <ImageIcon size={18} />
+                                                    </button>
+                                                </div>
                                                 <h3 className="font-semibold text-sf-text">{req.designName || '名称未設定'}</h3>
                                             </div>
                                             {getProgressBadge(req.designProgress)}
@@ -748,6 +797,144 @@ function CustomerDetailContent() {
                     </div>
                 )}
             </div>
+
+            {/* 画像検索結果モーダル */}
+            {showImageModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col animate-fadeIn">
+                        <div className="p-4 border-b border-sf-border flex justify-between items-center bg-gray-50 rounded-t-lg">
+                            <h3 className="font-bold text-lg text-sf-text flex items-center gap-2">
+                                <Search size={20} className="text-pink-500" />
+                                検索結果: "{searchQueryDebug}" ({imageResults.length}件)
+                            </h3>
+                            <button
+                                onClick={() => setShowImageModal(false)}
+                                className="text-gray-500 hover:text-gray-700 bg-gray-200 rounded-full p-1"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 bg-gray-100">
+                            {imageResults.length > 0 ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {imageResults.map((img, i) => {
+                                        const isPdf = img.name.toLowerCase().endsWith('.pdf');
+                                        return (
+                                            <div key={i} className="group relative bg-white rounded border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (isPdf) {
+                                                            window.open(getImageUrl(img.path), '_blank');
+                                                        } else {
+                                                            setSelectedImageIndex(i);
+                                                        }
+                                                    }} 
+                                                    className="w-full block aspect-square overflow-hidden bg-gray-200 flex items-center justify-center cursor-pointer"
+                                                >
+                                                    {isPdf ? (
+                                                        <div className="flex flex-col items-center justify-center text-red-500">
+                                                            <FileText size={48} />
+                                                            <span className="text-xs font-bold mt-2 text-gray-500">PDF</span>
+                                                        </div>
+                                                    ) : (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img
+                                                            src={getImageUrl(img.path)}
+                                                            alt={img.name}
+                                                            className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform duration-300"
+                                                            loading="lazy"
+                                                        />
+                                                    )}
+                                                </button>
+                                                <div className="p-2 text-xs flex justify-between items-start">
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <div className="font-medium truncate text-sf-text" title={img.name}>{img.name}</div>
+                                                        <div className="text-gray-400 truncate mt-0.5">{img.folder}</div>
+                                                    </div>
+                                                    <a 
+                                                        href={getImageUrl(img.path)} 
+                                                        download={img.name}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="ml-2 p-1.5 bg-gray-100 hover:bg-sf-light-blue hover:text-white rounded text-gray-500 transition-colors"
+                                                        title="ダウンロード"
+                                                    >
+                                                        <Download size={14} />
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                                    <Search size={48} className="mb-4 text-gray-300" />
+                                    <p>画像が見つかりませんでした</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ライトボックスビューア */}
+            {selectedImageIndex !== null && (
+                <div className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-[70]">
+                    <div className="absolute top-4 right-4 flex gap-3 z-50">
+                        <a
+                            href={getImageUrl(imageResults[selectedImageIndex].path)}
+                            download={imageResults[selectedImageIndex].name}
+                            className="text-white hover:text-sf-light-blue bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-2 transition-all flex items-center justify-center"
+                            title="画像をダウンロード"
+                        >
+                            <Download size={24} />
+                        </a>
+                        <button
+                            onClick={() => setSelectedImageIndex(null)}
+                            className="text-white hover:text-gray-300 bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-2 transition-all"
+                            title="閉じる"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+
+                    {selectedImageIndex > 0 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageIndex(selectedImageIndex - 1);
+                            }}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-3 z-50"
+                        >
+                            <ChevronLeft size={32} />
+                        </button>
+                    )}
+
+                    <div className="w-full h-full p-8 flex items-center justify-center relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={getImageUrl(imageResults[selectedImageIndex].path)}
+                            alt={imageResults[selectedImageIndex].name}
+                            className="max-w-full max-h-full object-contain animate-fadeIn"
+                        />
+                        <div className="absolute bottom-4 left-0 right-0 text-center text-white text-sm bg-black bg-opacity-50 py-2">
+                            {imageResults[selectedImageIndex].name} ({selectedImageIndex + 1} / {imageResults.length})
+                        </div>
+                    </div>
+
+                    {selectedImageIndex < imageResults.length - 1 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageIndex(selectedImageIndex + 1);
+                            }}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-3 z-50"
+                        >
+                            <ChevronRight size={32} />
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

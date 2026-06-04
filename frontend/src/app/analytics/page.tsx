@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
-import { aggregateAnalytics, getDateRange, AnalyticsData, aggregatePriorityMatrix, PriorityMatrixData } from '@/lib/analytics';
+import { aggregateAnalytics, getDateRange, AnalyticsData, aggregatePriorityMatrix, PriorityMatrixData, parseDate } from '@/lib/analytics';
 import { getPriorityCustomers, PriorityCustomer, getCustomers, Customer } from '@/lib/api';
 import KPICard from '@/components/KPICard';
 import { Users, FileText, Briefcase, CheckCircle, XCircle, TrendingUp, Phone, Mail, LayoutDashboard, MessageSquare, Palette, Star } from 'lucide-react';
@@ -74,7 +74,7 @@ export default function AnalyticsPage() {
         if (reports.length > 0) {
             calculateAnalytics();
         }
-    }, [reports, period]);
+    }, [reports, period, priorityCustomers]);
 
     // ファイル名から担当者名を抽出する関数
     // 例: 「本社002　2025年度用日報【山下（尚）次長】.xlsm」→「山下尚」
@@ -129,7 +129,7 @@ export default function AnalyticsPage() {
 
     const calculateAnalytics = () => {
         const { start, end } = getDateRange(period);
-        const analyticsData = aggregateAnalytics(reports, start, end);
+        const analyticsData = aggregateAnalytics(reports, start, end, priorityCustomers);
         setAnalytics(analyticsData);
     };
 
@@ -370,15 +370,11 @@ export default function AnalyticsPage() {
 
                                         reports.forEach(report => {
                                             if (!report.日付) return;
-                                            const dateStr = String(report.日付);
-                                            let month = '';
-                                            if (dateStr.includes('/')) {
-                                                const parts = dateStr.split('/');
-                                                if (parts.length >= 2) month = `${parts[0]}/${parts[1]}`;
-                                            } else {
-                                                month = dateStr.slice(0, 7);
-                                            }
-                                            if (!month) return;
+                                            const parsedDate = parseDate(String(report.日付));
+                                            if (!parsedDate) return;
+                                            const yy = String(parsedDate.getFullYear()).slice(-2);
+                                            const mm = String(parsedDate.getMonth() + 1).padStart(2, '0');
+                                            const month = `${yy}/${mm}`;
 
                                             const isVisit = report.行動内容 && report.行動内容.includes('訪問');
                                             const isCall = report.行動内容 && report.行動内容.includes('電話');

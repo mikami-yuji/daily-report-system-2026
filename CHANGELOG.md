@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## [2026-06-04]
+### 修正 (Fixed)
+- **重点顧客マスタ取得時の列指定バグの修正**:
+  - `backend/main.py` および `release_pkg/backend/main.py` の `get_priority_customers` において、`col_customer_name` がインデックス1（直送先CD.）を参照していたバグを修正。
+  - カラム名に「得意先名」が含まれるものを動的に走査・特定し、見つからない場合もフォールバック先としてインデックス2（得意先名）を参照するように修正。
+  - これにより、得意先CDに対する名称（`幸南食糧（株）` など）が正しく紐づき、フロントエンドでの重点顧客のマッチングおよび全日報レコード（NaNフラグを含む全活動数）の集計・マトリクスへの反映が正確に動作するよう改善しました。
+
+### 変更 (Changed)
+- **配布用パッケージ（ZIP）の更新**:
+  - フロントエンドの最新ビルドを `static/` ディレクトリに同期し、PyInstaller で最新の `DailyReportServer.exe` を再ビルド。
+  - デスクトップ上の配布用パッケージ `C:\Users\asahi\Desktop\DailyReportSystem_20260526.zip` 内の実行ファイルを上書き更新。
+
+## [2026-06-03]
+### 追加 (Added)
+- **コメント・承認チェック更新時の楽観的ロック（排他制御）の実装**:
+  - 同時編集によるデータ上書き（ロストアップデート）を防止するため、上長コメント・コメント返信（`/api/reports/{management_number}/comment`）および承認ステータス（`/api/reports/{management_number}/approval`）の各更新APIに楽観的ロックを導入。
+  - バックエンド（`backend/main.py` および `release_pkg/backend/main.py`）にて、処理開始時にExcelから最新の値を読み込み、フロントエンドから送信された編集開始時の値（`original_values`）と比較して差分がある場合に `409 Conflict` エラーを返却するロジックを実装。
+  - 承認チェックの比較時には、表記ブレ（Wingdingsの `ü`, `✓`, `済` など）を同一の承認済状態として正規化する処理を追加。
+  - フロントエンド（`frontend/src/lib/api.ts` および `ReportDetailModal.tsx`）にて、リクエスト時に元の `report` オブジェクトを `original_values` パラメータとして送信するよう拡張。
+
+### 修正 (Fixed)
+- **release_pkg バックエンドでの例外処理バグの修正**:
+  - `release_pkg/backend/main.py` の `update_report_comment` および `update_report_approval` において、`except HTTPException: raise` が不足しており、楽観的ロック衝突時の 409 エラーが汎用例外キャッチにより 500 エラーに変換されてしまっていた不具合を修正。
+
+### 変更 (Changed)
+- **配布用パッケージ（ZIP）の更新**:
+  - フロントエンドの最新ビルド（Next.js SSG）を `static/` ディレクトリにコピーし、PyInstaller を用いて最新の `DailyReportServer.exe` を再ビルド・更新。
+  - デスクトップ上に最新の配布用パッケージ `C:\Users\asahi\Desktop\DailyReportSystem_20260526.zip` を再作成してエクスポート。
+
 ## [2026-05-26]
 ### 追加 (Added)
 - **得意先詳細画面からのデザイン画像プレビュー機能追加**:

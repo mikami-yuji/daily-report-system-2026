@@ -103,7 +103,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         setProcessingApproval(field); // 処理中のフィールドを㔵2録
         try {
             // 承認専用エンドポイントを使用（バリデーションエラー回避）
-            await updateReportApproval(report.管理番号, { [field]: newExcelValue }, selectedFile);
+            await updateReportApproval(report.管理番号, { [field]: newExcelValue, original_values: report }, selectedFile);
             toast.success(`${field}の承認を更新しました`);
             if (onUpdate) onUpdate();
         } catch (error) {
@@ -130,7 +130,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         setProcessingComment(field); // 処理中のコメントフィールドを記録
         try {
             // コメント専用エンドポイントを使用（バリデーションエラー回避）
-            await updateReportComment(report.管理番号, { [field]: comments[field] }, selectedFile);
+            await updateReportComment(report.管理番号, { [field]: comments[field], original_values: report }, selectedFile);
             toast.success('コメントを保存しました');
             if (onUpdate) onUpdate();
         } catch (error) {

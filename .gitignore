@@ -62,3 +62,6 @@ release_pkg/backend/DailyReportServer.exe
 backend/dist/
 DailyReportSystem_2026.zip
 DailyReportSystem_2026_Simple/DailyReportServer.exe
+
+# Cache
+backend/.cache/

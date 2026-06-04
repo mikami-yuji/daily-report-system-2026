@@ -213,11 +213,11 @@ export default function DailyReportPointsTablePage() {
         
         displayMonths.forEach(m => {
             row1.push(m, '', '', '');
-            row2.push('重点電話', '電話総数(一般)', '重点訪問', '訪問件数(一般)');
+            row2.push('重点電話', '一般電話', '重点訪問', '一般訪問');
         });
         
         row1.push('累計', '', '', '', '', '', '点数', `月200点×${targetMonths}(${200 * targetMonths})`, '点数');
-        row2.push('重点電話総数', '電話総件数(一般)', '総電話件数', '重点訪問総数', '訪問総件数(一般)', '総訪問件数', '総合点数', '達成率', '評価レート');
+        row2.push('重点電話総数', '一般電話総数', '総電話件数', '重点訪問総数', '一般訪問総数', '総訪問件数', '総合点数', '達成率', '評価レート');
 
         const csvRows = [
             row1.join(','),
@@ -648,17 +648,17 @@ export default function DailyReportPointsTablePage() {
                                             {displayMonths.map(m => (
                                                 <React.Fragment key={`sub-${m}`}>
                                                     <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">重点電</th>
-                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">電話総</th>
+                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">一般電</th>
                                                     <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">重点訪</th>
-                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-200 w-[55px] min-w-[55px]">訪問件</th>
+                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-200 w-[55px] min-w-[55px]">一般訪</th>
                                                 </React.Fragment>
                                             ))}
 
                                             <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">重点電話</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">電話総</th>
+                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">一般電話</th>
                                             <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">総電話</th>
                                             <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">重点訪</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">訪問件</th>
+                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">一般訪問</th>
                                             <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">総訪問</th>
                                         </tr>
                                     </thead>

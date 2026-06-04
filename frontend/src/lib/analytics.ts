@@ -96,7 +96,12 @@ export function parseDate(dateStr: string | undefined): Date | null {
     return isNaN(date.getTime()) ? null : date;
 }
 
-export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?: Date): AnalyticsData {
+export function aggregateAnalytics(
+    reports: Report[],
+    startDate?: Date,
+    endDate?: Date,
+    priorityCustomers?: { 得意先CD: string; 得意先名: string }[]
+): AnalyticsData {
     // Filter by date range if provided
     let filteredReports = reports;
     if (startDate || endDate) {
@@ -320,8 +325,17 @@ export function aggregateAnalytics(reports: Report[], startDate?: Date, endDate?
         .map(([status, count]) => ({ status, count }))
         .sort((a, b) => b.count - a.count);
 
+    const priorityCodes = new Set(priorityCustomers?.map(c => String(c.得意先CD || '').trim()));
+
     // Priority Customer Analysis - 得意先CDと直送先CDでユニークにカウント
-    const priorityReports = filteredReports.filter(r => r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '');
+    const priorityReports = filteredReports.filter(r => {
+        const code = String(r.得意先CD || '').trim();
+        if (priorityCodes.size > 0) {
+            return priorityCodes.has(code);
+        }
+        // マスタリストがない場合のフォールバック（日報のフラグ）
+        return r.重点顧客 && r.重点顧客 !== '-' && r.重点顧客 !== '';
+    });
 
     // Use customer code + direct delivery code as unique key
     const priorityCustomerMap = new Map<string, {
@@ -602,9 +616,8 @@ export function aggregatePriorityMatrix(
         const customerCode = String(report.得意先CD || '').trim();
         if (!customerCode) return;
 
-        // 重点顧客フラグが設定されていない活動は除外
-        const priorityFlag = report.重点顧客;
-        if (!priorityFlag || priorityFlag === '-' || priorityFlag === '') return;
+        // 重点顧客マスタ（または日報から抽出した重点リスト）に得意先が存在するかチェック
+        if (!customerDataMap.has(customerCode)) return;
 
         const directDeliveryCode = report.直送先CD ? String(report.直送先CD).replace(/\.0$/, '').trim() : '';
         const directDeliveryName = report.直送先名 || '';
@@ -621,9 +634,6 @@ export function aggregatePriorityMatrix(
                 ? `${customerName} / ${directDeliveryName}`
                 : customerName;
         }
-
-        // 重点顧客マスタに得意先が存在するかチェック（マスタがある場合のみ）
-        if (priorityCustomers.length > 0 && !customerDataMap.has(customerCode)) return;
 
         const reportDate = parseDate(report.日付);
         if (!reportDate) return;
@@ -662,6 +672,7 @@ export function aggregatePriorityMatrix(
             // 元の得意先エントリは削除しない（両方表示）
         }
 
+        // 1. 直送先（または得意先）の個別エントリを更新
         const customerData = customerDataMap.get(matchKey) || customerDataMap.get(customerCode);
         if (customerData && customerData.values.has(periodKey)) {
             customerData.values.set(periodKey, (customerData.values.get(periodKey) || 0) + 1);
@@ -670,6 +681,20 @@ export function aggregatePriorityMatrix(
             const dateStr = report.日付;
             if (dateStr && (!customerData.lastActivity || dateStr > customerData.lastActivity)) {
                 customerData.lastActivity = dateStr;
+            }
+        }
+
+        // 2. 直送先かつ、親の得意先が存在する場合は、親のエントリも同時に更新する
+        if (matchKey !== customerCode) {
+            const parentData = customerDataMap.get(customerCode);
+            if (parentData && parentData.values.has(periodKey)) {
+                parentData.values.set(periodKey, (parentData.values.get(periodKey) || 0) + 1);
+
+                // 親の最終活動日も更新
+                const dateStr = report.日付;
+                if (dateStr && (!parentData.lastActivity || dateStr > parentData.lastActivity)) {
+                    parentData.lastActivity = dateStr;
+                }
             }
         }
     });

@@ -95,7 +95,7 @@ export const updateReportReply = async (managementNumber: number, reply: string,
 // コメント更新専用API（上長コメントとコメント返信欄を個別に更新）
 export const updateReportComment = async (
     managementNumber: number,
-    comment: { 上長コメント?: string; コメント返信欄?: string },
+    comment: { 上長コメント?: string; コメント返信欄?: string; original_values?: { [key: string]: any } },
     filename?: string
 ): Promise<{ success: boolean }> => {
     const params = filename ? { filename } : {};
@@ -106,7 +106,7 @@ export const updateReportComment = async (
 // 承認チェック更新専用API（上長、山澄常務、岡本常務、中野次長、既読チェックを個別に更新）
 export const updateReportApproval = async (
     managementNumber: number,
-    approval: { 上長?: string; 山澄常務?: string; 岡本常務?: string; 中野次長?: string; 既読チェック?: string },
+    approval: { 上長?: string; 山澄常務?: string; 岡本常務?: string; 中野次長?: string; 既読チェック?: string; original_values?: { [key: string]: any } },
     filename?: string
 ): Promise<{ success: boolean }> => {
     const params = filename ? { filename } : {};

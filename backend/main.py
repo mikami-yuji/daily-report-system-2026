@@ -319,6 +319,7 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
     """
     Get dataframe from cache or read from Excel file if modified or not in cache.
     """
+    filename = os.path.basename(filename)
     excel_file = os.path.join(EXCEL_DIR, filename)
     
     if not os.path.exists(excel_file):
@@ -465,7 +466,16 @@ def get_priority_customers(filename: str = DEFAULT_EXCEL_FILE):
         
         # カラム名を保存
         col_customer_cd = df.columns[0]  # 得意先CD
-        col_customer_name = df.columns[1] if len(df.columns) > 1 else None  # 得意先名
+        
+        # 得意先名カラムを特定する（'得意先名'を含むカラムを探す）
+        col_customer_name = None
+        for col in df.columns:
+            if '得意先名' in str(col):
+                col_customer_name = col
+                break
+        if not col_customer_name:
+            col_customer_name = df.columns[2] if len(df.columns) > 2 else (df.columns[1] if len(df.columns) > 1 else None)
+            
         col_priority = df.columns[7] if len(df.columns) > 7 else None  # カラムH: 重点顧客
         col_staff = df.columns[8] if len(df.columns) > 8 else None  # カラムI: 担当者
         
@@ -859,6 +869,7 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
 
 @app.post("/api/reports")
 def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
+    filename = os.path.basename(filename)
     logging.info(f"DEBUG ADD_REPORT: Received payload: {report.model_dump()}")
     excel_file = os.path.join(EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
@@ -1025,12 +1036,14 @@ def add_report(report: ReportInput, background_tasks: BackgroundTasks, filename:
             detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error in add_report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-# コメント更新専用エンドポイント（楽観的ロックなし）
+# コメント更新専用エンドポイント
 class CommentInput(BaseModel):
     上長コメント: Optional[str] = None
     コメント返信欄: Optional[str] = None
+    original_values: Optional[dict] = None  # 排他制御用
 
 # 承認チェック更新専用
 class ApprovalInput(BaseModel):
@@ -1039,6 +1052,7 @@ class ApprovalInput(BaseModel):
     岡本常務: Optional[str] = None
     中野次長: Optional[str] = None
     既読チェック: Optional[str] = None
+    original_values: Optional[dict] = None  # 排他制御用
 
 # 後方互換性のため
 class ReplyInput(BaseModel):
@@ -1050,6 +1064,7 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
     import tempfile
     import shutil
     
+    filename = os.path.basename(filename)
     logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
@@ -1122,10 +1137,8 @@ def update_report_reply(management_number: int, reply: ReplyInput, background_ta
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        logging.error(f"update_report_reply: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error in update_report_reply: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.patch("/api/reports/{management_number}/comment")
 def update_report_comment(management_number: int, comment: CommentInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
@@ -1133,6 +1146,7 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
     import tempfile
     import shutil
     
+    filename = os.path.basename(filename)
     logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
@@ -1160,6 +1174,37 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
         if not target_row:
             wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # --- Optimistic Locking Check ---
+        if comment.original_values:
+            logging.debug(f"Performing conflict check for Comment {management_number}")
+            check_fields = {
+                23: '上長コメント',
+                24: 'コメント返信欄'
+            }
+            conflicts = []
+            for col_idx, field_name in check_fields.items():
+                current_val = ws.cell(row=target_row, column=col_idx).value
+                current_str = str(current_val) if current_val is not None else ""
+                original_val = comment.original_values.get(field_name, "")
+                original_str = str(original_val) if original_val is not None else ""
+                
+                # Normalize newlines for comparison
+                current_str = current_str.replace('\r\n', '\n').replace('\r', '\n').strip()
+                original_str = original_str.replace('\r\n', '\n').replace('\r', '\n').strip()
+                
+                if current_str != original_str:
+                    logging.warning(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
+                    conflicts.append(field_name)
+            
+            if conflicts:
+                conflict_msg = ", ".join(conflicts)
+                wb.close()
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"他の方がコメントを編集しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
+                )
+        # --------------------------------
         
         # Update only provided fields
         # 2026年度版: W列(23) = 上長コメント, X列(24) = コメント返信欄
@@ -1201,10 +1246,8 @@ def update_report_comment(management_number: int, comment: CommentInput, backgro
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        logging.error(f"update_report_comment: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error in update_report_comment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.patch("/api/reports/{management_number}/approval")
 def update_report_approval(management_number: int, approval: ApprovalInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
@@ -1212,6 +1255,7 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
     import tempfile
     import shutil
     
+    filename = os.path.basename(filename)
     logging.debug(f"update_report_approval: management_number={management_number}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
@@ -1239,6 +1283,43 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
         if not target_row:
             wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        
+        # --- Optimistic Locking Check ---
+        if approval.original_values:
+            logging.debug(f"Performing conflict check for Approval {management_number}")
+            column_mapping = {
+                '上長': 25,           # Y列
+                '山澄常務': 26,        # Z列
+                '岡本常務': 27,        # AA列
+                '中野次長': 28,        # AB列
+                '既読チェック': 29     # AC列
+            }
+            conflicts = []
+            for field_name, col_idx in column_mapping.items():
+                if getattr(approval, field_name) is not None:
+                    current_val = ws.cell(row=target_row, column=col_idx).value
+                    current_str = str(current_val) if current_val is not None else ""
+                    original_val = approval.original_values.get(field_name, "")
+                    original_str = str(original_val) if original_val is not None else ""
+                    
+                    def norm_val(v):
+                        v_str = str(v).strip()
+                        if v_str in ['ü', '✓', '済']:
+                            return '✓'
+                        return ''
+                    
+                    if norm_val(current_str) != norm_val(original_str):
+                        logging.warning(f"CONFLICT: Approval Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
+                        conflicts.append(field_name)
+            
+            if conflicts:
+                conflict_msg = ", ".join(conflicts)
+                wb.close()
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"他の方が承認ステータスを更新しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
+                )
+        # --------------------------------
         
         # Update only provided fields
         # 2026年度版カラムマッピング: Y=上長(25), Z=山澄常務(26), AA=岡本常務(27), AB=中野次長(28), AC=既読チェック(29)
@@ -1292,14 +1373,13 @@ def update_report_approval(management_number: int, approval: ApprovalInput, back
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        logging.error(f"update_report_approval: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error in update_report_approval: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/reports/{management_number}")
 def update_report(management_number: int, report: ReportInput, background_tasks: BackgroundTasks, filename: str = DEFAULT_EXCEL_FILE):
     """既存の日報を更新（全項目対応）"""
+    filename = os.path.basename(filename)
     logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
@@ -1408,17 +1488,14 @@ def update_report(management_number: int, report: ReportInput, background_tasks:
         return {"message": "Report updated successfully", "management_number": management_number}
     except HTTPException:
         raise
-    except PermissionError:
-        raise HTTPException(
-            status_code=409,
-            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
-        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error in update_report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.delete("/api/reports/{management_number}")
 def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を削除"""
+    filename = os.path.basename(filename)
     try:
         excel_file = os.path.join(EXCEL_DIR, filename)
         
@@ -1467,7 +1544,8 @@ def delete_report(management_number: int, filename: str = DEFAULT_EXCEL_FILE):
             detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Error in delete_report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/upload")
@@ -1479,7 +1557,9 @@ async def upload_file(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Only .xlsx and .xlsm files are allowed")
         
         # Save the uploaded file
-        file_path = os.path.join(EXCEL_DIR, file.filename)
+        filename = file.filename.replace('/', '\\')
+        filename = os.path.basename(filename)
+        file_path = os.path.join(EXCEL_DIR, filename)
         
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -1510,6 +1590,7 @@ def get_design_images(filename: str):
     Target directory: \\Asahipack02\\社内書類ｎｅｗ\\01：部署別　営業部\\03：デザインデータ
     Logic: Extract name from filename '...【Name】.xlsm' -> Search folder containing 'Name'
     """
+    filename = os.path.basename(filename)
     DESIGN_DIR = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ"
     
     logging.info(f"--- get_design_images called with filename: {filename} ---")
@@ -1662,11 +1743,14 @@ def serve_design_image(path: str):
     
     try:
         # Security check: Prevent directory traversal
-        # relpath needs to be safe. 
-        # Since we construct it ourselves in /images/list, it should be fine, but good to check.
         safe_path = os.path.normpath(os.path.join(DESIGN_DIR, path))
         
-        if not safe_path.startswith(DESIGN_DIR):
+        try:
+            # Verify the resolved path is strictly under DESIGN_DIR
+            common = os.path.commonpath([os.path.abspath(DESIGN_DIR), os.path.abspath(safe_path)])
+            if common != os.path.abspath(DESIGN_DIR):
+                raise HTTPException(status_code=403, detail="Access denied")
+        except ValueError:
             raise HTTPException(status_code=403, detail="Access denied")
             
         if not os.path.exists(safe_path):
@@ -1674,8 +1758,11 @@ def serve_design_image(path: str):
             
         from fastapi.responses import FileResponse
         return FileResponse(safe_path)
+    except HTTPException:
+        raise
     except Exception as e:
-         raise HTTPException(status_code=500, detail=str(e))
+         logging.error(f"Error in serve_design_image: {e}", exc_info=True)
+         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/api/images/search")
 def search_design_images(query: str, filename: Optional[str] = None):
@@ -1684,6 +1771,8 @@ def search_design_images(query: str, filename: Optional[str] = None):
     If filename is provided (e.g. '見上.xlsm'), it tries to find a matching user folder first (e.g. '08：見上').
     Recursively searches subfolders.
     """
+    if filename:
+        filename = os.path.basename(filename)
     DESIGN_DIR = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ"
     
     logging.info(f"--- search_design_images called. Query: {query}, Filename: {filename} ---")
@@ -2588,7 +2677,7 @@ def get_points_table(target_months_count: int = 7):
             if not match: return filename.replace('.xlsm', '')
             content = match.group(1)
             name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
-            if name_with_paren: return name_with_paren.group(1)
+            if name_with_paren: return name_with_paren.group(1) + name_with_paren.group(2)
             surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
             if surname: return surname.group(1)
             return content[:4]
@@ -2901,7 +2990,7 @@ def export_points_table_excel(target_months_count: int = 7):
         ws[cell_ref].fill = fill_blue_header
         ws[cell_ref].alignment = align_center
 
-        sub_headers = ["重点電話", "電話総数", "重点訪問", "訪問件数"]
+        sub_headers = ["重点電話", "一般電話", "重点訪問", "一般訪問"]
         for idx, sub in enumerate(sub_headers):
             c_ref = f"{get_column_letter(current_col + idx)}4"
             ws[c_ref] = sub
@@ -2922,7 +3011,7 @@ def export_points_table_excel(target_months_count: int = 7):
     ws[cell_ref].fill = fill_gray_header
     ws[cell_ref].alignment = align_center
 
-    sub_tots = ["重点電話総数", "電話総件数", "総電話件数", "重点訪問総数", "訪問総件数", "総訪問件数"]
+    sub_tots = ["重点電話総数", "一般電話総数", "総電話件数", "重点訪問総数", "一般訪問総数", "総訪問件数"]
     for idx, sub in enumerate(sub_tots):
         c_ref = f"{get_column_letter(current_col + idx)}4"
         ws[c_ref] = sub

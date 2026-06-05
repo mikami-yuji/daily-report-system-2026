@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import { getReports, getCustomers, Report, Customer, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import {
@@ -24,12 +24,25 @@ import {
     Download,
     Search,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    BarChart3
 } from 'lucide-react';
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Legend,
+    ResponsiveContainer
+} from 'recharts';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { compareDates } from '@/lib/reportUtils';
 import toast from 'react-hot-toast';
+import { aggregateMonthlyActivities } from '@/lib/activityUtils';
+import { MonthlyActivityStats } from '@/types/activity';
 
 interface DesignRequest {
     designNo: number;
@@ -67,12 +80,17 @@ function CustomerDetailContent() {
     const [loading, setLoading] = useState(true);
     const [customerName, setCustomerName] = useState('');
     const [directDeliveryName, setDirectDeliveryName] = useState('');  // 直送先名
-    const [activeTab, setActiveTab] = useState<'timeline' | 'designs' | 'complaints' | 'sales'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'designs' | 'complaints' | 'sales' | 'monthly-activity'>('timeline');
     const [designRequests, setDesignRequests] = useState<DesignRequest[]>([]);
     const [selectedInterviewer, setSelectedInterviewer] = useState<string>('');
     const [salesData, setSalesData] = useState<SalesData | null>(null);
     const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
     const [mounted, setMounted] = useState(false);
+
+    // 月別活動数の集計データ
+    const monthlyActivityData = useMemo((): MonthlyActivityStats[] => {
+        return aggregateMonthlyActivities(reports);
+    }, [reports]);
 
     // デザイン画像プレビュー用のステート
     const [searchingImage, setSearchingImage] = useState<boolean>(false);
@@ -278,6 +296,16 @@ function CustomerDetailContent() {
         <div className="space-y-6">
             {/* ヘッダーエリア */}
             <div className="bg-white rounded border border-sf-border shadow-sm p-6">
+                <div className="mb-4">
+                    <Link
+                        href="/customers"
+                        className="inline-flex items-center gap-1.5 text-sm text-sf-text-weak hover:text-sf-light-blue transition-colors"
+                    >
+                        <ArrowLeft size={16} />
+                        <span>得意先一覧に戻る</span>
+                    </Link>
+                </div>
+
                 <div className="flex items-center gap-2 text-sf-text-weak text-sm mb-2">
                     <Link href="/customers" className="hover:text-sf-light-blue hover:underline">
                         得意先一覧
@@ -444,6 +472,18 @@ function CustomerDetailContent() {
                     >
                         <DollarSign size={18} />
                         売上データ
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('monthly-activity')}
+                        className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2
+              ${activeTab === 'monthly-activity'
+                                ? 'border-sf-light-blue text-sf-light-blue'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+            `}
+                    >
+                        <BarChart3 size={18} />
+                        月別活動数
                     </button>
                 </nav>
             </div>
@@ -794,6 +834,85 @@ function CustomerDetailContent() {
                                 </div>
                             )}
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'monthly-activity' && (
+                    <div className="space-y-6">
+                        {/* グラフコンポーネント */}
+                        <div className="bg-white p-6 rounded border border-sf-border shadow-sm">
+                            <div className="flex items-center gap-2 mb-6">
+                                <BarChart3 className="text-sf-light-blue" size={20} />
+                                <h2 className="font-semibold text-lg text-sf-text">月別活動推移</h2>
+                            </div>
+                            
+                            {monthlyActivityData.length === 0 ? (
+                                <div className="text-center py-12 text-sf-text-weak">
+                                    活動データがありません
+                                </div>
+                            ) : (
+                                <div style={{ width: '100%', height: 350 }}>
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <BarChart data={monthlyActivityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                                            <YAxis tick={{ fontSize: 11 }} />
+                                            <Tooltip 
+                                                contentStyle={{ 
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+                                                    border: '1px solid #e2e8f0', 
+                                                    borderRadius: '6px',
+                                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' 
+                                                }}
+                                            />
+                                            <Legend verticalAlign="top" height={36} iconType="circle" />
+                                            <Bar dataKey="visits" name="訪問" fill="#10B981" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="calls" name="電話" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="designs" name="デザイン提案" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="complaints" name="クレーム" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="proposals" name="提案物" fill="#F97316" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 詳細テーブル */}
+                        {monthlyActivityData.length > 0 && (
+                            <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
+                                <div className="px-6 py-4 border-b border-sf-border bg-gray-50">
+                                    <h3 className="font-semibold text-sm text-sf-text">月別活動データ詳細</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border uppercase tracking-wider">
+                                            <tr>
+                                                <th className="px-6 py-3 font-semibold">対象月</th>
+                                                <th className="px-6 py-3 font-semibold text-right">総活動数</th>
+                                                <th className="px-6 py-3 font-semibold text-right text-green-700 bg-green-50/50">訪問</th>
+                                                <th className="px-6 py-3 font-semibold text-right text-blue-700 bg-blue-50/50">電話</th>
+                                                <th className="px-6 py-3 font-semibold text-right text-purple-700 bg-purple-50/50">デザイン提案</th>
+                                                <th className="px-6 py-3 font-semibold text-right text-red-700 bg-red-50/50">クレーム</th>
+                                                <th className="px-6 py-3 font-semibold text-right text-orange-700 bg-orange-50/50">提案物</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {monthlyActivityData.map((data, index) => (
+                                                <tr key={index} className="hover:bg-gray-50/80 transition-colors">
+                                                    <td className="px-6 py-4 font-medium text-sf-text">{data.month}</td>
+                                                    <td className="px-6 py-4 text-right font-semibold text-sf-text">{data.total}</td>
+                                                    <td className="px-6 py-4 text-right text-green-600 font-medium bg-green-50/20">{data.visits}</td>
+                                                    <td className="px-6 py-4 text-right text-blue-600 font-medium bg-blue-50/20">{data.calls}</td>
+                                                    <td className="px-6 py-4 text-right text-purple-600 font-medium bg-purple-50/20">{data.designs}</td>
+                                                    <td className="px-6 py-4 text-right text-red-600 font-medium bg-red-50/20">{data.complaints}</td>
+                                                    <td className="px-6 py-4 text-right text-orange-600 font-medium bg-orange-50/20">{data.proposals}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

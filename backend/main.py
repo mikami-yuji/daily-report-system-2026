@@ -1702,7 +1702,16 @@ def get_design_images(filename: str):
         valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf')
         
         image_files = []
+        max_depth = 3
+        target_path_sep_count = target_path.count(os.path.sep)
+        
         for root, dirs, files in os.walk(target_path):
+            # 現在の深さを計算（ルートのセパレータ数との差分）
+            depth = root.count(os.path.sep) - target_path_sep_count
+            if depth >= max_depth:
+                # これ以上深いサブディレクトリの探索を行わないようにする
+                del dirs[:]
+            
             for file in files:
                 if file.lower().endswith(valid_extensions):
                     # Create a relative path from DESIGN_DIR for the client to request
@@ -1720,13 +1729,11 @@ def get_design_images(filename: str):
                         "folder": matched_dir,
                         "mtime": mtime
                     })
-            if len(image_files) > 100:
-                break
         
         # Sort by mtime descending (newest first)
         image_files.sort(key=lambda x: x['mtime'], reverse=True)
         
-        return {"images": image_files, "folder": matched_dir}
+        return {"images": image_files[:500], "folder": matched_dir}
 
     except Exception as e:
         logging.exception("Error in get_design_images")

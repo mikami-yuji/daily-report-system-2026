@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Report, getDesignImages, DesignImage, getImageUrl, updateReportReply, updateReportApproval } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { useDashboardStats } from '@/hooks/useStatsHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
-import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon } from 'lucide-react';
+import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import EditReportModal from '@/components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Check } from 'lucide-react';
 import Link from 'next/link';
@@ -65,6 +66,7 @@ export default function Home() {
 
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [images, setImages] = useState<DesignImage[]>([]);
+  const [allImages, setAllImages] = useState<DesignImage[]>([]);
   const [imageFolder, setImageFolder] = useState<string>('');
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -72,14 +74,81 @@ export default function Home() {
   const [processingNotifications, setProcessingNotifications] = useState<Set<number>>(new Set());
   const [mounted, setMounted] = useState(false);
 
+  // スプリットプレビュー用のステート
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [activePreviewImage, setActivePreviewImage] = useState<DesignImage | null>(null);
+
+  // 同一デザインID（5桁以上の数字）の関連画像を抽出
+  const relatedImages = useMemo((): DesignImage[] => {
+    if (selectedImageIndex === null || images.length === 0 || !images[selectedImageIndex]) {
+      return [];
+    }
+    const currentImg = images[selectedImageIndex];
+    const match = currentImg.name.match(/\d{5,}/);
+    if (!match) {
+      return [currentImg];
+    }
+    const designId = match[0];
+    const list = allImages.filter(img => {
+      const m = img.name.match(/\d{5,}/);
+      return m && m[0] === designId;
+    });
+    return list.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  }, [selectedImageIndex, images, allImages]);
+
+  // 代表画像のインデックスが変更されたときにアクティブプレビューを初期化
+  useEffect(() => {
+    if (selectedImageIndex !== null && images[selectedImageIndex]) {
+      setActivePreviewImage(images[selectedImageIndex]);
+    } else {
+      setActivePreviewImage(null);
+    }
+  }, [selectedImageIndex, images]);
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
+  // モーダル表示時に背後のスクロールをロックする
+  useEffect(() => {
+    if (selectedImageIndex !== null) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedImageIndex]);
+
   useEffect(() => {
     if (selectedFile) {
       getDesignImages(selectedFile).then(data => {
-        setImages(data.images || []);
+        const rawImages = data.images || [];
+        setAllImages(rawImages);
+
+        // デザイン依頼番号（5桁以上の数字）ごとにグループ化し、最新の1枚のみを抽出
+        const groupedMap = new Map<string, typeof rawImages[0]>();
+        const nonGrouped: typeof rawImages = [];
+
+        rawImages.forEach((img) => {
+          const match = img.name.match(/\d{5,}/);
+          if (match) {
+            const designId = match[0];
+            const existing = groupedMap.get(designId);
+            if (!existing || (img.mtime || 0) > (existing.mtime || 0)) {
+              groupedMap.set(designId, img);
+            }
+          } else {
+            nonGrouped.push(img);
+          }
+        });
+
+        // グループ化した最新画像とIDなし画像を統合し、mtime降順でソート
+        const filteredImages = [...Array.from(groupedMap.values()), ...nonGrouped];
+        filteredImages.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+
+        setImages(filteredImages);
         setImageFolder(data.folder || '');
       });
     }
@@ -346,35 +415,176 @@ export default function Home() {
       <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex items-center gap-2">
           <ImageIcon size={20} className="text-pink-500" />
-          <h2 className="font-semibold text-sm text-sf-text">デザインデータ ({imageFolder || 'フォルダ検索中...'})</h2>
+          <h2 className="font-semibold text-sm text-sf-text">デザインデータ一覧 ({imageFolder || 'フォルダ検索中...'})</h2>
         </div>
-        <div className="p-4">
+        <div className="p-6 bg-gray-50/30">
           {images.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
               {images.map((img, i) => (
-                <div key={i} className="group relative aspect-square bg-gray-100 rounded overflow-hidden border border-gray-200">
-                  <a href={getImageUrl(img.path)} target="_blank" rel="noopener noreferrer">
+                <button
+                  key={i}
+                  onClick={() => setSelectedImageIndex(i)}
+                  className="group flex flex-col bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left focus:outline-none cursor-pointer"
+                >
+                  <div className="w-full aspect-[3/4] bg-gray-50 flex items-center justify-center p-3 relative overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={getImageUrl(img.path)}
                       alt={img.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="max-w-full max-h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
                       loading="lazy"
                     />
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                  </div>
+                  <div className="p-3 border-t border-gray-100 bg-white w-full">
+                    <p className="text-xs font-semibold text-sf-text truncate" title={img.name}>
                       {img.name}
-                    </div>
-                  </a>
-                </div>
+                    </p>
+                    <p className="text-[10px] text-sf-text-weak mt-1">
+                      {img.mtime ? new Date(img.mtime * 1000).toLocaleDateString() : ''}
+                    </p>
+                  </div>
+                </button>
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-12 bg-white rounded-lg border border-dashed border-gray-300 text-sf-text-weak">
               {imageFolder ? '画像が見つかりませんでした' : '関連するデザインデータフォルダが見つかりません'}
             </div>
           )}
         </div>
       </div>
+
+      {/* スプリットビュー・画像プレビューモーダル */}
+      {selectedImageIndex !== null && activePreviewImage && createPortal(
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full h-[90vh] flex flex-col animate-fadeIn overflow-hidden">
+            {/* モーダルヘッダー */}
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <ImageIcon size={20} className="text-pink-500" />
+                <h3 className="font-bold text-sm text-sf-text truncate max-w-lg" title={activePreviewImage.name}>
+                  {activePreviewImage.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedImageIndex(null)}
+                className="text-gray-400 hover:text-gray-600 bg-gray-200/50 hover:bg-gray-200 rounded-full p-2 transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* モーダルコンテンツ（左右スプリットビュー） */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-gray-100">
+              {/* 左側：メインプレビュー（幅 2/3） */}
+              <div className="flex-1 md:w-2/3 p-6 flex flex-col items-center justify-center relative bg-black/5 min-h-[350px]">
+                {/* 左右切り替えボタン（代表画像単位） */}
+                {selectedImageIndex > 0 && (
+                  <button
+                    onClick={() => setSelectedImageIndex(selectedImageIndex - 1)}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-800 shadow-md rounded-full p-2.5 transition-all z-10 cursor-pointer"
+                    title="前の商品"
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                )}
+                
+                {selectedImageIndex < images.length - 1 && (
+                  <button
+                    onClick={() => setSelectedImageIndex(selectedImageIndex + 1)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-800 shadow-md rounded-full p-2.5 transition-all z-10 cursor-pointer"
+                    title="次の商品"
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                )}
+
+                {/* メイン画像 */}
+                <div className="w-full h-full max-h-[60vh] flex items-center justify-center p-2">
+                  {activePreviewImage.name.toLowerCase().endsWith('.pdf') ? (
+                    <div className="flex flex-col items-center justify-center text-red-500 bg-white p-8 rounded-xl shadow border border-gray-200">
+                      <FileText size={80} />
+                      <span className="text-sm font-bold mt-4 text-gray-600">PDFファイルを別タブで開く</span>
+                      <a
+                        href={getImageUrl(activePreviewImage.path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+                      >
+                        PDFを表示
+                      </a>
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={getImageUrl(activePreviewImage.path)}
+                      alt={activePreviewImage.name}
+                      className="max-w-full max-h-[55vh] object-contain drop-shadow-lg animate-fadeIn"
+                    />
+                  )}
+                </div>
+
+                {/* アクションボタン */}
+                <div className="absolute bottom-4 flex gap-3">
+                  <a
+                    href={getImageUrl(activePreviewImage.path)}
+                    download={activePreviewImage.name}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-white/90 hover:bg-white hover:text-sf-light-blue shadow text-xs font-semibold rounded-lg text-gray-700 transition-colors border border-gray-200/50"
+                  >
+                    <Download size={14} /> ダウンロード
+                  </a>
+                </div>
+              </div>
+
+              {/* 右側：同一デザイン依頼番号のバリエーションリスト（幅 1/3） */}
+              <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-gray-200 bg-white flex flex-col overflow-hidden max-h-[30vh] md:max-h-none flex-shrink-0">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center flex-shrink-0">
+                  <span className="text-xs font-bold text-sf-text">バリエーション・履歴 ({relatedImages.length})</span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                  {relatedImages.map((relImg, idx) => {
+                    const isActive = relImg.path === activePreviewImage.path;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setActivePreviewImage(relImg)}
+                        className={`w-full flex items-center gap-3 p-2 rounded-xl text-left border transition-all cursor-pointer ${
+                          isActive 
+                            ? 'border-sf-light-blue bg-blue-50/50 ring-1 ring-sf-light-blue' 
+                            : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="w-12 h-16 bg-gray-50 rounded border border-gray-200 overflow-hidden flex-shrink-0 flex items-center justify-center p-1">
+                          {relImg.name.toLowerCase().endsWith('.pdf') ? (
+                            <FileText size={20} className="text-red-500" />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={getImageUrl(relImg.path)}
+                              alt={relImg.name}
+                              className="max-w-full max-h-full object-contain"
+                              loading="lazy"
+                            />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold text-sf-text truncate" title={relImg.name}>
+                            {relImg.name}
+                          </p>
+                          <p className="text-[10px] text-sf-text-weak mt-1">
+                            {relImg.mtime ? new Date(relImg.mtime * 1000).toLocaleString() : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {editingReport && (
         <EditReportModal

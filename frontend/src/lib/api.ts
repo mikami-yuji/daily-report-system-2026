@@ -201,6 +201,7 @@ export interface DesignImage {
     name: string;
     path: string;
     folder: string;
+    mtime?: number;
 }
 
 export const getDesignImages = async (filename: string): Promise<{ images: DesignImage[], folder?: string, message?: string }> => {

@@ -1584,7 +1584,7 @@ logging.basicConfig(
 )
 
 @app.get("/api/images/list")
-def get_design_images(filename: str):
+def get_design_images(filename: str) -> dict:
     """
     Get list of images from the matching folder in Design Data directory.
     Target directory: \\Asahipack02\\社内書類ｎｅｗ\\01：部署別　営業部\\03：デザインデータ
@@ -1697,40 +1697,54 @@ def get_design_images(filename: str):
         target_path = os.path.join(DESIGN_DIR, matched_dir)
         logging.info(f"Target path: {target_path}")
         
-        # List images (recursively or just top level? Starting with top level + shallow)
-        # Extensions to look for
+        # 画像ファイルの抽出 (再帰的に探索)
+        # 拡張子のフィルタ
         valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf')
         
         image_files = []
         max_depth = 3
-        target_path_sep_count = target_path.count(os.path.sep)
         
-        for root, dirs, files in os.walk(target_path):
-            # 現在の深さを計算（ルートのセパレータ数との差分）
-            depth = root.count(os.path.sep) - target_path_sep_count
-            if depth >= max_depth:
-                # これ以上深いサブディレクトリの探索を行わないようにする
-                del dirs[:]
-            
-            for file in files:
-                if file.lower().endswith(valid_extensions):
-                    # Create a relative path from DESIGN_DIR for the client to request
-                    # e.g., "大阪本社　09：沖本\image.jpg"
-                    full_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(full_path, DESIGN_DIR)
-                    try:
-                        mtime = os.path.getmtime(full_path)
-                    except:
-                        mtime = 0
-                    
-                    image_files.append({
-                        "name": file,
-                        "path": rel_path, # Path identifier to send back to serve endpoint
-                        "folder": matched_dir,
-                        "mtime": mtime
-                    })
+        # スタックを用いた高速な反復走査 (ディレクトリパスと探索深度を管理)
+        stack = [(target_path, 0)]
         
-        # Sort by mtime descending (newest first)
+        while stack:
+            current_dir, depth = stack.pop()
+            if depth > max_depth:
+                continue
+                
+            try:
+                with os.scandir(current_dir) as it:
+                    for entry in it:
+                        try:
+                            if entry.is_file(follow_symlinks=False):
+                                if entry.name.lower().endswith(valid_extensions):
+                                    rel_path = os.path.relpath(entry.path, DESIGN_DIR)
+                                    try:
+                                        # Windowsのscandirではentry.stat()がキャッシュから返るため高速
+                                        stat_res = entry.stat(follow_symlinks=False)
+                                        mtime = stat_res.st_mtime
+                                    except Exception:
+                                        mtime = 0
+                                    
+                                    image_files.append({
+                                        "name": entry.name,
+                                        "path": rel_path,
+                                        "folder": matched_dir,
+                                        "mtime": mtime
+                                    })
+                            elif entry.is_dir(follow_symlinks=False):
+                                if depth < max_depth:
+                                    # ドットで始まる隠しフォルダはスキップ
+                                    if not entry.name.startswith('.'):
+                                        stack.append((entry.path, depth + 1))
+                        except Exception as entry_err:
+                            logging.warning(f"Error accessing entry in {current_dir}: {entry_err}")
+                            continue
+            except Exception as dir_err:
+                logging.error(f"Error scanning directory {current_dir}: {dir_err}")
+                continue
+        
+        # 更新日時順にソート (新しい画像が先頭)
         image_files.sort(key=lambda x: x['mtime'], reverse=True)
         
         return {"images": image_files[:500], "folder": matched_dir}

@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { normalizeDateInput } from '@/lib/reportUtils';
+import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 
 // バリデーションエラーの型
 type ValidationErrors = {
@@ -488,13 +488,30 @@ export default function BatchReportPage() {
                 <div className="flex items-center gap-4">
                     <Calendar size={20} className="text-gray-400" />
                     <label className="text-sm font-medium text-sf-text">日付</label>
-                    <input
-                        type="text"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        placeholder="YY/MM/DD"
-                        className="px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent w-40"
-                    />
+                    <div className="relative w-40">
+                        <input
+                            type="text"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            placeholder="YY/MM/DD"
+                            className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                            <Calendar size={18} className="text-gray-400" />
+                        </div>
+                        <input
+                            type="date"
+                            value={convertYYMMDDToYYYYMMDD(date)}
+                            onChange={(e) => {
+                                const newDate = e.target.value;
+                                if (newDate) {
+                                    setDate(convertYYYYMMDDToYYMMDD(newDate));
+                                }
+                            }}
+                            className="absolute right-0 top-0 h-full w-10 opacity-0 cursor-pointer"
+                            title="カレンダーから日付を選択"
+                        />
+                    </div>
                     <span className="text-xs text-sf-text-weak">※全ての訪問に適用されます</span>
                 </div>
             </div>

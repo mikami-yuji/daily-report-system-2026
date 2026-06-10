@@ -8,7 +8,7 @@ import { useReports } from '@/hooks/useQueryHooks';
 import { useDashboardStats } from '@/hooks/useStatsHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
-import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { FileText, Calendar, Users, Phone, TrendingUp, Star, BarChart3, Image as ImageIcon, ChevronLeft, ChevronRight, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import EditReportModal from '@/components/reports/EditReportModal';
 import { MessageCircle, Bell, X, Send, Check } from 'lucide-react';
 import Link from 'next/link';
@@ -225,9 +225,30 @@ export default function Home() {
 
       {unreadComments.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 animate-pulse-slow">
-          <div className="flex items-center gap-2 mb-2">
-            <Bell className="text-red-500 fill-red-500" size={24} />
-            <h2 className="text-lg font-bold text-red-700">新着コメントがあります ({unreadComments.length}件)</h2>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <Bell className="text-red-500 fill-red-500" size={24} />
+              <h2 className="text-lg font-bold text-red-700">新着コメントがあります ({unreadComments.length}件)</h2>
+            </div>
+            {unreadComments.length > 3 && (
+              <button
+                type="button"
+                onClick={(): void => setShowAllNotifications(!showAllNotifications)}
+                className="flex items-center gap-1 text-xs font-semibold text-red-700 hover:text-red-900 bg-red-100/50 hover:bg-red-100 px-3 py-1 rounded transition-colors"
+              >
+                {showAllNotifications ? (
+                  <>
+                    <span>折りたたむ</span>
+                    <ChevronUp size={14} />
+                  </>
+                ) : (
+                  <>
+                    <span>すべて表示</span>
+                    <ChevronDown size={14} />
+                  </>
+                )}
+              </button>
+            )}
           </div>
           <div className="space-y-2">
             {(showAllNotifications ? unreadComments : unreadComments.slice(0, 3)).map((report) => (

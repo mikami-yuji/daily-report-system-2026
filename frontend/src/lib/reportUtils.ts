@@ -54,3 +54,30 @@ export function normalizeDateInput(dateStr: string): string {
 
     return `${year}/${month}/${day}`;
 }
+
+/**
+ * YY/MM/DD形式をYYYY-MM-DD形式に変換します
+ */
+export function convertYYMMDDToYYYYMMDD(yyMmDd: string): string {
+    if (!yyMmDd) return '';
+    const parts = yyMmDd.split('/');
+    if (parts.length !== 3) return '';
+    const yy = parts[0].padStart(2, '0');
+    const mm = parts[1].padStart(2, '0');
+    const dd = parts[2].padStart(2, '0');
+    if (yy.length !== 2 || mm.length !== 2 || dd.length !== 2) return '';
+    if (isNaN(Number(yy)) || isNaN(Number(mm)) || isNaN(Number(dd))) return '';
+    return `20${yy}-${mm}-${dd}`;
+}
+
+/**
+ * YYYY-MM-DD形式をYY/MM/DD形式に変換します
+ */
+export function convertYYYYMMDDToYYMMDD(yyyyMmDd: string): string {
+    if (!yyyyMmDd) return '';
+    const parts = yyyyMmDd.split('-');
+    if (parts.length !== 3) return '';
+    const [yyyy, mm, dd] = parts;
+    if (yyyy.length !== 4 || mm.length !== 2 || dd.length !== 2) return '';
+    return `${yyyy.slice(2)}/${mm}/${dd}`;
+}

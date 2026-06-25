@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { aggregateMonthlyActivities } from './activityUtils.ts';
-import { MonthlyActivityStats } from '../types/activity.ts';
-import { Report } from './api.ts';
+import { aggregateMonthlyActivities } from './activityUtils';
+import { MonthlyActivityStats } from '../types/activity';
+import { Report } from './api';
 
 test('aggregateMonthlyActivities correctly aggregates report activities by month', (): void => {
   // テスト用のダミーデータを作成

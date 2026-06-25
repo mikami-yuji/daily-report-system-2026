@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, normalizeDateInput } from './reportUtils.ts';
+import { convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, normalizeDateInput } from './reportUtils';
 
 test('convertYYMMDDToYYYYMMDD converts date correctly', (): void => {
   // 正常パターン

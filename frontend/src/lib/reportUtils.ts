@@ -1,15 +1,17 @@
+import { Report } from '../types/report';
 
 // Helper to sanitize report object for API updates
-export const sanitizeReport = (report: any) => {
-    const sanitized: any = {};
+export const sanitizeReport = (report: Partial<Report>): Partial<Report> => {
+    const sanitized: Record<string, unknown> = {};
     for (const key in report) {
-        if (report[key] === null || report[key] === undefined) {
+        const value = report[key as keyof Report];
+        if (value === null || value === undefined) {
             sanitized[key] = '';
         } else {
-            sanitized[key] = report[key];
+            sanitized[key] = value;
         }
     }
-    return sanitized;
+    return sanitized as Partial<Report>;
 };
 
 export function cleanText(text: string | null | undefined): string {

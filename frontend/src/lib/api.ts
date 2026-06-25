@@ -1,4 +1,27 @@
 import axios from 'axios';
+import {
+    Report,
+    ExcelFile,
+    Customer,
+    Design,
+    DesignImage,
+    DashboardStats,
+    MonthlySummaryStats,
+    SalesData,
+    PriorityCustomer,
+} from '@/types/report';
+
+export type {
+    Report,
+    ExcelFile,
+    Customer,
+    Design,
+    DesignImage,
+    DashboardStats,
+    MonthlySummaryStats,
+    SalesData,
+    PriorityCustomer,
+};
 
 // 常に/apiプレフィックスを使用（EXE版でのルート競合を防ぐため）
 const API_URL = '/api';
@@ -16,47 +39,6 @@ const api = axios.create({
 const apiLong = axios.create({
     timeout: LONG_TIMEOUT,
 });
-
-export interface Report {
-    管理番号: number;
-    日付: string;
-    行動内容: string;
-    エリア: string;
-    得意先CD: string;
-    直送先CD: string;
-    訪問先名: string;
-    直送先名: string;
-    重点顧客: string;
-    ランク: string;
-    得意先目標: string;
-    面談者: string;
-    滞在時間: string;
-    デザイン提案有無: string;
-    デザイン種別: string;
-    デザイン名: string;
-    デザイン進捗状況: string;
-    'デザイン依頼No.': string;
-    商談内容: string;
-    提案物: string;
-    次回プラン: string;
-    競合他社情報: string;
-    上長コメント: string;
-    コメント?: string; // Excelヘッダーが「コメント」の場合のフォールバック
-    コメント返信欄: string;
-    上長: string;
-    山澄常務: string;
-    岡本常務: string;
-    中野次長: string;
-    既読チェック: string;
-    'システム確認用デザインNo.': string;
-    original_values?: { [key: string]: any }; // For optimistic locking
-}
-
-export interface ExcelFile {
-    name: string;
-    size: number;
-    modified: string;
-}
 
 export const getFiles = async (): Promise<{ files: ExcelFile[]; default: string }> => {
     const response = await api.get(`${API_URL}/files`);
@@ -95,7 +77,7 @@ export const updateReportReply = async (managementNumber: number, reply: string,
 // コメント更新専用API（上長コメントとコメント返信欄を個別に更新）
 export const updateReportComment = async (
     managementNumber: number,
-    comment: { 上長コメント?: string; コメント返信欄?: string; original_values?: { [key: string]: any } },
+    comment: { 上長コメント?: string; コメント返信欄?: string; original_values?: Record<string, unknown> },
     filename?: string
 ): Promise<{ success: boolean }> => {
     const params = filename ? { filename } : {};
@@ -106,7 +88,7 @@ export const updateReportComment = async (
 // 承認チェック更新専用API（上長、山澄常務、岡本常務、中野次長、既読チェックを個別に更新）
 export const updateReportApproval = async (
     managementNumber: number,
-    approval: { 上長?: string; 山澄常務?: string; 岡本常務?: string; 中野次長?: string; 既読チェック?: string; original_values?: { [key: string]: any } },
+    approval: { 上長?: string; 山澄常務?: string; 岡本常務?: string; 中野次長?: string; 既読チェック?: string; original_values?: Record<string, unknown> },
     filename?: string
 ): Promise<{ success: boolean }> => {
     const params = filename ? { filename } : {};
@@ -120,12 +102,7 @@ export const deleteReport = async (managementNumber: number, filename?: string) 
     return response.data;
 };
 
-// 重点顧客マスタの型定義
-export type PriorityCustomer = {
-    得意先CD: string;
-    得意先名: string;
-    担当者?: string;
-};
+
 
 // 重点顧客マスタ取得API（得意先_Listからカラム H が「重点」の顧客を取得）
 export const getPriorityCustomers = async (filename?: string): Promise<PriorityCustomer[]> => {
@@ -150,17 +127,7 @@ export const uploadFile = async (file: File) => {
     return response.data;
 };
 
-export interface Customer {
-    得意先CD: string;
-    得意先名: string;
-    フリガナ: string;
-    直送先CD?: string;
-    直送先名?: string;
-    エリア: string;
-    重点顧客: string;
-    ランク: string;
-    [key: string]: any;
-}
+
 
 export const getCustomers = async (filename?: string): Promise<Customer[]> => {
     const params = filename ? { filename } : {};
@@ -169,7 +136,7 @@ export const getCustomers = async (filename?: string): Promise<Customer[]> => {
 };
 
 export const getInterviewers = async (customerCode: string, filename?: string, customerName?: string, deliveryName?: string): Promise<string[]> => {
-    const params: any = {};
+    const params: Record<string, string> = {};
     if (filename) params.filename = filename;
     if (customerName) params.customer_name = customerName;
     if (deliveryName) params.delivery_name = deliveryName;
@@ -180,16 +147,10 @@ export const getInterviewers = async (customerCode: string, filename?: string, c
     return response.data.interviewers;
 };
 
-export interface Design {
-    デザイン依頼No: number;
-    デザイン名: string;
-    デザイン種別: string;
-    デザイン進捗状況: string;
-    デザイン提案有無: string;
-}
+
 
 export const getDesigns = async (customerCd: string, filename?: string, deliveryName?: string): Promise<Design[]> => {
-    const params: any = {};
+    const params: Record<string, string> = {};
     if (filename) params.filename = filename;
     if (deliveryName) params.delivery_name = deliveryName;
     const response = await api.get(`${API_URL}/designs/${customerCd}`, { params });
@@ -197,12 +158,6 @@ export const getDesigns = async (customerCd: string, filename?: string, delivery
 };
 
 // Image Interface
-export interface DesignImage {
-    name: string;
-    path: string;
-    folder: string;
-    mtime?: number;
-}
 
 export const getDesignImages = async (filename: string): Promise<{ images: DesignImage[], folder?: string, message?: string }> => {
     try {
@@ -218,7 +173,7 @@ export const getDesignImages = async (filename: string): Promise<{ images: Desig
 
 export const searchDesignImages = async (query: string, filename?: string): Promise<{ images: DesignImage[], query?: string, message?: string }> => {
     try {
-        const params: any = { query };
+        const params: Record<string, string> = { query };
         if (filename) {
             params.filename = filename;
         }
@@ -235,40 +190,7 @@ export const searchDesignImages = async (query: string, filename?: string): Prom
 export const getImageUrl = (path: string): string => {
     return `${API_URL}/images/content?path=${encodeURIComponent(path)}`;
 };
-export interface DashboardStats {
-    summary: {
-        totalReports: number;
-        thisMonth: number;
-        visits: number;
-        calls: number;
-    };
-    priority: {
-        uniqueCustomers: number;
-        visits: number;
-        calls: number;
-    };
-    monthly: Array<{
-        month: string;
-        visits: number;
-        calls: number;
-        priorityVisits: number;
-        priorityCalls: number;
-        areaBreakdown: Array<{
-            area: string;
-            visits: number;
-            calls: number;
-            priorityVisits: number;
-            priorityCalls: number;
-        }>;
-    }>;
-    ranking: Array<{
-        name: string;
-        visits: number;
-        calls: number;
-        total: number;
-    }>;
-    updatedAt: string;
-}
+
 
 export const getDashboardStats = async (filename?: string): Promise<DashboardStats> => {
     const params = filename ? { filename } : {};
@@ -276,91 +198,16 @@ export const getDashboardStats = async (filename?: string): Promise<DashboardSta
     return response.data;
 };
 
-export interface MonthlySummaryStats {
-    totalReports: number;
-    totalVisits: number;
-    totalCalls: number;
-    priorityVisits: number;
-    priorityCalls: number;
-    totalDesignProposals: number;
-    totalDesignCompleted: number;
-    totalDesignRejected: number;
-    uniqueCustomers: number;
-    activeDays: number;
-    areaBreakdown: Array<{
-        area: string;
-        visits: number;
-        calls: number;
-        priorityVisits: number;
-        priorityCalls: number;
-        designProposals: number;
-    }>;
-    priorityCustomers: Array<{
-        code: string;
-        name: string;
-        visits: number;
-        calls: number;
-        designProposals: number;
-        total: number;
-        lastDate: string;
-        area: string;
-        rank: string;
-        isPriority: boolean;
-        directDeliveries: Array<{
-            code: string;
-            name: string;
-            visits: number;
-            calls: number;
-            designProposals: number;
-            lastDate: string;
-            area: string;
-            rank: string;
-            isPriority: boolean;
-        }>;
-    }>;
-    designProgress: Array<{
-        status: string;
-        count: number;
-    }>;
-    topCustomers: Array<{
-        name: string;
-        count: number;
-        details?: Array<{ name: string; count: number }>;
-    }>;
-    topCallCustomers: Array<{
-        name: string;
-        count: number;
-        details?: Array<{ name: string; count: number }>;
-    }>;
-    dailyActivity: Array<{
-        date: string;
-        visits: number;
-        calls: number;
-    }>;
-}
+
 
 export const getMonthlySummaryStats = async (filename: string | undefined, month: string): Promise<MonthlySummaryStats> => {
-    const params: any = { month };
+    const params: Record<string, string> = { month };
     if (filename) params.filename = filename;
     const response = await api.get(`${API_URL}/stats/monthly-summary`, { params });
     return response.data;
 };
 
-export interface SalesData {
-    rank: number;
-    rank_class: string;
-    customer_code: string;
-    customer_name: string;
-    sales_amount: number;
-    gross_profit: number;
-    sales_yoy: number;
-    sales_last_year: number;
-    profit_last_year: number;
-    sales_2y_ago: number;
-    profit_2y_ago: number;
-    area?: string;
-    sales_rep?: string;  // 担当者
-}
+
 
 export const getAllSales = async (): Promise<SalesData[]> => {
     try {

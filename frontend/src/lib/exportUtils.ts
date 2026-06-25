@@ -12,7 +12,7 @@ export interface ExportColumn {
 /**
  * Convert data array to CSV string
  */
-export function convertToCSV(data: any[], columns: ExportColumn[]): string {
+export function convertToCSV(data: Record<string, unknown>[], columns: ExportColumn[]): string {
     if (data.length === 0) {
         return '';
     }
@@ -35,7 +35,7 @@ export function convertToCSV(data: any[], columns: ExportColumn[]): string {
 /**
  * Escape CSV value (handle commas, quotes, newlines)
  */
-function escapeCSVValue(value: any): string {
+function escapeCSVValue(value: unknown): string {
     if (value === null || value === undefined) {
         return '';
     }
@@ -88,7 +88,7 @@ export function generateFilename(prefix: string): string {
 /**
  * Export data to CSV and trigger download
  */
-export function exportToCSV(data: any[], columns: ExportColumn[], filenamePrefix: string): void {
+export function exportToCSV(data: Record<string, unknown>[], columns: ExportColumn[], filenamePrefix: string): void {
     const csvContent = convertToCSV(data, columns);
     const filename = generateFilename(filenamePrefix);
     downloadCSV(csvContent, filename);

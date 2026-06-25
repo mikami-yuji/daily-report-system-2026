@@ -6,6 +6,30 @@ import ConfirmationModal from '@/components/ConfirmationModal';
 import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// セッションストレージから下書きデータを取得する関数
+const getSessionDraft = (reportId: number | string | undefined, field: string): string | null => {
+    if (typeof window === 'undefined' || !reportId) {
+        return null;
+    }
+    return sessionStorage.getItem(`draft_comment_${reportId}_${field}`);
+};
+
+// セッションストレージに下書きデータを保存する関数
+const setSessionDraft = (reportId: number | string | undefined, field: string, value: string): void => {
+    if (typeof window === 'undefined' || !reportId) {
+        return;
+    }
+    sessionStorage.setItem(`draft_comment_${reportId}_${field}`, value);
+};
+
+// セッションストレージの下書きデータを削除する関数
+const removeSessionDraft = (reportId: number | string | undefined, field: string): void => {
+    if (typeof window === 'undefined' || !reportId) {
+        return;
+    }
+    sessionStorage.removeItem(`draft_comment_${reportId}_${field}`);
+};
+
 interface ReportDetailModalProps {
     report: Report;
     onClose: () => void;
@@ -17,11 +41,13 @@ interface ReportDetailModalProps {
     onUpdate?: () => void;
 }
 
-function InfoRow({ label, value }: { label: string; value: any }) {
+function InfoRow({ label, value }: { label: string; value: unknown }) {
     return (
         <div className="flex justify-between items-start gap-2">
             <span className="text-xs text-sf-text-weak whitespace-nowrap">{label}:</span>
-            <span className="text-sm text-sf-text text-right flex-1">{cleanText(value) || '-'}</span>
+            <span className="text-sm text-sf-text text-right flex-1">
+                {cleanText(value !== null && value !== undefined ? String(value) : '') || '-'}
+            </span>
         </div>
     );
 }
@@ -55,7 +81,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     const [processingComment, setProcessingComment] = useState<string | null>(null); // 処理中のコメントフィールド
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-    // レポート変更時にステートを更新
+    // レポート変更時にステートを更新（セッションストレージからの下書き復元も含む）
     useEffect(() => {
         setApprovals({
             上長: convertToDisplay(report?.上長),
@@ -64,9 +90,13 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             中野次長: convertToDisplay(report?.中野次長),
             既読チェック: convertToDisplay(report?.既読チェック)
         });
+
+        const draftComment = getSessionDraft(report?.管理番号, '上長コメント');
+        const draftReply = getSessionDraft(report?.管理番号, 'コメント返信欄');
+
         setComments({
-            上長コメント: report?.上長コメント || report?.コメント || '',
-            コメント返信欄: report?.コメント返信欄 || ''
+            上長コメント: draftComment !== null ? draftComment : (report?.上長コメント || report?.コメント || ''),
+            コメント返信欄: draftReply !== null ? draftReply : (report?.コメント返信欄 || '')
         });
     }, [report]);
 
@@ -100,7 +130,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         setApprovals(prev => ({ ...prev, [field]: newDisplayValue }));
 
         setSaving(true);
-        setProcessingApproval(field); // 処理中のフィールドを㔵2録
+        setProcessingApproval(field); // 処理中のフィールドを記録
         try {
             // 承認専用エンドポイントを使用（バリデーションエラー回避）
             await updateReportApproval(report.管理番号, { [field]: newExcelValue, original_values: report }, selectedFile);
@@ -117,8 +147,29 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         }
     };
 
+    // 下書きデータを破棄して元の値に戻す関数
+    const handleDiscardDraft = (field: '上長コメント' | 'コメント返信欄'): void => {
+        removeSessionDraft(report?.管理番号, field);
+        setComments(prev => ({
+            ...prev,
+            [field]: field === '上長コメント'
+                ? (report?.上長コメント || report?.コメント || '')
+                : (report?.コメント返信欄 || '')
+        }));
+        toast.success('下書きを破棄しました');
+    };
+
     const handleCommentBlur = async (field: keyof typeof comments) => {
-        if (comments[field] === (report[field] || '')) return; // No change
+        const originalValue = field === '上長コメント'
+            ? (report?.上長コメント || report?.コメント || '')
+            : (report?.コメント返信欄 || '');
+
+        if (comments[field] === originalValue) {
+            if (report.管理番号) {
+                removeSessionDraft(report.管理番号, field);
+            }
+            return; // 変更がない場合は保存処理を行わない
+        }
 
         // 管理番号の検証
         if (!report.管理番号) {
@@ -132,6 +183,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             // コメント専用エンドポイントを使用（バリデーションエラー回避）
             await updateReportComment(report.管理番号, { [field]: comments[field], original_values: report }, selectedFile);
             toast.success('コメントを保存しました');
+            removeSessionDraft(report.管理番号, field); // 正常に保存されたため下書きを削除
             if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Failed to update comment:', error);
@@ -168,6 +220,12 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         }
     };
     if (!report) return null;
+
+    const originalComment = report.上長コメント || report.コメント || '';
+    const originalReply = report.コメント返信欄 || '';
+
+    const hasDraftComment = comments.上長コメント !== originalComment;
+    const hasDraftReply = comments.コメント返信欄 !== originalReply;
 
     // デザイン情報の表示条件をグリッド表示と統一（いずれかのフィールドに値があれば表示）
     const hasDesign = !!(
@@ -363,6 +421,21 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                                 {processingComment === '上長コメント' && (
                                                     <span className="text-xs font-normal text-yellow-600 ml-2">保存中...</span>
                                                 )}
+                                                {hasDraftComment && (
+                                                    <div className="flex items-center gap-2 ml-auto">
+                                                        <span className="text-xs font-normal text-yellow-700 bg-yellow-100 border border-yellow-300 px-2 py-0.5 rounded animate-pulse">
+                                                            一時保存データを復元中
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDiscardDraft('上長コメント')}
+                                                            className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                                            title="下書きを破棄して元のデータに戻します"
+                                                        >
+                                                            下書きを破棄
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                             {/* 商談内容の参照表示 */}
                                             {report.商談内容 && (
@@ -373,7 +446,16 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                             )}
                                             <textarea
                                                 value={comments.上長コメント}
-                                                onChange={(e) => setComments(prev => ({ ...prev, 上長コメント: e.target.value }))}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    setComments(prev => ({ ...prev, 上長コメント: value }));
+                                                    const original = report?.上長コメント || report?.コメント || '';
+                                                    if (value === original) {
+                                                        removeSessionDraft(report?.管理番号, '上長コメント');
+                                                    } else {
+                                                        setSessionDraft(report?.管理番号, '上長コメント', value);
+                                                    }
+                                                }}
                                                 onBlur={() => handleCommentBlur('上長コメント')}
                                                 disabled={saving}
                                                 className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y disabled:opacity-60 ${processingComment === '上長コメント' ? 'border-yellow-400' : 'border-yellow-200'}`}
@@ -391,10 +473,34 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                                 {processingComment === 'コメント返信欄' && (
                                                     <span className="text-xs font-normal text-green-600 ml-2">保存中...</span>
                                                 )}
+                                                {hasDraftReply && (
+                                                    <div className="flex items-center gap-2 ml-auto">
+                                                        <span className="text-xs font-normal text-green-700 bg-green-100 border border-green-300 px-2 py-0.5 rounded animate-pulse">
+                                                            一時保存データを復元中
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDiscardDraft('コメント返信欄')}
+                                                            className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                                            title="下書きを破棄して元のデータに戻します"
+                                                        >
+                                                            下書きを破棄
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                             <textarea
                                                 value={comments.コメント返信欄}
-                                                onChange={(e) => setComments(prev => ({ ...prev, コメント返信欄: e.target.value }))}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    setComments(prev => ({ ...prev, コメント返信欄: value }));
+                                                    const original = report?.コメント返信欄 || '';
+                                                    if (value === original) {
+                                                        removeSessionDraft(report?.管理番号, 'コメント返信欄');
+                                                    } else {
+                                                        setSessionDraft(report?.管理番号, 'コメント返信欄', value);
+                                                    }
+                                                }}
                                                 onBlur={() => handleCommentBlur('コメント返信欄')}
                                                 disabled={saving}
                                                 className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-green-400 resize-y disabled:opacity-60 ${processingComment === 'コメント返信欄' ? 'border-green-400' : 'border-green-200'}`}

@@ -321,18 +321,18 @@ export default function DailyReportPointsTablePage() {
     const sortedTeamSummary = useMemo((): TeamSummaryRecord[] => {
         const sorted = [...filteredTeamSummary];
         sorted.sort((a, b) => {
-            let valA: any = a[sortField as keyof TeamSummaryRecord];
-            let valB: any = b[sortField as keyof TeamSummaryRecord];
-            
-            if (sortField === 'total') {
-                valA = a.visits + a.calls;
-                valB = b.visits + b.calls;
-            }
+            const valA: string | number = sortField === 'total'
+                ? a.visits + a.calls
+                : (a[sortField as keyof TeamSummaryRecord] as string | number);
+            const valB: string | number = sortField === 'total'
+                ? b.visits + b.calls
+                : (b[sortField as keyof TeamSummaryRecord] as string | number);
 
             if (typeof valA === 'string') {
+                const strB = String(valB);
                 return sortDirection === 'asc' 
-                    ? valA.localeCompare(valB, 'ja') 
-                    : valB.localeCompare(valA, 'ja');
+                    ? valA.localeCompare(strB, 'ja') 
+                    : strB.localeCompare(valA, 'ja');
             } else {
                 return sortDirection === 'asc' 
                     ? (valA as number) - (valB as number) 

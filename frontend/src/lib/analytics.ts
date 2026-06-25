@@ -1,4 +1,4 @@
-import { Report } from './api';
+import { Report } from '@/types/report';
 
 export interface AnalyticsData {
     kpis: {

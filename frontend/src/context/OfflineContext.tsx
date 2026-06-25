@@ -2,11 +2,12 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import toast from 'react-hot-toast';
+import { Report, Customer } from '@/lib/api';
 
 interface OfflineReport {
     id: string;
     timestamp: number;
-    data: any;
+    data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>;
     status: 'pending' | 'syncing' | 'error';
     filename: string;
     type: 'create' | 'update';
@@ -16,13 +17,13 @@ interface OfflineReport {
 interface OfflineContextType {
     isOnline: boolean;
     offlineReports: OfflineReport[];
-    saveOfflineReport: (data: any, filename: string, type?: 'create' | 'update', reportId?: number) => void;
+    saveOfflineReport: (data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>, filename: string, type?: 'create' | 'update', reportId?: number) => void;
     syncReports: () => Promise<void>;
     removeOfflineReport: (id: string) => void;
-    cachedCustomers: any[];
-    cacheCustomers: (customers: any[]) => void;
-    cachedReports: any[];
-    cacheReports: (reports: any[]) => void;
+    cachedCustomers: Customer[];
+    cacheCustomers: (customers: Customer[]) => void;
+    cachedReports: Report[];
+    cacheReports: (reports: Report[]) => void;
 }
 
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
@@ -30,8 +31,8 @@ const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 export function OfflineProvider({ children }: { children: ReactNode }) {
     const [isOnline, setIsOnline] = useState(true);
     const [offlineReports, setOfflineReports] = useState<OfflineReport[]>([]);
-    const [cachedCustomers, setCachedCustomers] = useState<any[]>([]);
-    const [cachedReports, setCachedReports] = useState<any[]>([]);
+    const [cachedCustomers, setCachedCustomers] = useState<Customer[]>([]);
+    const [cachedReports, setCachedReports] = useState<Report[]>([]);
 
     // Initialize state from local storage and event listeners
     useEffect(() => {
@@ -107,7 +108,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
         }
     }, [cachedReports]);
 
-    const saveOfflineReport = (data: any, filename: string, type: 'create' | 'update' = 'create', reportId?: number) => {
+    const saveOfflineReport = (data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>, filename: string, type: 'create' | 'update' = 'create', reportId?: number) => {
         const newReport: OfflineReport = {
             id: crypto.randomUUID(),
             timestamp: Date.now(),
@@ -126,11 +127,11 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
         toast.success('オフラインで保存しました。オンライン時に自動送信されます。');
     };
 
-    const cacheCustomers = (customers: any[]) => {
+    const cacheCustomers = (customers: Customer[]) => {
         setCachedCustomers(customers);
     };
 
-    const cacheReports = (reports: any[]) => {
+    const cacheReports = (reports: Report[]) => {
         setCachedReports(reports);
     };
 

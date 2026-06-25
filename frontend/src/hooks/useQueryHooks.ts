@@ -12,12 +12,14 @@ import {
     getAllSales,
     addReport,
     updateReport,
-    deleteReport,
+    deleteReport
+} from '@/lib/api';
+import {
     Report,
     ExcelFile,
     Customer,
     SalesData
-} from '@/lib/api';
+} from '@/types/report';
 import toast from 'react-hot-toast';
 
 // クエリキー定数

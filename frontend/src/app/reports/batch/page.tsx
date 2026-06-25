@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
@@ -121,26 +121,43 @@ export default function BatchReportPage() {
     const [visits, setVisits] = useState<VisitEntry[]>([]);
     const [isLoaded, setIsLoaded] = useState(false);
 
+    // 検索用state
+    const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
+    const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
+
+    // 得意先リスト選択時にonBlurの自由記載を抑制するためのフラグ
+    const justSelectedCustomerRef = useRef<boolean>(false);
+
+    // 量販店調査入力用state
+    const [retailerSearchTerms, setRetailerSearchTerms] = useState<{ [key: string]: string }>({});
+    const [showRetailerSuggestions, setShowRetailerSuggestions] = useState<{ [key: string]: boolean }>({});
+
+    // エリア検索用state
+    const [areaSearchTerms, setAreaSearchTerms] = useState<{ [key: string]: string }>({});
+    const [showAreaSuggestions, setShowAreaSuggestions] = useState<{ [key: string]: boolean }>({});
+
     // クライアント側でのみ初期訪問ブロックを作成、または下書きを復元
     useEffect(() => {
         if (!isLoaded) {
             const draft = getDraft();
-            if (draft && draft.visits && draft.visits.length > 0) {
-                // 下書きデータを復元
-                setDate(draft.date || today);
-                setVisits(draft.visits);
-                // 検索テキストも復元（次のuseEffectで参照されるようsetStateで設定）
-                if (draft.searchTerms) {
-                    setSearchTerms(draft.searchTerms);
+            Promise.resolve().then(() => {
+                if (draft && draft.visits && draft.visits.length > 0) {
+                    // 下書きデータを復元
+                    setDate(draft.date || today);
+                    setVisits(draft.visits);
+                    // 検索テキストも復元（次のuseEffectで参照されるようsetStateで設定）
+                    if (draft.searchTerms) {
+                        setSearchTerms(draft.searchTerms);
+                    }
+                    if (draft.retailerSearchTerms) {
+                        setRetailerSearchTerms(draft.retailerSearchTerms);
+                    }
+                    toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'draft-restored' });
+                } else {
+                    setVisits([createEmptyVisit()]);
                 }
-                if (draft.retailerSearchTerms) {
-                    setRetailerSearchTerms(draft.retailerSearchTerms);
-                }
-                toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'draft-restored' });
-            } else {
-                setVisits([createEmptyVisit()]);
-            }
-            setIsLoaded(true);
+                setIsLoaded(true);
+            });
         }
     }, [isLoaded]);
 
@@ -156,21 +173,6 @@ export default function BatchReportPage() {
     // バリデーションエラー状態
     const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
     const [showErrors, setShowErrors] = useState(false); // エラー表示フラグ
-
-    // 検索用state
-    const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
-    const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
-
-    // 得意先リスト選択時にonBlurの自由記載を抑制するためのフラグ
-    const justSelectedCustomerRef = useRef<boolean>(false);
-
-    // 量販店調査入力用state
-    const [retailerSearchTerms, setRetailerSearchTerms] = useState<{ [key: string]: string }>({});
-    const [showRetailerSuggestions, setShowRetailerSuggestions] = useState<{ [key: string]: boolean }>({});
-
-    // エリア検索用state
-    const [areaSearchTerms, setAreaSearchTerms] = useState<{ [key: string]: string }>({});
-    const [showAreaSuggestions, setShowAreaSuggestions] = useState<{ [key: string]: boolean }>({});
 
     // 過去の量販店調査訪問名履歴（reportsから抽出）
     const retailerHistory = useMemo(() => {
@@ -428,7 +430,7 @@ export default function BatchReportPage() {
             };
 
             try {
-                await addReport(reportData as any, selectedFile);
+                await addReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
                 successCount++;
             } catch (error) {
                 console.error('Failed to create report:', error);

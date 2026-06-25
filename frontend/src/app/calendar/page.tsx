@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { generateMonthCalendar, MonthData, CalendarDay, getDayName, getMonthName } from '@/lib/calendar';
@@ -15,7 +15,6 @@ export default function CalendarPage() {
     const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
 
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [monthData, setMonthData] = useState<MonthData | null>(null);
     const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
     const printRef = useRef<HTMLDivElement>(null);
 
@@ -26,18 +25,12 @@ export default function CalendarPage() {
         }
     }, [error]);
 
-    useEffect(() => {
-        if (reports.length > 0) {
-            generateCalendar();
-        }
-    }, [reports, currentDate]);
-
-    const generateCalendar = () => {
+    const monthData = useMemo((): MonthData | null => {
+        if (reports.length === 0) return null;
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
-        const data = generateMonthCalendar(year, month, reports);
-        setMonthData(data);
-    };
+        return generateMonthCalendar(year, month, reports);
+    }, [reports, currentDate]);
 
     const handlePreviousMonth = () => {
         setCurrentDate(prev => {

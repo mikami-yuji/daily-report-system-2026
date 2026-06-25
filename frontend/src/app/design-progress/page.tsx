@@ -16,7 +16,9 @@ export default function DesignProgressPage() {
     // デフォルトファイルが読み込まれたら設定
     useEffect(() => {
         if (defaultFile && !selectedFile) {
-            setSelectedFile(defaultFile);
+            Promise.resolve().then(() => {
+                setSelectedFile(defaultFile);
+            });
         }
     }, [defaultFile, selectedFile]);
 
@@ -25,8 +27,6 @@ export default function DesignProgressPage() {
 
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [selectedDesignNo, setSelectedDesignNo] = useState<string>('');
-    const [progressHistory, setProgressHistory] = useState<Report[]>([]);
-
     // デザイン依頼があるカスタマー一覧を抽出
     const customers = useMemo(() => {
         const customerSet = new Set<string>();
@@ -55,16 +55,10 @@ export default function DesignProgressPage() {
         return Array.from(designSet).sort();
     }, [selectedCustomer, reports]);
 
-    // カスタマー変更時に選択をリセット
-    useEffect(() => {
-        setSelectedDesignNo('');
-        setProgressHistory([]);
-    }, [selectedCustomer]);
-
     // When a design number is selected, build progress history
-    useEffect(() => {
+    const progressHistory = useMemo(() => {
         if (selectedCustomer && selectedDesignNo) {
-            const history = reports
+            return reports
                 .filter(r =>
                     String(r.得意先CD) === selectedCustomer &&
                     String(r['デザイン依頼No.']) === selectedDesignNo
@@ -74,10 +68,8 @@ export default function DesignProgressPage() {
                     const dateB = new Date(b.日付 || '').getTime();
                     return dateB - dateA;
                 });
-            setProgressHistory(history);
-        } else {
-            setProgressHistory([]);
         }
+        return [];
     }, [selectedDesignNo, selectedCustomer, reports]);
 
     const getCustomerName = (customerCD: string) => {
@@ -123,7 +115,10 @@ export default function DesignProgressPage() {
                         </label>
                         <select
                             value={selectedCustomer}
-                            onChange={e => setSelectedCustomer(e.target.value)}
+                            onChange={e => {
+                                setSelectedCustomer(e.target.value);
+                                setSelectedDesignNo('');
+                            }}
                             className="w-full border border-sf-border rounded px-3 py-2 text-sf-text"
                         >
                             <option value="">-- 得意先を選択 --</option>

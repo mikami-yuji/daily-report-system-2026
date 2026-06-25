@@ -371,11 +371,12 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             // 送信成功時に下書きをクリア
             clearDraft();
             onSuccess();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error creating report:', error);
 
+            const err = error as { message?: string };
             // ネットワークエラーのチェック
-            if (error.message?.includes('Failed to fetch') || !navigator.onLine) {
+            if (err.message?.includes('Failed to fetch') || !navigator.onLine) {
                 toast.error('ネットワーク接続を確認してください', {
                     duration: 5000,
                     icon: '🌐'
@@ -384,16 +385,16 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             }
 
             // 既にtoast.errorで表示済みのエラーは再表示しない
-            if (error.message?.includes('Validation error') ||
-                error.message?.includes('Conflict error') ||
-                error.message?.includes('Server error') ||
-                error.message?.includes('HTTP')) {
+            if (err.message?.includes('Validation error') ||
+                err.message?.includes('Conflict error') ||
+                err.message?.includes('Server error') ||
+                err.message?.includes('HTTP')) {
                 // 既に適切なエラーメッセージが表示されているので何もしない
                 return;
             }
 
             // その他の予期しないエラー
-            toast.error(`予期しないエラーが発生しました: ${error.message}`);
+            toast.error(`予期しないエラーが発生しました: ${err.message}`);
         } finally {
             setSubmitting(false);
         }

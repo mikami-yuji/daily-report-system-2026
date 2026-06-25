@@ -681,7 +681,7 @@ export default function DesignSearchPage() {
                         <div className="p-4 border-b border-sf-border flex justify-between items-center bg-gray-50 rounded-t-lg">
                             <h3 className="font-bold text-lg text-sf-text flex items-center gap-2">
                                 <Search size={20} className="text-pink-500" />
-                                検索結果: "{searchQueryDebug}" ({imageResults.length}件)
+                                検索結果: {`"${searchQueryDebug}"`} ({imageResults.length}件)
                             </h3>
                             <button
                                 onClick={() => setShowImageModal(false)}

@@ -29,7 +29,6 @@ export default function MassRetailerSurveyPage() {
         )).sort();
     }, [reports]);
 
-    const [filteredReports, setFilteredReports] = useState(reports);
     const [keyword, setKeyword] = useState('');
     const [selectedArea, setSelectedArea] = useState<string>('all');
 
@@ -40,12 +39,7 @@ export default function MassRetailerSurveyPage() {
         }
     }, [error]);
 
-    // レポートが変わったらフィルタリング実行
-    useEffect(() => {
-        filterReports();
-    }, [reports, keyword, selectedArea]);
-
-    const filterReports = () => {
+    const filteredReports = useMemo(() => {
         let filtered = [...reports];
 
         // Apply keyword filter
@@ -75,8 +69,8 @@ export default function MassRetailerSurveyPage() {
             return dateB.localeCompare(dateA);
         });
 
-        setFilteredReports(filtered);
-    };
+        return filtered;
+    }, [reports, keyword, selectedArea]);
 
     if (isLoading) {
         return (

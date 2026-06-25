@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { aggregateAnalytics, getDateRange, AnalyticsData, aggregatePriorityMatrix, PriorityMatrixData, parseDate } from '@/lib/analytics';
@@ -26,7 +26,6 @@ export default function AnalyticsPage() {
     // React Queryでデータ取得（自動キャッシュ）
     const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
 
-    const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
     const [period, setPeriod] = useState<Period>('month');
     const [activeTab, setActiveTab] = useState<Tab>('overview');
 
@@ -34,7 +33,6 @@ export default function AnalyticsPage() {
     const [matrixMode, setMatrixMode] = useState<MatrixMode>('monthly');
     const [matrixMetric, setMatrixMetric] = useState<MatrixMetric>('total');
     const [priorityCustomers, setPriorityCustomers] = useState<PriorityCustomer[]>([]);
-    const [matrixData, setMatrixData] = useState<PriorityMatrixData | null>(null);
     const [customerNameMap, setCustomerNameMap] = useState<Map<string, string>>(new Map());
     // エラー時のtoast表示
     useEffect(() => {
@@ -70,10 +68,10 @@ export default function AnalyticsPage() {
         }
     }, [selectedFile]);
 
-    useEffect(() => {
-        if (reports.length > 0) {
-            calculateAnalytics();
-        }
+    const analytics = useMemo((): AnalyticsData | null => {
+        if (reports.length === 0) return null;
+        const { start, end } = getDateRange(period);
+        return aggregateAnalytics(reports, start, end, priorityCustomers);
     }, [reports, period, priorityCustomers]);
 
     // ファイル名から担当者名を抽出する関数
@@ -106,32 +104,24 @@ export default function AnalyticsPage() {
         return content.slice(0, 2);
     };
 
-    // マトリクスデータを更新（担当者でフィルタリング）
-    useEffect(() => {
-        if (reports.length > 0) {
-            // ファイル名から担当者名を抽出
-            const staffName = selectedFile ? extractStaffNameFromFilename(selectedFile) : null;
+    const matrixData = useMemo((): PriorityMatrixData | null => {
+        if (reports.length === 0) return null;
 
-            // 担当者でフィルタリング
-            let filteredPriorityCustomers = priorityCustomers;
-            if (staffName && priorityCustomers.length > 0) {
-                filteredPriorityCustomers = priorityCustomers.filter(c => {
-                    const customerStaff = c.担当者 || '';
-                    // 担当者名が含まれているかチェック（部分一致）
-                    return customerStaff.includes(staffName) || staffName.includes(customerStaff);
-                });
-            }
+        // ファイル名から担当者名を抽出
+        const staffName = selectedFile ? extractStaffNameFromFilename(selectedFile) : null;
 
-            const data = aggregatePriorityMatrix(reports, filteredPriorityCustomers, matrixMode, matrixMetric);
-            setMatrixData(data);
+        // 担当者でフィルタリング
+        let filteredPriorityCustomers = priorityCustomers;
+        if (staffName && priorityCustomers.length > 0) {
+            filteredPriorityCustomers = priorityCustomers.filter(c => {
+                const customerStaff = c.担当者 || '';
+                // 担当者名が含まれているかチェック（部分一致）
+                return customerStaff.includes(staffName) || staffName.includes(customerStaff);
+            });
         }
-    }, [reports, priorityCustomers, matrixMode, matrixMetric, selectedFile]);
 
-    const calculateAnalytics = () => {
-        const { start, end } = getDateRange(period);
-        const analyticsData = aggregateAnalytics(reports, start, end, priorityCustomers);
-        setAnalytics(analyticsData);
-    };
+        return aggregatePriorityMatrix(reports, filteredPriorityCustomers, matrixMode, matrixMetric);
+    }, [reports, priorityCustomers, matrixMode, matrixMetric, selectedFile]);
 
     // ヒートマップの背景色を取得
     const getHeatmapColor = (value: number): string => {

@@ -4,6 +4,30 @@ import { sanitizeReport, normalizeDateInput } from '@/lib/reportUtils';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// セッションストレージから下書きデータを取得する関数
+const getSessionDraft = (reportId: number | string | undefined, field: string): string | null => {
+    if (typeof window === 'undefined' || !reportId) {
+        return null;
+    }
+    return sessionStorage.getItem(`draft_comment_${reportId}_${field}`);
+};
+
+// セッションストレージに下書きデータを保存する関数
+const setSessionDraft = (reportId: number | string | undefined, field: string, value: string): void => {
+    if (typeof window === 'undefined' || !reportId) {
+        return;
+    }
+    sessionStorage.setItem(`draft_comment_${reportId}_${field}`, value);
+};
+
+// セッションストレージの下書きデータを削除する関数
+const removeSessionDraft = (reportId: number | string | undefined, field: string): void => {
+    if (typeof window === 'undefined' || !reportId) {
+        return;
+    }
+    sessionStorage.removeItem(`draft_comment_${reportId}_${field}`);
+};
+
 interface EditReportModalProps {
     report: Report;
     onClose: () => void;
@@ -17,7 +41,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
 
     // Parse initial time and clean content from 商談内容
-    const parseInitialData = (content: any) => {
+    const parseInitialData = (content: unknown) => {
         if (!content || typeof content !== 'string') return { start: '', end: '', content: '', satisfaction: '' };
 
         let newContent = content;
@@ -80,6 +104,19 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         return 'none';
     });
     const [designs, setDesigns] = useState<Design[]>([]);
+
+    useEffect(() => {
+        const draftComment = getSessionDraft(report?.管理番号, '上長コメント');
+        const draftReply = getSessionDraft(report?.管理番号, 'コメント返信欄');
+
+        if (draftComment !== null || draftReply !== null) {
+            setFormData(prev => ({
+                ...prev,
+                上長コメント: draftComment !== null ? draftComment : prev.上長コメント,
+                コメント返信欄: draftReply !== null ? draftReply : prev.コメント返信欄
+            }));
+        }
+    }, [report]);
 
     useEffect(() => {
         if (formData.得意先CD) {
@@ -196,14 +233,29 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         try {
             await updateReport(report?.管理番号, sanitized, selectedFile);
             toast.success(`日報を更新しました (No. ${report?.管理番号})`);
+            if (report?.管理番号) {
+                removeSessionDraft(report.管理番号, '上長コメント');
+                removeSessionDraft(report.管理番号, 'コメント返信欄');
+            }
             onSuccess();
-        } catch (error: any) {
+        } catch (error: unknown) {
             // エラーログを出力（既存の console.error を維持）
             console.error('Error updating report:', error);
 
-            if (error.response && error.response.status === 409) {
+            const axiosError = error as {
+                response?: {
+                    status?: number;
+                    data?: { detail?: string | unknown };
+                };
+                message?: string;
+            };
+
+            if (axiosError.response && axiosError.response.status === 409) {
                 // 競合エラーの検出
-                toast.error(error.response.data.detail || '他の方が編集しました。最新の情報を読み込んでからやり直してください。', {
+                const detailMessage = typeof axiosError.response.data?.detail === 'string'
+                    ? axiosError.response.data.detail
+                    : '他の方が編集しました。最新の情報を読み込んでからやり直してください。';
+                toast.error(detailMessage, {
                     duration: 6000,
                     style: {
                         border: '1px solid #ef4444',
@@ -216,11 +268,11 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                     },
                 });
             } else {
-                const errorDetail = error.response?.data?.detail 
-                    ? (typeof error.response.data.detail === 'string' 
-                        ? error.response.data.detail 
-                        : JSON.stringify(error.response.data.detail))
-                    : error.message;
+                const errorDetail = axiosError.response?.data?.detail 
+                    ? (typeof axiosError.response.data.detail === 'string' 
+                        ? axiosError.response.data.detail 
+                        : JSON.stringify(axiosError.response.data.detail))
+                    : axiosError.message;
                 toast.error(`日報の更新に失敗しました: ${errorDetail}`);
             }
         } finally {
@@ -229,16 +281,47 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [e.target.name]: e.target.value
+            [name]: value
         }));
+
+        if (report?.管理番号 && (name === '上長コメント' || name === 'コメント返信欄')) {
+            const original = name === '上長コメント'
+                ? (report?.上長コメント || report?.コメント || '')
+                : (report?.コメント返信欄 || '');
+
+            if (value === original) {
+                removeSessionDraft(report.管理番号, name);
+            } else {
+                setSessionDraft(report.管理番号, name, value);
+            }
+        }
+    };
+
+    // 下書きデータを破棄して元の値に戻す関数
+    const handleDiscardDraft = (field: '上長コメント' | 'コメント返信欄'): void => {
+        removeSessionDraft(report?.管理番号, field);
+        setFormData(prev => ({
+            ...prev,
+            [field]: field === '上長コメント'
+                ? (report?.上長コメント || report?.コメント || '')
+                : (report?.コメント返信欄 || '')
+        }));
+        toast.success('下書きを破棄しました');
     };
 
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
     const isOuting = formData.行動内容 === '外出時間';
 
     if (!report) return null;
+
+    const originalComment = report?.上長コメント || report?.コメント || '';
+    const originalReply = report?.コメント返信欄 || '';
+
+    const hasDraftComment = formData.上長コメント !== originalComment;
+    const hasDraftReply = formData.コメント返信欄 !== originalReply;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
@@ -588,7 +671,24 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-sf-border">
                         <div>
-                            <label className="block text-sm font-medium text-sf-text mb-1 text-blue-800">上長コメント</label>
+                            <div className="flex items-center gap-2 mb-1">
+                                <label className="block text-sm font-medium text-sf-text text-blue-800">上長コメント</label>
+                                {hasDraftComment && (
+                                    <div className="flex items-center gap-2 ml-auto">
+                                        <span className="text-xs font-normal text-yellow-700 bg-yellow-100 border border-yellow-300 px-2 py-0.5 rounded animate-pulse">
+                                            一時保存データを復元中
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDiscardDraft('上長コメント')}
+                                            className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                            title="下書きを破棄して元のデータに戻します"
+                                        >
+                                            下書きを破棄
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <textarea
                                 name="上長コメント"
                                 value={formData.上長コメント}
@@ -600,7 +700,24 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-sf-text mb-1 text-green-800">コメント返信欄</label>
+                            <div className="flex items-center gap-2 mb-1">
+                                <label className="block text-sm font-medium text-sf-text text-green-800">コメント返信欄</label>
+                                {hasDraftReply && (
+                                    <div className="flex items-center gap-2 ml-auto">
+                                        <span className="text-xs font-normal text-green-700 bg-green-100 border border-green-300 px-2 py-0.5 rounded animate-pulse">
+                                            一時保存データを復元中
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDiscardDraft('コメント返信欄')}
+                                            className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                            title="下書きを破棄して元のデータに戻します"
+                                        >
+                                            下書きを破棄
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                             <textarea
                                 name="コメント返信欄"
                                 value={formData.コメント返信欄}

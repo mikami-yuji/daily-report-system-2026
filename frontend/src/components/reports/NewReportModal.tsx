@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
-import { X, Truck } from 'lucide-react';
+import { X, Truck, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { normalizeDateInput } from '@/lib/reportUtils';
 
@@ -73,6 +73,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         return base;
     });
     const [submitting, setSubmitting] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -298,10 +299,20 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSubmitting(true);
+        setSaveStatus('sending');
+
+        // 時間経過で段階的にステータスを遷移させるタイマー
+        const timer1 = setTimeout(() => setSaveStatus('writing'), 600);
+        const timer2 = setTimeout(() => setSaveStatus('backup'), 1800);
 
         try {
             if (!isOnline) {
                 saveOfflineReport(formData, selectedFile);
+                clearTimeout(timer1);
+                clearTimeout(timer2);
+                setSaveStatus('success');
+                // 成功演出をしっかり見せるためのウェイト
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 onSuccess();
                 return;
             }
@@ -332,7 +343,12 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 body: JSON.stringify(finalFormData),
             });
 
+            // 通信が終わったら即座に擬似タイマーをクリア
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+
             if (!response.ok) {
+                setSaveStatus('idle');
                 const errorData = await response.json().catch(() => ({}));
 
                 if (response.status === 422) {
@@ -367,11 +383,19 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             }
 
             const responseData = await response.json();
+            setSaveStatus('success');
+            
             toast.success(`日報を保存しました (No. ${responseData.management_number})`, { duration: 3000 });
             // 送信成功時に下書きをクリア
             clearDraft();
+            
+            // 成功アニメーションをしっかり見せてから閉じる
+            await new Promise(resolve => setTimeout(resolve, 1200));
             onSuccess();
         } catch (error: unknown) {
+            clearTimeout(timer1);
+            clearTimeout(timer2);
+            setSaveStatus('idle');
             console.error('Error creating report:', error);
 
             const err = error as { message?: string };
@@ -396,7 +420,11 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             // その他の予期しないエラー
             toast.error(`予期しないエラーが発生しました: ${err.message}`);
         } finally {
-            setSubmitting(false);
+            // 成功した場合は onSuccess() によりモーダルが閉じてアンマウントされるため、
+            // エラー等で送信完了しなかった場合のみ submitting を解除
+            if (saveStatus !== 'success') {
+                setSubmitting(false);
+            }
         }
     };
 
@@ -853,14 +881,63 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                         <button
                             type="submit"
                             disabled={submitting}
-                            className="px-4 py-2 bg-sf-light-blue text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            className={`relative overflow-hidden px-5 py-2.5 font-medium rounded transition-all duration-300 flex items-center justify-center gap-2 min-w-[120px] active:scale-95 text-sm ${
+                                saveStatus === 'idle'
+                                    ? 'bg-slate-800 hover:bg-slate-900 text-white shadow-sm hover:shadow-md cursor-pointer'
+                                    : saveStatus === 'success'
+                                    ? 'bg-teal-700 text-white shadow-inner'
+                                    : 'bg-slate-700 text-slate-200 cursor-wait'
+                            }`}
                         >
-                            {submitting ? (
+                            {/* プログレスライン */}
+                            {saveStatus !== 'idle' && saveStatus !== 'success' && (
+                                <div 
+                                    className="absolute bottom-0 left-0 h-[3px] bg-cyan-500 transition-all duration-700 ease-out"
+                                    style={{
+                                        width: saveStatus === 'sending' ? '30%' : saveStatus === 'writing' ? '70%' : '95%'
+                                    }}
+                                />
+                            )}
+                            
+                            {/* シマー効果の背景レイヤー */}
+                            {(saveStatus === 'writing' || saveStatus === 'backup') && (
+                                <div className="absolute inset-0 animate-shimmer opacity-20 pointer-events-none" />
+                            )}
+
+                            {/* ボタンコンテンツ */}
+                            {saveStatus === 'idle' && (
                                 <>
-                                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    作成中...
+                                    作成
                                 </>
-                            ) : '作成'}
+                            )}
+
+                            {saveStatus === 'sending' && (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+                                    データを送信中...
+                                </>
+                            )}
+
+                            {saveStatus === 'writing' && (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+                                    Excelへ書き込み中...
+                                </>
+                            )}
+
+                            {saveStatus === 'backup' && (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+                                    バックアップ作成中...
+                                </>
+                            )}
+
+                            {saveStatus === 'success' && (
+                                <div className="flex items-center gap-1.5 animate-bounceIn">
+                                    <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                                    保存が完了しました
+                                </div>
+                            )}
                         </button>
                     </div>
                 </form>

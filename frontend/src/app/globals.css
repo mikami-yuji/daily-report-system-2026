@@ -94,3 +94,44 @@ body {
 input:focus, select:focus, textarea:focus {
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
+
+/* シマー効果（光沢が流れる） */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, #334155 25%, #475569 50%, #334155 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+/* ポンと弾むアニメーション */
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.9;
+  }
+  80% {
+    transform: scale(0.89);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-bounceIn {
+  animation: bounceIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+

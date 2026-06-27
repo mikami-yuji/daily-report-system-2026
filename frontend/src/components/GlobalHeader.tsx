@@ -4,7 +4,7 @@ export default function GlobalHeader() {
     return (
         <header className="bg-sf-header-bg text-white h-12 flex items-center px-4 justify-between sticky top-0 z-50">
             <div className="flex items-center gap-4">
-                <button className="p-1 hover:bg-white/10 rounded">
+                <button className="p-1 hover:bg-white/10 rounded" title="アプリランチャー" aria-label="アプリランチャー">
                     <Grid size={20} />
                 </button>
                 <span className="font-bold text-lg tracking-wide">Salesforce</span>
@@ -22,10 +22,10 @@ export default function GlobalHeader() {
             </div>
 
             <div className="flex items-center gap-3">
-                <button className="p-1 hover:bg-white/10 rounded"><HelpCircle size={20} /></button>
-                <button className="p-1 hover:bg-white/10 rounded"><Settings size={20} /></button>
-                <button className="p-1 hover:bg-white/10 rounded"><Bell size={20} /></button>
-                <button className="p-1 hover:bg-white/10 rounded"><User size={20} /></button>
+                <button className="p-1 hover:bg-white/10 rounded" title="ヘルプ" aria-label="ヘルプ"><HelpCircle size={20} /></button>
+                <button className="p-1 hover:bg-white/10 rounded" title="設定" aria-label="設定"><Settings size={20} /></button>
+                <button className="p-1 hover:bg-white/10 rounded" title="通知" aria-label="通知"><Bell size={20} /></button>
+                <button className="p-1 hover:bg-white/10 rounded" title="プロファイル" aria-label="プロファイル"><User size={20} /></button>
             </div>
         </header>
     );

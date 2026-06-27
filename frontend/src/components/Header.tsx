@@ -52,6 +52,8 @@ export default function Header() {
                         value={selectedFile}
                         onChange={(e) => setSelectedFile(e.target.value)}
                         className="bg-transparent text-sm text-sf-text focus:outline-none w-full cursor-pointer"
+                        title="Excelファイルを選択"
+                        aria-label="Excelファイルを選択"
                     >
                         {(files || []).map((file) => (
                             <option key={file.name} value={file.name}>

@@ -3441,8 +3441,17 @@ if os.path.exists(STATIC_DIR):
         return FileResponse(p) if os.path.exists(p) else {"msg": "No static"}
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        fp = os.path.join(STATIC_DIR, full_path)
-        if os.path.isfile(fp): return FileResponse(fp)
+        clean_path = full_path.rstrip("/")
+        fp = os.path.join(STATIC_DIR, clean_path)
+        if os.path.isfile(fp): 
+            return FileResponse(fp)
+        if not os.path.splitext(clean_path)[1]:
+            html_fp = fp + ".html"
+            if os.path.isfile(html_fp):
+                return FileResponse(html_fp)
+        dir_index = os.path.join(fp, "index.html")
+        if os.path.isdir(fp) and os.path.isfile(dir_index):
+            return FileResponse(dir_index)
         si = os.path.join(STATIC_DIR, "index.html")
         return FileResponse(si) if os.path.exists(si) else {"detail": "Not Found"}
 

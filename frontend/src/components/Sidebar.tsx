@@ -93,6 +93,8 @@ export default function Sidebar() {
                 <button
                     onClick={() => setCollapsed(!collapsed)}
                     className="p-1 hover:bg-white/10 rounded"
+                    title={collapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
+                    aria-label={collapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
                 >
                     {collapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
                 </button>

@@ -6,7 +6,7 @@ import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport,
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
@@ -169,6 +169,7 @@ export default function BatchReportPage() {
 
     // 送信中フラグ
     const [submitting, setSubmitting] = useState(false);
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
 
     // バリデーションエラー状態
     const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
@@ -375,83 +376,113 @@ export default function BatchReportPage() {
         }
 
         setSubmitting(true);
+        setSaveStatus('sending');
+
         let successCount = 0;
         let errorCount = 0;
 
-        for (const visit of validVisits) {
-            // 未確定の入力がある場合、ここで自動確定させる
-            let finalVisitName = visit.訪問先名 || '';
-            if (!finalVisitName) {
-                if (visit.行動内容 === '量販店調査') {
-                    finalVisitName = retailerSearchTerms[visit.id]?.trim() || '';
-                } else {
-                    finalVisitName = searchTerms[visit.id]?.trim() || '';
+        // 最低表示時間を並行で走らせる
+        const minimumDisplayPromise = (async (): Promise<void> => {
+            // 送信中を最低400ms表示
+            await new Promise(resolve => setTimeout(resolve, 400));
+            setSaveStatus('writing');
+            // 書き込み中を最低500ms表示
+            await new Promise(resolve => setTimeout(resolve, 500));
+            setSaveStatus('backup');
+            // バックアップ中を最低400ms表示
+            await new Promise(resolve => setTimeout(resolve, 400));
+        })();
+
+        // 実際のAPI保存処理
+        const savePromise = (async (): Promise<void> => {
+            for (const visit of validVisits) {
+                // 未確定の入力がある場合、ここで自動確定させる
+                let finalVisitName = visit.訪問先名 || '';
+                if (!finalVisitName) {
+                    if (visit.行動内容 === '量販店調査') {
+                        finalVisitName = retailerSearchTerms[visit.id]?.trim() || '';
+                    } else {
+                        finalVisitName = searchTerms[visit.id]?.trim() || '';
+                    }
+                }
+
+                // 商談内容の構築（外出時間の場合）
+                let finalCommercialContent = visit.商談内容 || '';
+                let finalRank = visit.ランク;
+
+                if (visit.行動内容 === '外出時間') {
+                    let timeString = '';
+                    if (visit.outingStartTime && visit.outingEndTime) {
+                        timeString += `【外出時間】${visit.outingStartTime}〜${visit.outingEndTime}\n`;
+                    }
+                    if (visit.ランク) {
+                        timeString += `【満足度】${visit.ランク}\n`;
+                    }
+                    finalCommercialContent = timeString + finalCommercialContent;
+                    // ランクは保存しない（ユーザー要望により、商談内容に含めるのみとする場合）
+                    finalRank = '';
+                }
+
+                const reportData = {
+                    日付: normalizeDateInput(date),
+                    得意先CD: visit.得意先CD,
+                    訪問先名: finalVisitName,
+                    直送先CD: visit.直送先CD,
+                    直送先名: visit.直送先名,
+                    行動内容: visit.行動内容,
+                    面談者: visit.面談者,
+                    滞在時間: visit.滞在時間,
+                    商談内容: finalCommercialContent,
+                    提案物: visit.提案物,
+                    次回プラン: visit.次回プラン,
+                    競合他社情報: visit.競合他社情報,
+                    エリア: visit.エリア,
+                    ランク: finalRank,
+                    重点顧客: visit.重点顧客,
+                    デザイン提案有無: visit.デザイン提案有無,
+                    デザイン種別: visit.デザイン種別,
+                    デザイン名: visit.デザイン名,
+                    デザイン進捗状況: visit.デザイン進捗状況,
+                    'デザイン依頼No.': visit['デザイン依頼No.'],
+                };
+
+                try {
+                    await addReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
+                    successCount++;
+                } catch (error) {
+                    console.error('Failed to create report:', error);
+                    errorCount++;
                 }
             }
+        })();
 
-            // 商談内容の構築（外出時間の場合）
-            let finalCommercialContent = visit.商談内容 || '';
-            let finalRank = visit.ランク;
+        try {
+            // API保存処理と最低表示アニメーションの両方が完了するのを待つ
+            await Promise.all([savePromise, minimumDisplayPromise]);
 
-            if (visit.行動内容 === '外出時間') {
-                let timeString = '';
-                if (visit.outingStartTime && visit.outingEndTime) {
-                    timeString += `【外出時間】${visit.outingStartTime}〜${visit.outingEndTime}\n`;
-                }
-                if (visit.ランク) {
-                    timeString += `【満足度】${visit.ランク}\n`;
-                }
-                finalCommercialContent = timeString + finalCommercialContent;
-                // ランクは保存しない（ユーザー要望により、商談内容に含めるのみとする場合）
-                finalRank = '';
+            if (successCount > 0) {
+                setSaveStatus('success');
+                toast.success(`${successCount}件の日報を保存しました`);
+                queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
+                
+                // 成功演出をしっかり見せてからリセット
+                await new Promise(resolve => setTimeout(resolve, 1200));
+
+                setVisits([createEmptyVisit()]);
+                setSearchTerms({});
+                setRetailerSearchTerms({});
+                clearDraft();
             }
 
-            const reportData = {
-                日付: normalizeDateInput(date),
-                得意先CD: visit.得意先CD,
-                訪問先名: finalVisitName,
-                直送先CD: visit.直送先CD,
-                直送先名: visit.直送先名,
-                行動内容: visit.行動内容,
-                面談者: visit.面談者,
-                滞在時間: visit.滞在時間,
-                商談内容: finalCommercialContent,
-                提案物: visit.提案物,
-                次回プラン: visit.次回プラン,
-                競合他社情報: visit.競合他社情報,
-                エリア: visit.エリア,
-                ランク: finalRank,
-                重点顧客: visit.重点顧客,
-                デザイン提案有無: visit.デザイン提案有無,
-                デザイン種別: visit.デザイン種別,
-                デザイン名: visit.デザイン名,
-                デザイン進捗状況: visit.デザイン進捗状況,
-                'デザイン依頼No.': visit['デザイン依頼No.'],
-            };
-
-            try {
-                await addReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
-                successCount++;
-            } catch (error) {
-                console.error('Failed to create report:', error);
-                errorCount++;
+            if (errorCount > 0) {
+                toast.error(`${errorCount}件の保存に失敗しました`);
             }
-        }
-
-        setSubmitting(false);
-
-        if (successCount > 0) {
-            toast.success(`${successCount}件の日報を保存しました`);
-            queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
-            // 入力をリセットし、下書きもクリア
-            setVisits([createEmptyVisit()]);
-            setSearchTerms({});
-            setRetailerSearchTerms({});
-            clearDraft();
-        }
-
-        if (errorCount > 0) {
-            toast.error(`${errorCount}件の保存に失敗しました`);
+        } catch (error) {
+            console.error('Error during batch save:', error);
+            toast.error('保存処理中に予期しないエラーが発生しました');
+        } finally {
+            setSaveStatus('idle');
+            setSubmitting(false);
         }
     };
 
@@ -1170,10 +1201,64 @@ export default function BatchReportPage() {
                         type="button"
                         onClick={handleSubmit}
                         disabled={submitting || validCount === 0}
-                        className="px-6 py-2 bg-sf-light-blue text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className={`relative overflow-hidden px-6 py-2 font-medium rounded transition-all duration-300 flex items-center justify-center gap-2 min-w-[150px] active:scale-95 text-sm ${
+                            saveStatus === 'idle'
+                                ? 'bg-slate-800 hover:bg-slate-900 text-white shadow-sm hover:shadow-md cursor-pointer'
+                                : saveStatus === 'success'
+                                ? 'bg-teal-700 text-white shadow-inner'
+                                : 'bg-slate-700 text-slate-200 cursor-wait'
+                        }`}
                     >
-                        <Save size={18} />
-                        {submitting ? '保存中...' : `一括保存 (${validCount}件)`}
+                        {/* プログレスライン */}
+                        {saveStatus !== 'idle' && saveStatus !== 'success' && (
+                            <div 
+                                className="absolute bottom-0 left-0 h-[3px] bg-cyan-500 transition-all duration-700 ease-out"
+                                style={{
+                                    width: saveStatus === 'sending' ? '30%' : saveStatus === 'writing' ? '70%' : '95%'
+                                }}
+                            />
+                        )}
+                        
+                        {/* シマー効果の背景レイヤー */}
+                        {(saveStatus === 'writing' || saveStatus === 'backup') && (
+                            <div className="absolute inset-0 animate-shimmer opacity-20 pointer-events-none" />
+                        )}
+
+                        {/* ボタンコンテンツ */}
+                        {saveStatus === 'idle' && (
+                            <>
+                                <Save size={18} />
+                                一括保存 ({validCount}件)
+                            </>
+                        )}
+
+                        {saveStatus === 'sending' && (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+                                データを送信中...
+                            </>
+                        )}
+
+                        {saveStatus === 'writing' && (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+                                Excelへ書き込み中...
+                            </>
+                        )}
+
+                        {saveStatus === 'backup' && (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+                                バックアップ作成中...
+                            </>
+                        )}
+
+                        {saveStatus === 'success' && (
+                            <div className="flex items-center gap-1.5 animate-bounceIn">
+                                <Check className="w-4 h-4 text-white" strokeWidth={3} />
+                                保存が完了しました
+                            </div>
+                        )}
                     </button>
                 </div>
             </div>

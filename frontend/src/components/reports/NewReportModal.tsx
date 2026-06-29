@@ -4,7 +4,7 @@ import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Truck, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { normalizeDateInput } from '@/lib/reportUtils';
+import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 
 export interface InitialDesignData {
     得意先CD?: string;
@@ -301,16 +301,14 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         setSubmitting(true);
         setSaveStatus('sending');
 
-        // 時間経過で段階的にステータスを遷移させるタイマー
-        const timer1 = setTimeout(() => setSaveStatus('writing'), 600);
-        const timer2 = setTimeout(() => setSaveStatus('backup'), 1800);
+        // 成功フラグ（クロージャの stale state 問題を回避するためローカル変数で管理）
+        let succeeded = false;
 
         try {
             if (!isOnline) {
                 saveOfflineReport(formData, selectedFile);
-                clearTimeout(timer1);
-                clearTimeout(timer2);
                 setSaveStatus('success');
+                succeeded = true;
                 // 成功演出をしっかり見せるためのウェイト
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 onSuccess();
@@ -335,7 +333,20 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 finalFormData.ランク = '';
             }
 
-            const response = await fetch(`/api/reports?filename=${encodeURIComponent(selectedFile)}`, {
+            // API呼び出しと最低表示時間を並行実行
+            // → レスポンスが早くてもアニメーションが見える
+            const minimumDisplayPromise = (async () => {
+                // 送信中を最低400ms表示
+                await new Promise(resolve => setTimeout(resolve, 400));
+                setSaveStatus('writing');
+                // 書き込み中を最低500ms表示
+                await new Promise(resolve => setTimeout(resolve, 500));
+                setSaveStatus('backup');
+                // バックアップ中を最低400ms表示
+                await new Promise(resolve => setTimeout(resolve, 400));
+            })();
+
+            const responsePromise = fetch(`/api/reports?filename=${encodeURIComponent(selectedFile)}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -343,9 +354,8 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 body: JSON.stringify(finalFormData),
             });
 
-            // 通信が終わったら即座に擬似タイマーをクリア
-            clearTimeout(timer1);
-            clearTimeout(timer2);
+            // API応答と最低表示時間の両方を待つ
+            const [response] = await Promise.all([responsePromise, minimumDisplayPromise]);
 
             if (!response.ok) {
                 setSaveStatus('idle');
@@ -384,6 +394,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
 
             const responseData = await response.json();
             setSaveStatus('success');
+            succeeded = true;
             
             toast.success(`日報を保存しました (No. ${responseData.management_number})`, { duration: 3000 });
             // 送信成功時に下書きをクリア
@@ -393,8 +404,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             await new Promise(resolve => setTimeout(resolve, 1200));
             onSuccess();
         } catch (error: unknown) {
-            clearTimeout(timer1);
-            clearTimeout(timer2);
             setSaveStatus('idle');
             console.error('Error creating report:', error);
 
@@ -422,7 +431,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         } finally {
             // 成功した場合は onSuccess() によりモーダルが閉じてアンマウントされるため、
             // エラー等で送信完了しなかった場合のみ submitting を解除
-            if (saveStatus !== 'success') {
+            if (!succeeded) {
                 setSubmitting(false);
             }
         }
@@ -463,11 +472,17 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                         <div>
                             <label className="block text-sm font-medium text-sf-text mb-1">日付 *</label>
                             <input
-                                type="text"
+                                type="date"
                                 name="日付"
-                                value={formData.日付}
-                                onChange={handleChange}
-                                placeholder="YY/MM/DD"
+                                value={convertYYMMDDToYYYYMMDD(formData.日付)}
+                                onChange={(e) => {
+                                    const yyyymmdd = e.target.value;
+                                    const yymmdd = convertYYYYMMDDToYYMMDD(yyyymmdd);
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        日付: yymmdd
+                                    }));
+                                }}
                                 required
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />

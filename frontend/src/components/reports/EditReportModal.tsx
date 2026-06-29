@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Report, updateReport, getDesigns, Design } from '@/lib/api';
-import { sanitizeReport, normalizeDateInput } from '@/lib/reportUtils';
+import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 import { X, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 
 // セッションストレージから下書きデータを取得する関数
 const getSessionDraft = (reportId: number | string | undefined, field: string): string | null => {
@@ -71,33 +72,69 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         ? parseInitialData(report.商談内容)
         : { start: '', end: '', content: report?.商談内容 || '', satisfaction: '' };
 
+    type EditDraftData = {
+        formData: {
+            日付: string;
+            行動内容: string;
+            エリア: string;
+            得意先CD: string;
+            直送先CD: string;
+            訪問先名: string;
+            直送先名: string;
+            面談者: string;
+            滞在時間: string;
+            商談内容: string;
+            提案物: string;
+            次回プラン: string;
+            競合他社情報: string;
+            重点顧客: string;
+            ランク: string;
+            デザイン提案有無: string;
+            デザイン種別: string;
+            デザイン名: string;
+            デザイン進捗状況: string;
+            'デザイン依頼No.': string;
+        };
+        startOutTime: string;
+        endOutTime: string;
+        designMode: 'none' | 'new' | 'existing';
+    };
+
+    const { getDraft, saveDraft, clearDraft } = useLocalStorageDraft<EditDraftData>(
+        report?.管理番号 ? `edit-report-basic-draft-${report.管理番号}` : ''
+    );
+
+    // 下書きがあれば復元、なければExcelからロードされた初期値
+    const initialDraft = React.useMemo(() => (report?.管理番号 ? getDraft() : null), [report?.管理番号, getDraft]);
+
     const [formData, setFormData] = useState({
-        日付: report?.日付 || '',
-        行動内容: report?.行動内容 || '',
-        エリア: report?.エリア || '',
-        得意先CD: report?.得意先CD || '',
-        直送先CD: report?.直送先CD || '',
-        訪問先名: report?.訪問先名 || '',
-        直送先名: report?.直送先名 || '',
-        面談者: report?.面談者 || '',
-        滞在時間: report?.滞在時間 || '',
-        商談内容: initialParsed.content,
-        提案物: report?.提案物 || '',
-        次回プラン: report?.次回プラン || '',
-        競合他社情報: report?.競合他社情報 || '',
-        重点顧客: report?.重点顧客 || '',
-        ランク: initialParsed.satisfaction || report?.ランク || '', // ランクカラムが空でも本文から復元
+        日付: initialDraft?.formData ? initialDraft.formData.日付 : (report?.日付 || ''),
+        行動内容: initialDraft?.formData ? initialDraft.formData.行動内容 : (report?.行動内容 || ''),
+        エリア: initialDraft?.formData ? initialDraft.formData.エリア : (report?.エリア || ''),
+        得意先CD: initialDraft?.formData ? initialDraft.formData.得意先CD : (report?.得意先CD || ''),
+        直送先CD: initialDraft?.formData ? initialDraft.formData.直送先CD : (report?.直送先CD || ''),
+        訪問先名: initialDraft?.formData ? initialDraft.formData.訪問先名 : (report?.訪問先名 || ''),
+        直送先名: initialDraft?.formData ? initialDraft.formData.直送先名 : (report?.直送先名 || ''),
+        面談者: initialDraft?.formData ? initialDraft.formData.面談者 : (report?.面談者 || ''),
+        滞在時間: initialDraft?.formData ? initialDraft.formData.滞在時間 : (report?.滞在時間 || ''),
+        商談内容: initialDraft?.formData ? initialDraft.formData.商談内容 : initialParsed.content,
+        提案物: initialDraft?.formData ? initialDraft.formData.提案物 : (report?.提案物 || ''),
+        次回プラン: initialDraft?.formData ? initialDraft.formData.次回プラン : (report?.次回プラン || ''),
+        競合他社情報: initialDraft?.formData ? initialDraft.formData.競合他社情報 : (report?.競合他社情報 || ''),
+        重点顧客: initialDraft?.formData ? initialDraft.formData.重点顧客 : (report?.重点顧客 || ''),
+        ランク: initialDraft?.formData ? initialDraft.formData.ランク : (initialParsed.satisfaction || report?.ランク || ''), // ランクカラムが空でも本文から復元
         上長コメント: report?.上長コメント || report?.コメント || '',
         コメント返信欄: report?.コメント返信欄 || '',
-        デザイン提案有無: report?.デザイン提案有無 || '',
-        デザイン種別: report?.デザイン種別 || '',
-        デザイン名: report?.デザイン名 || '',
-        デザイン進捗状況: report?.デザイン進捗状況 || '',
-        'デザイン依頼No.': report?.['デザイン依頼No.'] || ''
+        デザイン提案有無: initialDraft?.formData ? initialDraft.formData.デザイン提案有無 : (report?.デザイン提案有無 || ''),
+        デザイン種別: initialDraft?.formData ? initialDraft.formData.デザイン種別 : (report?.デザイン種別 || ''),
+        デザイン名: initialDraft?.formData ? initialDraft.formData.デザイン名 : (report?.デザイン名 || ''),
+        デザイン進捗状況: initialDraft?.formData ? initialDraft.formData.デザイン進捗状況 : (report?.デザイン進捗状況 || ''),
+        'デザイン依頼No.': initialDraft?.formData ? initialDraft.formData['デザイン依頼No.'] : (report?.['デザイン依頼No.'] || '')
     });
-    const [startOutTime, setStartOutTime] = useState(initialParsed.start);
-    const [endOutTime, setEndOutTime] = useState(initialParsed.end);
+    const [startOutTime, setStartOutTime] = useState(initialDraft ? initialDraft.startOutTime : initialParsed.start);
+    const [endOutTime, setEndOutTime] = useState(initialDraft ? initialDraft.endOutTime : initialParsed.end);
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(() => {
+        if (initialDraft) return initialDraft.designMode;
         if (report?.デザイン提案有無 === 'あり') {
             return report?.['デザイン依頼No.'] ? 'existing' : 'new';
         }
@@ -193,11 +230,142 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         '商談内容': report?.商談内容 || ''
     }), [report]);
 
+    const getOriginalBasicValues = React.useCallback(() => {
+        const parsed = (report?.行動内容 === '外出時間' && report?.商談内容)
+            ? parseInitialData(report.商談内容)
+            : { start: '', end: '', content: report?.商談内容 || '', satisfaction: '' };
+        return {
+            日付: report?.日付 || '',
+            行動内容: report?.行動内容 || '',
+            エリア: report?.エリア || '',
+            得意先CD: report?.得意先CD || '',
+            直送先CD: report?.直送先CD || '',
+            訪問先名: report?.訪問先名 || '',
+            直送先名: report?.直送先名 || '',
+            面談者: report?.面談者 || '',
+            滞在時間: report?.滞在時間 || '',
+            商談内容: parsed.content,
+            提案物: report?.提案物 || '',
+            次回プラン: report?.次回プラン || '',
+            競合他社情報: report?.競合他社情報 || '',
+            重点顧客: report?.重点顧客 || '',
+            ランク: parsed.satisfaction || report?.ランク || '',
+            デザイン提案有無: report?.デザイン提案有無 || '',
+            デザイン種別: report?.デザイン種別 || '',
+            デザイン名: report?.デザイン名 || '',
+            デザイン進捗状況: report?.デザイン進捗状況 || '',
+            'デザイン依頼No.': report?.['デザイン依頼No.'] || '',
+            startOutTime: parsed.start,
+            endOutTime: parsed.end,
+            designMode: report?.デザイン提案有無 === 'あり' ? (report?.['デザイン依頼No.'] ? 'existing' : 'new' as 'none' | 'new' | 'existing') : 'none' as 'none' | 'new' | 'existing'
+        };
+    }, [report]);
+
+    // 基本情報の変更を監視して自動保存
+    useEffect(() => {
+        if (!report?.管理番号) return;
+        
+        const original = getOriginalBasicValues();
+        const current = {
+            日付: formData.日付,
+            行動内容: formData.行動内容,
+            エリア: formData.エリア,
+            得意先CD: formData.得意先CD,
+            直送先CD: formData.直送先CD,
+            訪問先名: formData.訪問先名,
+            直送先名: formData.直送先名,
+            面談者: formData.面談者,
+            滞在時間: formData.滞在時間,
+            商談内容: formData.商談内容,
+            提案物: formData.提案物,
+            次回プラン: formData.次回プラン,
+            競合他社情報: formData.競合他社情報,
+            重点顧客: formData.重点顧客 || '',
+            ランク: formData.ランク,
+            デザイン提案有無: formData.デザイン提案有無,
+            デザイン種別: formData.デザイン種別,
+            デザイン名: formData.デザイン名,
+            デザイン進捗状況: formData.デザイン進捗状況,
+            'デザイン依頼No.': formData['デザイン依頼No.'],
+            startOutTime,
+            endOutTime,
+            designMode
+        };
+
+        const hasChange = Object.keys(current).some(key => {
+            return current[key as keyof typeof current] !== original[key as keyof typeof original];
+        });
+
+        if (hasChange) {
+            saveDraft({
+                formData: {
+                    日付: formData.日付,
+                    行動内容: formData.行動内容,
+                    エリア: formData.エリア,
+                    得意先CD: formData.得意先CD,
+                    直送先CD: formData.直送先CD,
+                    訪問先名: formData.訪問先名,
+                    直送先名: formData.直送先名,
+                    面談者: formData.面談者,
+                    滞在時間: formData.滞在時間,
+                    商談内容: formData.商談内容,
+                    提案物: formData.提案物,
+                    次回プラン: formData.次回プラン,
+                    競合他社情報: formData.競合他社情報,
+                    重点顧客: formData.重点顧客,
+                    ランク: formData.ランク,
+                    デザイン提案有無: formData.デザイン提案有無,
+                    デザイン種別: formData.デザイン種別,
+                    デザイン名: formData.デザイン名,
+                    デザイン進捗状況: formData.デザイン進捗状況,
+                    'デザイン依頼No.': formData['デザイン依頼No.']
+                },
+                startOutTime,
+                endOutTime,
+                designMode
+            });
+        } else {
+            clearDraft();
+        }
+    }, [formData, startOutTime, endOutTime, designMode, report, saveDraft, clearDraft, getOriginalBasicValues]);
+
+    const handleDiscardBasicDraft = (): void => {
+        clearDraft();
+        const original = getOriginalBasicValues();
+        setFormData(prev => ({
+            ...prev,
+            日付: original.日付,
+            行動内容: original.行動内容,
+            エリア: original.エリア,
+            得意先CD: original.得意先CD,
+            直送先CD: original.直送先CD,
+            訪問先名: original.訪問先名,
+            直送先名: original.直送先名,
+            面談者: original.面談者,
+            滞在時間: original.滞在時間,
+            商談内容: original.商談内容,
+            提案物: original.提案物,
+            次回プラン: original.次回プラン,
+            競合他社情報: original.競合他社情報,
+            重点顧客: original.重点顧客,
+            ランク: original.ランク,
+            デザイン提案有無: original.デザイン提案有無,
+            デザイン種別: original.デザイン種別,
+            デザイン名: original.デザイン名,
+            デザイン進捗状況: original.デザイン進捗状況,
+            'デザイン依頼No.': original['デザイン依頼No.']
+        }));
+        setStartOutTime(original.startOutTime);
+        setEndOutTime(original.endOutTime);
+        setDesignMode(original.designMode);
+        toast.success('基本情報の下書きを破棄しました');
+    };
 
 
 
 
-    const handleSubmit = async (e: React.FormEvent) => {
+
+    const handleSubmit = async (e: React.FormEvent): Promise<void> => {
         e.preventDefault();
 
         // 管理番号の検証
@@ -210,9 +378,8 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         setSubmitting(true);
         setSaveStatus('sending');
 
-        // 時間経過で段階的にステータスを遷移させるタイマー
-        const timer1 = setTimeout(() => setSaveStatus('writing'), 600);
-        const timer2 = setTimeout(() => setSaveStatus('backup'), 1800);
+        // 成功フラグ（クロージャの stale state 問題を回避するためローカル変数で管理）
+        let succeeded = false;
 
         const finalFormData = { 
             ...formData,
@@ -237,13 +404,29 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         const sanitized = sanitizeReport({ ...finalFormData, original_values: initialCriticalValues });
 
         try {
-            await updateReport(report?.管理番号, sanitized, selectedFile);
+            // API呼び出しと最低表示時間を並行実行
+            // → レスポンスが早くてもアニメーションが見える
+            const minimumDisplayPromise = (async (): Promise<void> => {
+                // 送信中を最低400ms表示
+                await new Promise(resolve => setTimeout(resolve, 400));
+                setSaveStatus('writing');
+                // 書き込み中を最低500ms表示
+                await new Promise(resolve => setTimeout(resolve, 500));
+                setSaveStatus('backup');
+                // バックアップ中を最低400ms表示
+                await new Promise(resolve => setTimeout(resolve, 400));
+            })();
+
+            const updatePromise = updateReport(report?.管理番号, sanitized, selectedFile);
+
+            // API応答と最低表示時間の両方を待つ
+            await Promise.all([updatePromise, minimumDisplayPromise]);
             
-            clearTimeout(timer1);
-            clearTimeout(timer2);
             setSaveStatus('success');
+            succeeded = true;
 
             toast.success(`日報を更新しました (No. ${report?.管理番号})`);
+            clearDraft();
             if (report?.管理番号) {
                 removeSessionDraft(report.管理番号, '上長コメント');
                 removeSessionDraft(report.管理番号, 'コメント返信欄');
@@ -253,8 +436,6 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             await new Promise(resolve => setTimeout(resolve, 1200));
             onSuccess();
         } catch (error: unknown) {
-            clearTimeout(timer1);
-            clearTimeout(timer2);
             setSaveStatus('idle');
             
             // エラーログを出力（既存の console.error を維持）
@@ -294,7 +475,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                 toast.error(`日報の更新に失敗しました: ${errorDetail}`);
             }
         } finally {
-            if (saveStatus !== 'success') {
+            if (!succeeded) {
                 setSubmitting(false);
             }
         }
@@ -347,10 +528,27 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
-                    <h2 className="text-xl font-bold text-sf-text">
-                        日報編集 (No. {report?.管理番号})
-                        {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-bold text-sf-text">
+                            日報編集 (No. {report?.管理番号})
+                            {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
+                        </h2>
+                        {initialDraft && (
+                            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+                                <span className="text-xs text-blue-700 font-medium animate-pulse">
+                                    編集データを復元中
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleDiscardBasicDraft}
+                                    className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                    title="下書きを破棄して元のデータに戻します"
+                                >
+                                    破棄
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <button
                         onClick={onClose}
                         disabled={submitting}
@@ -366,11 +564,17 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         <div>
                             <label className="block text-sm font-medium text-sf-text mb-1">日付 *</label>
                             <input
-                                type="text"
+                                type="date"
                                 name="日付"
-                                value={formData.日付}
-                                onChange={handleChange}
-                                placeholder="YY/MM/DD"
+                                value={convertYYMMDDToYYYYMMDD(formData.日付)}
+                                onChange={(e) => {
+                                    const yyyymmdd = e.target.value;
+                                    const yymmdd = convertYYYYMMDDToYYMMDD(yyyymmdd);
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        日付: yymmdd
+                                    }));
+                                }}
                                 required
                                 className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                             />

@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## [2026-06-29]
+### 修正 (Fixed)
+- **日報編集モーダルでの状態更新バグ（Stale Closure）の修正**:
+  - `EditReportModal.tsx` の `handleSubmit` において、`saveStatus` ステートの古いクロージャ値を参照して `finally` ブロックで `setSubmitting(false)` が誤作動する不具合を、ローカル変数 `succeeded` で成功状態を管理することで修正しました。
+  - API の応答速度が高速な環境において、送信・保存中のアニメーション演出（`sending` -> `writing` -> `backup`）がスキップされてしまう問題を、`Promise.all` を用いて最低表示時間（送信中400ms、書き込み中500ms、バックアップ中400ms）を担保する並行 Promise 処理を導入することで解決しました。
+- **日付入力の固定化によるバリデーション強化**:
+  - `NewReportModal.tsx` および `EditReportModal.tsx` の日付入力フォームを `<input type="text">` から標準の `<input type="date">` へ変更し、任意の無効な日付やテキストの入力を完全に防ぐ設計にしました。
+  - Excelへの保存形式（`YY/MM/DD`）とDatePickerで使用する標準形式（`YYYY-MM-DD`）の双方向変換処理を実装しました。
+- **日報編集モーダルでの基本情報下書き（一時保存）機能の実装**:
+  - `EditReportModal.tsx` に `useLocalStorageDraft` を導入し、商談内容などの主要項目の入力内容を管理番号に紐づくキーで自動一時保存・復元できるようにしました。
+  - 下書きデータが復元された際はヘッダー部分に復元中バッジと破棄ボタンを表示し、保存（更新）成功時には自動で下書きをクリーンアップするロジックを実装しました。
+- **日報一括入力画面（/reports/batch）での保存アニメーション追加**:
+  - 一括保存ボタンに、個別モーダルと同様のプレミアムアニメーション（プログレスバー、シマー効果、および段階的なテキスト遷移）を追加しました。
+  - `handleSubmit` に `minimumDisplayPromise` を導入し、通信速度に関わらず「送信中 → 書き込み中 → バックアップ中 → 保存完了」の状態遷移がしっかりと視認できるよう修正しました。
+
+### 変更 (Changed)
+- **配布用パッケージ（ZIP）およびEXEの更新**:
+  - フロントエンドの最新ビルド成果物を `static/` ディレクトリにコピーし、PyInstaller により `DailyReportServer.exe` を再コンパイルしました。
+  - デスクトップ上の配布用パッケージ `C:\Users\asahi\Desktop\DailyReportSystem_20260624.zip` 内、およびデスクトップ展開済みフォルダ `C:\Users\asahi\Desktop\DailyReportSystem_20260627` 配下の `DailyReportServer.exe` を更新しました。
+
 ## [2026-06-25]
 ### 追加 (Added)
 - **プレミアムな「保存中」アニメーション（ビジネス仕様）の実装**:

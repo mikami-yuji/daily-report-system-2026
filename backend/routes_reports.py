@@ -529,6 +529,8 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
                 cond = cond | df['直送先名'].astype(str).str.lower().str.contains(name_lower, na=False)
             if '訪問先名' in df.columns:
                 cond = cond | df['訪問先名'].astype(str).str.lower().str.contains(name_lower, na=False)
+            if '訪問先名得意先名' in df.columns:
+                cond = cond | df['訪問先名得意先名'].astype(str).str.lower().str.contains(name_lower, na=False)
             
             customer_reports = df[cond].copy()
             logging.info(f"After name partial match filter: {len(customer_reports)} rows")

@@ -149,7 +149,12 @@ export default function ReportsPage(): React.JSX.Element {
                             {sortOrder === 'asc' ? '昇順' : '降順'}
                         </span>
                     </button>
-                    <button onClick={handleRefresh} className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors">
+                    <button
+                        onClick={handleRefresh}
+                        className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors"
+                        title="再読み込み"
+                        aria-label="再読み込み"
+                    >
                         <RefreshCw size={16} />
                     </button>
                     <button

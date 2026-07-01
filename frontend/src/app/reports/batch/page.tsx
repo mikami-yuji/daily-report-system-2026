@@ -269,6 +269,10 @@ export default function BatchReportPage() {
                     デザイン進捗状況: '新規',
                 };
             } else {
+                const typedName = v.訪問先名;
+                if (!v.得意先CD && typedName) {
+                    loadDesignsForTypedCustomer(id, typedName);
+                }
                 return {
                     ...v,
                     designMode: 'existing',
@@ -341,6 +345,43 @@ export default function BatchReportPage() {
                 .catch(err => {
                     console.error('Failed to fetch interviewers:', err);
                 });
+        }
+    };
+
+    const loadDesignsForTypedCustomer = (visitId: string, typedName: string): void => {
+        const visit = visits.find(v => v.id === visitId);
+        if (!visit || visit.得意先CD) return;
+
+        const name = typedName.trim();
+        if (!name) {
+            setVisits(prev => prev.map(v => 
+                v.id === visitId ? { ...v, designs: [] } : v
+            ));
+            return;
+        }
+
+        const matched = customers.filter(c => 
+            (c.得意先名 && c.得意先名.toLowerCase().includes(name.toLowerCase())) ||
+            (c.直送先名 && c.直送先名.toLowerCase().includes(name.toLowerCase()))
+        );
+
+        if (matched.length > 0) {
+            const firstCustomer = matched[0];
+            if (firstCustomer.得意先CD) {
+                getDesigns(firstCustomer.得意先CD, selectedFile, firstCustomer.直送先名 || undefined)
+                    .then(designs => {
+                        setVisits(prev => prev.map(v => 
+                            v.id === visitId ? { ...v, designs } : v
+                        ));
+                    })
+                    .catch(err => {
+                        console.error('Failed to fetch designs for typed customer in batch:', err);
+                    });
+            }
+        } else {
+            setVisits(prev => prev.map(v => 
+                v.id === visitId ? { ...v, designs: [] } : v
+            ));
         }
     };
 
@@ -701,6 +742,7 @@ export default function BatchReportPage() {
                                                                     if (term) {
                                                                         // 自由記載として訪問先名に設定
                                                                         updateVisit(visit.id, '訪問先名', term);
+                                                                        loadDesignsForTypedCustomer(visit.id, term);
                                                                         setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                                     }
                                                                     setShowSuggestions({ ...showSuggestions, [visit.id]: false });
@@ -713,6 +755,7 @@ export default function BatchReportPage() {
                                                                     if (term) {
                                                                         // Enterで自由記載として確定
                                                                         updateVisit(visit.id, '訪問先名', term);
+                                                                        loadDesignsForTypedCustomer(visit.id, term);
                                                                         setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                                         setShowSuggestions({ ...showSuggestions, [visit.id]: false });
                                                                     }

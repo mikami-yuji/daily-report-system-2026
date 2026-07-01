@@ -261,14 +261,45 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         }
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const loadDesignsForTypedCustomer = (): void => {
+        if (formData.得意先CD) return;
+
+        const name = formData.訪問先名.trim();
+        if (!name) {
+            setDesigns([]);
+            return;
+        }
+
+        const matched = customers.filter(c => 
+            (c.得意先名 && c.得意先名.toLowerCase().includes(name.toLowerCase())) ||
+            (c.直送先名 && c.直送先名.toLowerCase().includes(name.toLowerCase()))
+        );
+
+        if (matched.length > 0) {
+            const firstCustomer = matched[0];
+            if (firstCustomer.得意先CD) {
+                getDesigns(firstCustomer.得意先CD, selectedFile, firstCustomer.直送先名 || undefined)
+                    .then(data => {
+                        setDesigns(data);
+                    })
+                    .catch(err => {
+                        console.error('Failed to fetch designs for typed customer:', err);
+                        setDesigns([]);
+                    });
+            }
+        } else {
+            setDesigns([]);
+        }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
         setFormData(prev => ({
             ...prev,
             [e.target.name]: e.target.value
         }));
     };
 
-    const handleDesignModeChange = (mode: 'none' | 'new' | 'existing') => {
+    const handleDesignModeChange = (mode: 'none' | 'new' | 'existing'): void => {
         setDesignMode(mode);
         if (mode === 'none') {
             setFormData(prev => ({
@@ -297,6 +328,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 デザイン進捗状況: '',
                 'デザイン依頼No.': ''
             }));
+            loadDesignsForTypedCustomer();
         }
     };
 
@@ -635,6 +667,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                         name="訪問先名"
                                         value={formData.訪問先名}
                                         onChange={handleCustomerNameChange}
+                                        onBlur={loadDesignsForTypedCustomer}
                                         required={!isMinimalUI}
                                         autoComplete="off"
                                         className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"

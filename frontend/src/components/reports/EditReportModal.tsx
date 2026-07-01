@@ -1,41 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Report, updateReport, getDesigns, Design } from '@/lib/api';
 import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 import { X, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 
-// セッションストレージから下書きデータを取得する関数
-const getSessionDraft = (reportId: number | string | undefined, field: string): string | null => {
+// ローカルストレージからコメント下書きデータを取得する関数
+const getCommentDraft = (reportId: number | string | undefined, field: string): string | null => {
     if (typeof window === 'undefined' || !reportId) {
         return null;
     }
-    return sessionStorage.getItem(`draft_comment_${reportId}_${field}`);
+    return localStorage.getItem(`draft_comment_${reportId}_${field}`);
 };
 
-// セッションストレージに下書きデータを保存する関数
-const setSessionDraft = (reportId: number | string | undefined, field: string, value: string): void => {
+// ローカルストレージにコメント下書きデータを保存する関数
+const saveCommentDraft = (reportId: number | string | undefined, field: string, value: string): void => {
     if (typeof window === 'undefined' || !reportId) {
         return;
     }
-    sessionStorage.setItem(`draft_comment_${reportId}_${field}`, value);
+    localStorage.setItem(`draft_comment_${reportId}_${field}`, value);
 };
 
-// セッションストレージの下書きデータを削除する関数
-const removeSessionDraft = (reportId: number | string | undefined, field: string): void => {
+// ローカルストレージのコメント下書きデータを削除する関数
+const clearCommentDraft = (reportId: number | string | undefined, field: string): void => {
     if (typeof window === 'undefined' || !reportId) {
         return;
     }
-    sessionStorage.removeItem(`draft_comment_${reportId}_${field}`);
+    localStorage.removeItem(`draft_comment_${reportId}_${field}`);
 };
 
-interface EditReportModalProps {
+type EditReportModalProps = {
     report: Report;
     onClose: () => void;
     onSuccess: () => void;
     selectedFile: string;
     reports: Report[];
-}
+};
 
 export default function EditReportModal({ report, onClose, onSuccess, selectedFile, reports }: EditReportModalProps) {
 
@@ -142,9 +142,59 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     });
     const [designs, setDesigns] = useState<Design[]>([]);
 
+    const commentSaveTimersRef = useRef<{ [field: string]: NodeJS.Timeout }>({});
+    const pendingCommentsRef = useRef<{ [field: string]: string }>({});
+
+    // アンマウント時・レポート変更時に保留中のコメント下書きを即座に保存
+    useEffect((): () => void => {
+        return (): void => {
+            Object.values(commentSaveTimersRef.current).forEach(clearTimeout);
+            if (report?.管理番号) {
+                Object.entries(pendingCommentsRef.current).forEach(([field, value]) => {
+                    try {
+                        localStorage.setItem(`draft_comment_${report.管理番号}_${field}`, value);
+                    } catch (e) {
+                        console.error(`Failed to save pending comment draft on unmount:`, e);
+                    }
+                });
+            }
+            commentSaveTimersRef.current = {};
+            pendingCommentsRef.current = {};
+        };
+    }, [report?.管理番号]);
+
+    const saveCommentDraftDebounced = useCallback((field: string, value: string): void => {
+        if (!report?.管理番号) return;
+        pendingCommentsRef.current[field] = value;
+        if (commentSaveTimersRef.current[field]) {
+            clearTimeout(commentSaveTimersRef.current[field]);
+        }
+        commentSaveTimersRef.current[field] = setTimeout((): void => {
+            if (report?.管理番号) {
+                try {
+                    localStorage.setItem(`draft_comment_${report.管理番号}_${field}`, value);
+                    delete pendingCommentsRef.current[field];
+                } catch (e) {
+                    console.error(`Failed to save comment draft:`, e);
+                }
+            }
+        }, 1000);
+    }, [report?.管理番号]);
+
+    const clearCommentDraftAndPending = useCallback((field: string): void => {
+        if (commentSaveTimersRef.current[field]) {
+            clearTimeout(commentSaveTimersRef.current[field]);
+            delete commentSaveTimersRef.current[field];
+        }
+        delete pendingCommentsRef.current[field];
+        if (report?.管理番号) {
+            clearCommentDraft(report.管理番号, field);
+        }
+    }, [report?.管理番号]);
+
     useEffect(() => {
-        const draftComment = getSessionDraft(report?.管理番号, '上長コメント');
-        const draftReply = getSessionDraft(report?.管理番号, 'コメント返信欄');
+        const draftComment = getCommentDraft(report?.管理番号, '上長コメント');
+        const draftReply = getCommentDraft(report?.管理番号, 'コメント返信欄');
 
         if (draftComment !== null || draftReply !== null) {
             setFormData(prev => ({
@@ -296,7 +346,19 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             return current[key as keyof typeof current] !== original[key as keyof typeof original];
         });
 
-        if (hasChange) {
+        const hasData = !!(
+            formData.訪問先名 ||
+            formData.行動内容 ||
+            formData.商談内容 ||
+            formData.面談者 ||
+            formData.提案物 ||
+            formData.次回プラン ||
+            formData.競合他社情報 ||
+            formData.エリア ||
+            formData['デザイン依頼No.']
+        );
+
+        if (hasChange && hasData) {
             saveDraft({
                 formData: {
                     日付: formData.日付,
@@ -428,8 +490,8 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             toast.success(`日報を更新しました (No. ${report?.管理番号})`);
             clearDraft();
             if (report?.管理番号) {
-                removeSessionDraft(report.管理番号, '上長コメント');
-                removeSessionDraft(report.管理番号, 'コメント返信欄');
+                clearCommentDraftAndPending('上長コメント');
+                clearCommentDraftAndPending('コメント返信欄');
             }
             
             // 成功アニメーションをしっかり見せてから閉じる
@@ -481,7 +543,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         }
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
@@ -493,17 +555,17 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                 ? (report?.上長コメント || report?.コメント || '')
                 : (report?.コメント返信欄 || '');
 
-            if (value === original) {
-                removeSessionDraft(report.管理番号, name);
+            if (value === original || !value) {
+                clearCommentDraftAndPending(name);
             } else {
-                setSessionDraft(report.管理番号, name, value);
+                saveCommentDraftDebounced(name, value);
             }
         }
     };
 
     // 下書きデータを破棄して元の値に戻す関数
     const handleDiscardDraft = (field: '上長コメント' | 'コメント返信欄'): void => {
-        removeSessionDraft(report?.管理番号, field);
+        clearCommentDraftAndPending(field);
         setFormData(prev => ({
             ...prev,
             [field]: field === '上長コメント'

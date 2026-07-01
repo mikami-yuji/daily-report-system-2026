@@ -6,21 +6,21 @@ import { X, Truck, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 
-export interface InitialDesignData {
+export type InitialDesignData = {
     得意先CD?: string;
     得意先名?: string;
     デザイン依頼No?: string;
     デザイン名?: string;
     デザイン種別?: string;
     デザイン進捗状況?: string;
-}
+};
 
-interface NewReportModalProps {
+type NewReportModalProps = {
     onClose: () => void;
     onSuccess: () => void;
     selectedFile: string;
     initialDesignData?: InitialDesignData;
-}
+};
 
 export default function NewReportModal({ onClose, onSuccess, selectedFile, initialDesignData }: NewReportModalProps) {
     const { isOnline, saveOfflineReport, cachedCustomers, cacheCustomers } = useOffline();
@@ -86,23 +86,43 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const [endOutTime, setEndOutTime] = useState('');
     // 得意先リストからエリア一覧を動的に取得
     const [areaOptions, setAreaOptions] = useState<string[]>([]);
-    // 下書き復元時のtoast通知
-    const [draftRestored] = useState(!initialDesignData && !!initialDraft);
+    // 下書き復元時の状態管理
+    const [isDraftRestored, setIsDraftRestored] = useState(!initialDesignData && !!initialDraft);
 
     // 下書き復元通知（初回マウント時のみ）
     useEffect(() => {
-        if (draftRestored) {
+        if (isDraftRestored) {
             toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'modal-draft-restored' });
         }
     }, []);
 
+    const handleDiscardDraft = (): void => {
+        clearDraft();
+        setFormData(defaultFormData);
+        setDesignMode('none');
+        setIsDraftRestored(false);
+        toast.success('下書きを破棄しました');
+    };
+
     // formDataまたはdesignMode変更時に自動保存
     useEffect(() => {
-        const hasData = formData.訪問先名 || formData.行動内容 || formData.商談内容 || formData.面談者 || formData.提案物;
+        const hasData = !!(
+            formData.訪問先名 ||
+            formData.行動内容 ||
+            formData.商談内容 ||
+            formData.面談者 ||
+            formData.提案物 ||
+            formData.次回プラン ||
+            formData.競合他社情報 ||
+            formData.エリア ||
+            formData['デザイン依頼No.']
+        );
         if (hasData) {
             saveDraft({ formData, designMode });
+        } else {
+            clearDraft();
         }
-    }, [formData, designMode, saveDraft]);
+    }, [formData, designMode, saveDraft, clearDraft]);
 
 
 
@@ -453,10 +473,27 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
-                    <h2 className="text-xl font-bold text-sf-text">
-                        新規日報作成
-                        {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
-                    </h2>
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-xl font-bold text-sf-text">
+                            新規日報作成
+                            {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
+                        </h2>
+                        {isDraftRestored && (
+                            <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+                                <span className="text-xs text-blue-700 font-medium animate-pulse">
+                                    一時保存データを復元中
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleDiscardDraft}
+                                    className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                    title="下書きを破棄して入力を初期化します"
+                                >
+                                    破棄
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <button
                         onClick={onClose}
                         disabled={submitting}

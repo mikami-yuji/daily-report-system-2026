@@ -120,6 +120,7 @@ export default function BatchReportPage() {
     // 訪問リスト（クライアント側でのみ初期化）
     const [visits, setVisits] = useState<VisitEntry[]>([]);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [isDraftRestored, setIsDraftRestored] = useState(false);
 
     // 検索用state
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
@@ -152,6 +153,7 @@ export default function BatchReportPage() {
                     if (draft.retailerSearchTerms) {
                         setRetailerSearchTerms(draft.retailerSearchTerms);
                     }
+                    setIsDraftRestored(true);
                     toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'draft-restored' });
                 } else {
                     setVisits([createEmptyVisit()]);
@@ -160,6 +162,16 @@ export default function BatchReportPage() {
             });
         }
     }, [isLoaded]);
+
+    const handleDiscardDraft = (): void => {
+        clearDraft();
+        setDate(today);
+        setVisits([createEmptyVisit()]);
+        setSearchTerms({});
+        setRetailerSearchTerms({});
+        setIsDraftRestored(false);
+        toast.success('一括登録の下書きを破棄しました');
+    };
 
     // 得意先・面談者リスト
     const [customers, setCustomers] = useState<Customer[]>([]);
@@ -490,11 +502,28 @@ export default function BatchReportPage() {
     useEffect(() => {
         if (!isLoaded) return; // 初期化前は保存しない
         // 完全に空の状態（初期状態）は保存しない
-        const hasData = visits.some(v => v.得意先CD || v.訪問先名 || v.行動内容 || v.商談内容 || v.面談者 || v.提案物 || v.次回プラン || v.競合他社情報);
+        const hasData = visits.some(v => 
+            v.得意先CD || 
+            v.訪問先名 || 
+            v.行動内容 || 
+            v.商談内容 || 
+            v.面談者 || 
+            v.提案物 || 
+            v.次回プラン || 
+            v.競合他社情報 ||
+            v.エリア ||
+            v['デザイン依頼No.'] ||
+            v.デザイン名 ||
+            v.デザイン種別 ||
+            v.デザイン進捗状況
+        ) || date !== today;
+
         if (hasData) {
             saveDraft({ date, visits, searchTerms, retailerSearchTerms });
+        } else {
+            clearDraft();
         }
-    }, [date, visits, searchTerms, retailerSearchTerms, isLoaded, saveDraft]);
+    }, [date, visits, searchTerms, retailerSearchTerms, isLoaded, saveDraft, clearDraft]);
 
     // 有効な訪問数
     // 何かしらデータが入力されている訪問数をカウント
@@ -504,9 +533,19 @@ export default function BatchReportPage() {
         <div className="space-y-6">
             {/* ヘッダー */}
             <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-semibold text-sf-text">日報一括入力</h1>
-                    <p className="text-sm text-sf-text-weak mt-1">複数の訪問先を一度に入力できます</p>
+                <div className="flex items-center gap-4">
+                    <div>
+                        <h1 className="text-2xl font-semibold text-sf-text">日報一括入力</h1>
+                        <p className="text-sm text-sf-text-weak mt-1">複数の訪問先を一度に入力できます</p>
+                    </div>
+                    {isDraftRestored && (
+                        <button
+                            onClick={handleDiscardDraft}
+                            className="text-xs text-red-500 hover:text-red-700 border border-red-300 hover:border-red-500 px-3 py-1.5 rounded bg-red-50 transition-colors"
+                        >
+                            下書きを破棄
+                        </button>
+                    )}
                 </div>
                 <Link
                     href="/reports"

@@ -1,36 +1,36 @@
-import React, { useState, useEffect } from 'react';
-import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval } from '@/lib/api';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval, searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2 } from 'lucide-react';
+import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, FileText, Image as ImageIcon, Search, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// セッションストレージから下書きデータを取得する関数
-const getSessionDraft = (reportId: number | string | undefined, field: string): string | null => {
+// ローカルストレージからコメント下書きデータを取得する関数
+const getCommentDraft = (reportId: number | string | undefined, field: string): string | null => {
     if (typeof window === 'undefined' || !reportId) {
         return null;
     }
-    return sessionStorage.getItem(`draft_comment_${reportId}_${field}`);
+    return localStorage.getItem(`draft_comment_${reportId}_${field}`);
 };
 
-// セッションストレージに下書きデータを保存する関数
-const setSessionDraft = (reportId: number | string | undefined, field: string, value: string): void => {
+// ローカルストレージにコメント下書きデータを保存する関数
+const saveCommentDraft = (reportId: number | string | undefined, field: string, value: string): void => {
     if (typeof window === 'undefined' || !reportId) {
         return;
     }
-    sessionStorage.setItem(`draft_comment_${reportId}_${field}`, value);
+    localStorage.setItem(`draft_comment_${reportId}_${field}`, value);
 };
 
-// セッションストレージの下書きデータを削除する関数
-const removeSessionDraft = (reportId: number | string | undefined, field: string): void => {
+// ローカルストレージのコメント下書きデータを削除する関数
+const clearCommentDraft = (reportId: number | string | undefined, field: string): void => {
     if (typeof window === 'undefined' || !reportId) {
         return;
     }
-    sessionStorage.removeItem(`draft_comment_${reportId}_${field}`);
+    localStorage.removeItem(`draft_comment_${reportId}_${field}`);
 };
 
-interface ReportDetailModalProps {
+type ReportDetailModalProps = {
     report: Report;
     onClose: () => void;
     onNext: () => void;
@@ -39,7 +39,7 @@ interface ReportDetailModalProps {
     hasPrev: boolean;
     onEdit: () => void;
     onUpdate?: () => void;
-}
+};
 
 function InfoRow({ label, value }: { label: string; value: unknown }) {
     return (
@@ -81,6 +81,89 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     const [processingComment, setProcessingComment] = useState<string | null>(null); // 処理中のコメントフィールド
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+    const commentSaveTimersRef = useRef<{ [field: string]: NodeJS.Timeout }>({});
+    const pendingCommentsRef = useRef<{ [field: string]: string }>({});
+
+    // アンマウント時・レポート変更時に保留中のコメント下書きを即座に保存
+    useEffect((): () => void => {
+        return (): void => {
+            // 全タイマーをクリア
+            Object.values(commentSaveTimersRef.current).forEach(clearTimeout);
+            
+            // 保留中の下書きデータを即時書き込み
+            if (report?.管理番号) {
+                Object.entries(pendingCommentsRef.current).forEach(([field, value]) => {
+                    try {
+                        localStorage.setItem(`draft_comment_${report.管理番号}_${field}`, value);
+                    } catch (e) {
+                        console.error(`Failed to save pending comment draft on unmount:`, e);
+                    }
+                });
+            }
+            // 状態リセット
+            commentSaveTimersRef.current = {};
+            pendingCommentsRef.current = {};
+        };
+    }, [report?.管理番号]);
+
+    const saveCommentDraftDebounced = useCallback((field: string, value: string): void => {
+        if (!report?.管理番号) return;
+        pendingCommentsRef.current[field] = value;
+        if (commentSaveTimersRef.current[field]) {
+            clearTimeout(commentSaveTimersRef.current[field]);
+        }
+        commentSaveTimersRef.current[field] = setTimeout((): void => {
+            if (report?.管理番号) {
+                try {
+                    localStorage.setItem(`draft_comment_${report.管理番号}_${field}`, value);
+                    delete pendingCommentsRef.current[field];
+                } catch (e) {
+                    console.error(`Failed to save comment draft:`, e);
+                }
+            }
+        }, 1000);
+    }, [report?.管理番号]);
+
+    const clearCommentDraftAndPending = useCallback((field: string): void => {
+        if (commentSaveTimersRef.current[field]) {
+            clearTimeout(commentSaveTimersRef.current[field]);
+            delete commentSaveTimersRef.current[field];
+        }
+        delete pendingCommentsRef.current[field];
+        if (report?.管理番号) {
+            clearCommentDraft(report.管理番号, field);
+        }
+    }, [report?.管理番号]);
+
+    // デザイン画像検索用ステート
+    const [searchingImage, setSearchingImage] = useState(false);
+    const [imageResults, setImageResults] = useState<DesignImage[]>([]);
+    const [showImageModal, setShowImageModal] = useState(false);
+    const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+
+    // 画像検索アクション
+    const handleImageSearch = async (designNo: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // 詳細モーダルの他部分のクリックイベントを防止
+        if (!designNo) return;
+        setSearchingImage(true);
+        try {
+            const result = await searchDesignImages(String(designNo), selectedFile || undefined);
+            if (result.images && result.images.length > 0) {
+                setImageResults(result.images);
+                setShowImageModal(true);
+                toast.success(`${result.images.length}件の画像が見つかりました`);
+            } else {
+                setImageResults([]);
+                toast.error('関連するデザイン画像が見つかりませんでした');
+            }
+        } catch (error) {
+            console.error('Failed to search design images:', error);
+            toast.error('画像検索中にエラーが発生しました');
+        } finally {
+            setSearchingImage(false);
+        }
+    };
+
     // レポート変更時にステートを更新（セッションストレージからの下書き復元も含む）
     useEffect(() => {
         setApprovals({
@@ -91,8 +174,8 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             既読チェック: convertToDisplay(report?.既読チェック)
         });
 
-        const draftComment = getSessionDraft(report?.管理番号, '上長コメント');
-        const draftReply = getSessionDraft(report?.管理番号, 'コメント返信欄');
+        const draftComment = getCommentDraft(report?.管理番号, '上長コメント');
+        const draftReply = getCommentDraft(report?.管理番号, 'コメント返信欄');
 
         setComments({
             上長コメント: draftComment !== null ? draftComment : (report?.上長コメント || report?.コメント || ''),
@@ -149,7 +232,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
 
     // 下書きデータを破棄して元の値に戻す関数
     const handleDiscardDraft = (field: '上長コメント' | 'コメント返信欄'): void => {
-        removeSessionDraft(report?.管理番号, field);
+        clearCommentDraftAndPending(field);
         setComments(prev => ({
             ...prev,
             [field]: field === '上長コメント'
@@ -159,15 +242,13 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         toast.success('下書きを破棄しました');
     };
 
-    const handleCommentBlur = async (field: keyof typeof comments) => {
+    const handleCommentBlur = async (field: keyof typeof comments): Promise<void> => {
         const originalValue = field === '上長コメント'
             ? (report?.上長コメント || report?.コメント || '')
             : (report?.コメント返信欄 || '');
 
         if (comments[field] === originalValue) {
-            if (report.管理番号) {
-                removeSessionDraft(report.管理番号, field);
-            }
+            clearCommentDraftAndPending(field);
             return; // 変更がない場合は保存処理を行わない
         }
 
@@ -183,7 +264,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             // コメント専用エンドポイントを使用（バリデーションエラー回避）
             await updateReportComment(report.管理番号, { [field]: comments[field], original_values: report }, selectedFile);
             toast.success('コメントを保存しました');
-            removeSessionDraft(report.管理番号, field); // 正常に保存されたため下書きを削除
+            clearCommentDraftAndPending(field); // 正常に保存されたため下書きを削除
             if (onUpdate) onUpdate();
         } catch (error) {
             console.error('Failed to update comment:', error);
@@ -319,7 +400,26 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                     <InfoRow label="種別" value={report.デザイン種別} />
                                     <InfoRow label="案件名" value={report.デザイン名} />
                                     <InfoRow label="進捗" value={report.デザイン進捗状況} />
-                                    <InfoRow label="依頼No." value={report['デザイン依頼No.']} />
+                                    <div className="flex justify-between items-start gap-2">
+                                        <span className="text-xs text-sf-text-weak whitespace-nowrap">依頼No.:</span>
+                                        <span className="text-sm text-sf-text text-right flex-1 flex items-center justify-end gap-1.5 font-semibold text-sf-light-blue">
+                                            {cleanText(report['デザイン依頼No.']) || '-'}
+                                            {report['デザイン依頼No.'] && (
+                                                <button
+                                                    onClick={(e) => handleImageSearch(String(report['デザイン依頼No.']), e)}
+                                                    disabled={searchingImage}
+                                                    className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors cursor-pointer"
+                                                    title="関連画像を検索"
+                                                >
+                                                    {searchingImage ? (
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                    ) : (
+                                                        <ImageIcon size={14} />
+                                                    )}
+                                                </button>
+                                            )}
+                                        </span>
+                                    </div>
                                     <InfoRow label="確認No." value={report['システム確認用デザインNo.']} />
                                 </div>
                             </div>
@@ -446,17 +546,17 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                             )}
                                             <textarea
                                                 value={comments.上長コメント}
-                                                onChange={(e) => {
+                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>): void => {
                                                     const value = e.target.value;
                                                     setComments(prev => ({ ...prev, 上長コメント: value }));
                                                     const original = report?.上長コメント || report?.コメント || '';
-                                                    if (value === original) {
-                                                        removeSessionDraft(report?.管理番号, '上長コメント');
+                                                    if (value === original || !value) {
+                                                        clearCommentDraftAndPending('上長コメント');
                                                     } else {
-                                                        setSessionDraft(report?.管理番号, '上長コメント', value);
+                                                        saveCommentDraftDebounced('上長コメント', value);
                                                     }
                                                 }}
-                                                onBlur={() => handleCommentBlur('上長コメント')}
+                                                onBlur={(): Promise<void> => handleCommentBlur('上長コメント')}
                                                 disabled={saving}
                                                 className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y disabled:opacity-60 ${processingComment === '上長コメント' ? 'border-yellow-400' : 'border-yellow-200'}`}
                                                 placeholder="コメントを入力..."
@@ -491,17 +591,17 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                             </div>
                                             <textarea
                                                 value={comments.コメント返信欄}
-                                                onChange={(e) => {
+                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>): void => {
                                                     const value = e.target.value;
                                                     setComments(prev => ({ ...prev, コメント返信欄: value }));
                                                     const original = report?.コメント返信欄 || '';
-                                                    if (value === original) {
-                                                        removeSessionDraft(report?.管理番号, 'コメント返信欄');
+                                                    if (value === original || !value) {
+                                                        clearCommentDraftAndPending('コメント返信欄');
                                                     } else {
-                                                        setSessionDraft(report?.管理番号, 'コメント返信欄', value);
+                                                        saveCommentDraftDebounced('コメント返信欄', value);
                                                     }
                                                 }}
-                                                onBlur={() => handleCommentBlur('コメント返信欄')}
+                                                onBlur={(): Promise<void> => handleCommentBlur('コメント返信欄')}
                                                 disabled={saving}
                                                 className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-green-400 resize-y disabled:opacity-60 ${processingComment === 'コメント返信欄' ? 'border-green-400' : 'border-green-200'}`}
                                                 placeholder="返信を入力..."
@@ -583,6 +683,145 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                 confirmText="削除する"
                 isDangerous={true}
             />
+
+            {/* Image Search Result Modal */}
+            {showImageModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4" onClick={() => setShowImageModal(false)}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-4 p-6 border-b border-sf-border flex justify-between items-center bg-gray-50 rounded-t-lg">
+                            <h3 className="font-bold text-lg text-sf-text flex items-center gap-2">
+                                <Search size={20} className="text-pink-500" />
+                                関連デザイン画像 ({imageResults.length}件)
+                            </h3>
+                            <button
+                                onClick={() => setShowImageModal(false)}
+                                className="text-gray-500 hover:text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-full p-1 transition-colors cursor-pointer"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto flex-1 bg-gray-100">
+                            {imageResults.length > 0 ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                    {imageResults.map((img, i) => {
+                                        const isPdf = img.name.toLowerCase().endsWith('.pdf');
+                                        return (
+                                            <div key={i} className="group relative bg-white rounded border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        if (isPdf) {
+                                                            window.open(getImageUrl(img.path), '_blank');
+                                                        } else {
+                                                            setSelectedImageIndex(i);
+                                                        }
+                                                    }} 
+                                                    className="w-full block aspect-square overflow-hidden bg-gray-200 flex items-center justify-center cursor-pointer"
+                                                >
+                                                    {isPdf ? (
+                                                        <div className="flex flex-col items-center justify-center text-red-500">
+                                                            <FileText size={48} />
+                                                            <span className="text-xs font-bold mt-2 text-gray-500">PDF</span>
+                                                        </div>
+                                                    ) : (
+                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                        <img
+                                                            src={getImageUrl(img.path)}
+                                                            alt={img.name}
+                                                            className="w-full h-full object-contain p-1 group-hover:scale-105 transition-transform duration-300"
+                                                            loading="lazy"
+                                                        />
+                                                    )}
+                                                </button>
+                                                <div className="p-2 text-xs flex justify-between items-start">
+                                                    <div className="flex-1 overflow-hidden">
+                                                        <div className="font-medium truncate text-sf-text" title={img.name}>{img.name}</div>
+                                                        <div className="text-gray-400 truncate mt-0.5">{img.folder}</div>
+                                                    </div>
+                                                    <a 
+                                                        href={getImageUrl(img.path)} 
+                                                        download={img.name}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="ml-2 p-1.5 bg-gray-100 hover:bg-sf-light-blue hover:text-white rounded text-gray-500 transition-colors"
+                                                        title="ダウンロード"
+                                                    >
+                                                        <Download size={14} />
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                                    <Search size={48} className="mb-4 text-gray-300" />
+                                    <p>画像が見つかりませんでした</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Lightbox Viewer */}
+            {selectedImageIndex !== null && (
+                <div className="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-[70]" onClick={() => setSelectedImageIndex(null)}>
+                    <div className="absolute top-4 right-4 flex gap-3 z-[80]" onClick={(e) => e.stopPropagation()}>
+                        <a
+                            href={getImageUrl(imageResults[selectedImageIndex].path)}
+                            download={imageResults[selectedImageIndex].name}
+                            className="text-white hover:text-sf-light-blue bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-2 transition-all flex items-center justify-center cursor-pointer"
+                            title="画像をダウンロード"
+                        >
+                            <Download size={24} />
+                        </a>
+                        <button
+                            onClick={() => setSelectedImageIndex(null)}
+                            className="text-white hover:text-gray-300 bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-2 transition-all cursor-pointer"
+                            title="閉じる"
+                        >
+                            <X size={24} />
+                        </button>
+                    </div>
+
+                    {selectedImageIndex > 0 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageIndex(selectedImageIndex - 1);
+                            }}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-3 z-[80] cursor-pointer"
+                        >
+                            <ChevronLeft size={32} />
+                        </button>
+                    )}
+
+                    <div className="w-full h-full p-8 flex items-center justify-center relative" onClick={() => setSelectedImageIndex(null)}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={getImageUrl(imageResults[selectedImageIndex].path)}
+                            alt={imageResults[selectedImageIndex].name}
+                            className="max-w-full max-h-full object-contain"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="absolute bottom-4 left-0 right-0 text-center text-white text-sm bg-black bg-opacity-50 py-2">
+                            {imageResults[selectedImageIndex].name} ({selectedImageIndex + 1} / {imageResults.length})
+                        </div>
+                    </div>
+
+                    {selectedImageIndex < imageResults.length - 1 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedImageIndex(selectedImageIndex + 1);
+                            }}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:text-gray-300 bg-black bg-opacity-50 hover:bg-opacity-80 rounded-full p-3 z-[80] cursor-pointer"
+                        >
+                            <ChevronRight size={32} />
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

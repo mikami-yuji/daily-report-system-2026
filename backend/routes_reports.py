@@ -603,14 +603,19 @@ def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE):
         if len(matched_reports) == 0:
             return {"customer_name": customer_name, "suggested_area": ""}
             
-        # Take the last row as the most recent entry
-        latest_row = matched_reports.iloc[-1]
-        
-        area = ""
-        if 'エリア' in latest_row and pd.notna(latest_row['エリア']):
-            area = str(latest_row['エリア']).strip()
+        # エリアが記載されている履歴行に絞り込む
+        area_col = 'エリア'
+        if area_col in matched_reports.columns:
+            valid_area_reports = matched_reports[matched_reports[area_col].notna()]
+            valid_area_reports = valid_area_reports[valid_area_reports[area_col].astype(str).str.strip() != '']
+            valid_area_reports = valid_area_reports[~valid_area_reports[area_col].astype(str).str.lower().isin(['nan', 'none'])]
             
-        return {"customer_name": customer_name, "suggested_area": area}
+            if len(valid_area_reports) > 0:
+                latest_row = valid_area_reports.iloc[-1]
+                area = str(latest_row[area_col]).strip()
+                return {"customer_name": customer_name, "suggested_area": area}
+            
+        return {"customer_name": customer_name, "suggested_area": ""}
     except Exception as e:
         logging.error(f"Error in suggest_area: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

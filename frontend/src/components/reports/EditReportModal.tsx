@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Report, updateReport, getDesigns, Design, getCustomers, Customer } from '@/lib/api';
+import { Report, updateReport, getDesigns, Design } from '@/lib/api';
 import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 import { X, Loader2, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -205,14 +205,6 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         }
     }, [report]);
 
-    const [customers, setCustomers] = useState<Customer[]>([]);
-
-    useEffect((): void => {
-        getCustomers(selectedFile)
-            .then(data => setCustomers(data))
-            .catch(err => console.error('Failed to fetch customers in EditReportModal:', err));
-    }, [selectedFile]);
-
     const loadDesignsForTypedCustomer = (): void => {
         if (formData.得意先CD) return;
 
@@ -222,26 +214,14 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             return;
         }
 
-        const matched = customers.filter(c => 
-            (c.得意先名 && c.得意先名.toLowerCase().includes(name.toLowerCase())) ||
-            (c.直送先名 && c.直送先名.toLowerCase().includes(name.toLowerCase()))
-        );
-
-        if (matched.length > 0) {
-            const firstCustomer = matched[0];
-            if (firstCustomer.得意先CD) {
-                getDesigns(firstCustomer.得意先CD, selectedFile, firstCustomer.直送先名 || undefined)
-                    .then(data => {
-                        setDesigns(data);
-                    })
-                    .catch(err => {
-                        console.error('Failed to fetch designs for typed customer:', err);
-                        setDesigns([]);
-                    });
-            }
-        } else {
-            setDesigns([]);
-        }
+        getDesigns(name, selectedFile, formData.直送先名 || undefined)
+            .then(data => {
+                setDesigns(data);
+            })
+            .catch(err => {
+                console.error('Failed to fetch designs for typed customer:', err);
+                setDesigns([]);
+            });
     };
 
     useEffect((): void => {

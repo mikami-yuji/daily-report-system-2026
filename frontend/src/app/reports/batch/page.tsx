@@ -360,29 +360,18 @@ export default function BatchReportPage() {
             return;
         }
 
-        const matched = customers.filter(c => 
-            (c.得意先名 && c.得意先名.toLowerCase().includes(name.toLowerCase())) ||
-            (c.直送先名 && c.直送先名.toLowerCase().includes(name.toLowerCase()))
-        );
-
-        if (matched.length > 0) {
-            const firstCustomer = matched[0];
-            if (firstCustomer.得意先CD) {
-                getDesigns(firstCustomer.得意先CD, selectedFile, firstCustomer.直送先名 || undefined)
-                    .then(designs => {
-                        setVisits(prev => prev.map(v => 
-                            v.id === visitId ? { ...v, designs } : v
-                        ));
-                    })
-                    .catch(err => {
-                        console.error('Failed to fetch designs for typed customer in batch:', err);
-                    });
-            }
-        } else {
-            setVisits(prev => prev.map(v => 
-                v.id === visitId ? { ...v, designs: [] } : v
-            ));
-        }
+        getDesigns(name, selectedFile, visit.直送先名 || undefined)
+            .then(designs => {
+                setVisits(prev => prev.map(v => 
+                    v.id === visitId ? { ...v, designs } : v
+                ));
+            })
+            .catch(err => {
+                console.error('Failed to fetch designs for typed customer in batch:', err);
+                setVisits(prev => prev.map(v => 
+                    v.id === visitId ? { ...v, designs: [] } : v
+                ));
+            });
     };
 
     // デザイン選択（既存デザインを選んだ時）

@@ -270,26 +270,14 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             return;
         }
 
-        const matched = customers.filter(c => 
-            (c.得意先名 && c.得意先名.toLowerCase().includes(name.toLowerCase())) ||
-            (c.直送先名 && c.直送先名.toLowerCase().includes(name.toLowerCase()))
-        );
-
-        if (matched.length > 0) {
-            const firstCustomer = matched[0];
-            if (firstCustomer.得意先CD) {
-                getDesigns(firstCustomer.得意先CD, selectedFile, firstCustomer.直送先名 || undefined)
-                    .then(data => {
-                        setDesigns(data);
-                    })
-                    .catch(err => {
-                        console.error('Failed to fetch designs for typed customer:', err);
-                        setDesigns([]);
-                    });
-            }
-        } else {
-            setDesigns([]);
-        }
+        getDesigns(name, selectedFile, formData.直送先名 || undefined)
+            .then(data => {
+                setDesigns(data);
+            })
+            .catch(err => {
+                console.error('Failed to fetch designs for typed customer:', err);
+                setDesigns([]);
+            });
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {

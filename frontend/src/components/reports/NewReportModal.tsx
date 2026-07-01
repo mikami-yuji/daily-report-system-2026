@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Truck, Loader2, Check } from 'lucide-react';
@@ -277,6 +277,26 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             .catch(err => {
                 console.error('Failed to fetch designs for typed customer:', err);
                 setDesigns([]);
+            });
+    };
+
+    const loadSuggestedAreaForTypedCustomer = (): void => {
+        if (formData.得意先CD) return;
+
+        const name = formData.訪問先名.trim();
+        if (!name) return;
+
+        getSuggestedArea(name, selectedFile)
+            .then(data => {
+                if (data.suggested_area) {
+                    setFormData(prev => ({
+                        ...prev,
+                        エリア: data.suggested_area
+                    }));
+                }
+            })
+            .catch(err => {
+                console.error('Failed to suggest area for typed customer:', err);
             });
     };
 
@@ -655,7 +675,10 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                         name="訪問先名"
                                         value={formData.訪問先名}
                                         onChange={handleCustomerNameChange}
-                                        onBlur={loadDesignsForTypedCustomer}
+                                        onBlur={(): void => {
+                                            loadDesignsForTypedCustomer();
+                                            loadSuggestedAreaForTypedCustomer();
+                                        }}
                                         required={!isMinimalUI}
                                         autoComplete="off"
                                         className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"

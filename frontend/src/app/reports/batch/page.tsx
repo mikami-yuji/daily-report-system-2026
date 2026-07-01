@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report, getSuggestedArea } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
@@ -374,6 +374,26 @@ export default function BatchReportPage() {
             });
     };
 
+    const loadSuggestedAreaForTypedCustomer = (visitId: string, typedName: string): void => {
+        const visit = visits.find(v => v.id === visitId);
+        if (!visit || visit.得意先CD) return;
+
+        const name = typedName.trim();
+        if (!name) return;
+
+        getSuggestedArea(name, selectedFile)
+            .then(data => {
+                if (data.suggested_area) {
+                    setVisits(prev => prev.map(v => 
+                        v.id === visitId ? { ...v, エリア: data.suggested_area } : v
+                    ));
+                }
+            })
+            .catch(err => {
+                console.error('Failed to suggest area for typed customer in batch:', err);
+            });
+    };
+
     // デザイン選択（既存デザインを選んだ時）
     const handleDesignSelect = (visitId: string, designNo: string): void => {
         setVisits(prev => prev.map(v => {
@@ -732,6 +752,7 @@ export default function BatchReportPage() {
                                                                         // 自由記載として訪問先名に設定
                                                                         updateVisit(visit.id, '訪問先名', term);
                                                                         loadDesignsForTypedCustomer(visit.id, term);
+                                                                        loadSuggestedAreaForTypedCustomer(visit.id, term);
                                                                         setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                                     }
                                                                     setShowSuggestions({ ...showSuggestions, [visit.id]: false });

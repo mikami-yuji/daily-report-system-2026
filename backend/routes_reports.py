@@ -583,6 +583,40 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
 
 
 
+@router.get("/api/customers/suggest-area")
+def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE):
+    """Suggest area for a typed customer name based on historical report entries"""
+    try:
+        if not customer_name or not customer_name.strip():
+            return {"customer_name": customer_name, "suggested_area": ""}
+            
+        df = cache.get_cached_dataframe(filename, '営業日報')
+        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        
+        name_lower = customer_name.lower().strip()
+        cond = pd.Series(False, index=df.index)
+        for col in ['得意先名', '直送先名', '訪問先名', '訪問先名得意先名']:
+            if col in df.columns:
+                cond = cond | df[col].astype(str).str.lower().str.contains(name_lower, na=False)
+                
+        matched_reports = df[cond].copy()
+        if len(matched_reports) == 0:
+            return {"customer_name": customer_name, "suggested_area": ""}
+            
+        # Take the last row as the most recent entry
+        latest_row = matched_reports.iloc[-1]
+        
+        area = ""
+        if 'エリア' in latest_row and pd.notna(latest_row['エリア']):
+            area = str(latest_row['エリア']).strip()
+            
+        return {"customer_name": customer_name, "suggested_area": area}
+    except Exception as e:
+        logging.error(f"Error in suggest_area: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 @router.post("/api/reports")
 def add_report(report: models.ReportInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):

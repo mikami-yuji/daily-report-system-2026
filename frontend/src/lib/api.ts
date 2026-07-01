@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 import {
     Report,
     ExcelFile,
@@ -39,6 +40,25 @@ const api = axios.create({
 const apiLong = axios.create({
     timeout: LONG_TIMEOUT,
 });
+
+// エラーハンドリングの共通インターセプター設定
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const handleResponseError = (error: any): Promise<never> => {
+    const message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
+    console.error('API Error:', error);
+    toast.error(`通信エラー: ${message}`);
+    return Promise.reject(error);
+};
+
+api.interceptors.response.use(
+    (response) => response,
+    handleResponseError
+);
+
+apiLong.interceptors.response.use(
+    (response) => response,
+    handleResponseError
+);
 
 export const getFiles = async (): Promise<{ files: ExcelFile[]; default: string }> => {
     const response = await api.get(`${API_URL}/files`);
@@ -155,6 +175,13 @@ export const getDesigns = async (customerCd: string, filename?: string, delivery
     if (deliveryName) params.delivery_name = deliveryName;
     const response = await api.get(`${API_URL}/designs/${customerCd}`, { params });
     return response.data.designs;
+};
+
+export const getSuggestedArea = async (customerName: string, filename?: string): Promise<{ customer_name: string; suggested_area: string }> => {
+    const params: Record<string, string> = { customer_name: customerName };
+    if (filename) params.filename = filename;
+    const response = await api.get(`${API_URL}/customers/suggest-area`, { params });
+    return response.data;
 };
 
 // Image Interface

@@ -6,7 +6,7 @@ import { useReports } from '@/hooks/useQueryHooks';
 import { Search, MapPin, Calendar, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function MassRetailerSurveyPage() {
+export default function MassRetailerSurveyPage(): React.JSX.Element {
     const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）

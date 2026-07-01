@@ -7,7 +7,7 @@ import { Search, Calendar, User, Building2, AlertCircle, TrendingDown } from 'lu
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
-export default function CompetitorInfoPage() {
+export default function CompetitorInfoPage(): React.JSX.Element {
     const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）

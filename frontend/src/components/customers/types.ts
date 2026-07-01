@@ -1,5 +1,5 @@
 
-export interface CustomerSummary {
+export type CustomerSummary = {
     id: string; // Unique ID for React Key (e.g. code or code-ddCode)
     code: string;
     name: string;
@@ -18,5 +18,5 @@ export interface CustomerSummary {
     directDeliveryCode?: string;
     directDeliveryName?: string;
     subItems?: CustomerSummary[];
-}
+};
 

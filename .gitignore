@@ -65,3 +65,14 @@ DailyReportSystem_2026_Simple/DailyReportServer.exe
 
 # Cache
 backend/.cache/
+
+# Temporary development files
+fix_*.py
+check_*.py
+inspect_*.py
+patch_*.py
+debug_output.txt
+includes_search.txt
+backend/mikami_response.json
+backend/morita_response.json
+backend/dummy_global_sales.csv

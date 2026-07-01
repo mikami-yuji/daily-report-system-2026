@@ -1,3 +1,5 @@
+import { Report } from './report';
+
 // 全メンバー活動分析（日報点数表）用の型定義
 
 export type MonthlyActivity = {
@@ -38,4 +40,80 @@ export type TeamSummaryRecord = {
     visits: number;    // 訪問件数
     calls: number;     // 電話件数
     file: string;      // ファイル名
+};
+
+export type AnalyticsData = {
+    kpis: {
+        totalVisits: number;
+        totalProposals: number;
+        activeProjects: number;
+        completedDesigns: number;
+        rejectedDesigns: number;
+        acceptanceRate: number;
+        phoneContacts: number;
+        emailContacts: number;
+    };
+    trends: {
+        date: string;
+        visits: number;
+        proposals: number;
+        completed: number;
+        rejected: number;
+        phone: number;
+        email: number;
+    }[];
+    byArea: {
+        area: string;
+        count: number;
+        proposals: number;
+    }[];
+    byRank: {
+        rank: string;
+        count: number;
+    }[];
+    byAction: {
+        action: string;
+        count: number;
+    }[];
+    byInterviewer: {
+        name: string;
+        visits: number;
+        proposals: number;
+        acceptanceRate: number;
+    }[];
+    designProgress: {
+        status: string;
+        count: number;
+    }[];
+    priority: {
+        totalCustomers: number;
+        totalVisits: number;
+        totalCalls: number;
+        totalProposals: number;
+        completedDesigns: number;
+        rejectedDesigns: number;
+        acceptanceRate: number;
+        coverageRate: number;
+        byCustomer: {
+            name: string;
+            visits: number;
+            calls: number;
+            proposals: number;
+            completed: number;
+            rejected: number;
+            lastVisit: string | null;
+        }[];
+    };
+};
+
+// 重点顧客マトリクスデータの型
+export type PriorityMatrixData = {
+    periods: string[];  // 期間ラベル（「1月」「12/2週」など）
+    customers: {
+        code: string;
+        name: string;
+        values: number[];  // 各期間の値
+        total: number;
+        lastActivity: string | null;
+    }[];
 };

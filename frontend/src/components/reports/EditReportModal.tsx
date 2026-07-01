@@ -582,6 +582,18 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             }
         }
     };
+    const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setFormData(prev => ({
+            ...prev,
+            訪問先名: value,
+            得意先CD: '',
+            直送先名: '',
+            直送先CD: '',
+            重点顧客: '',
+            ランク: ''
+        }));
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
         const { name, value } = e.target;
@@ -754,7 +766,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                                     type="text"
                                     name="訪問先名"
                                     value={formData.訪問先名}
-                                    onChange={handleChange}
+                                    onChange={handleCustomerNameChange}
                                     onBlur={(): void => {
                                         loadDesignsForTypedCustomer();
                                         loadSuggestedAreaForTypedCustomer();

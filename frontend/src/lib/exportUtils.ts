@@ -1,13 +1,5 @@
 import { saveAs } from 'file-saver';
-
-/**
- * Export data to CSV format with Japanese character support
- */
-
-export interface ExportColumn {
-    key: string;
-    label: string;
-}
+import { ExportColumn } from '@/types/export';
 
 /**
  * Convert data array to CSV string

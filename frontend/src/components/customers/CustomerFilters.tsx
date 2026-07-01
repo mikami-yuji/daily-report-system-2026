@@ -1,7 +1,7 @@
 import React from 'react';
 import { Search, MapPin, TrendingUp, X } from 'lucide-react';
 
-interface CustomerFiltersProps {
+type CustomerFiltersProps = {
     searchTerm: string;
     setSearchTerm: (term: string) => void;
     selectedArea: string;
@@ -12,7 +12,7 @@ interface CustomerFiltersProps {
     setIsPriorityOnly: (isPriority: boolean) => void;
     areas: string[];
     ranks: string[];
-}
+};
 
 export default function CustomerFilters({
     searchTerm, setSearchTerm,

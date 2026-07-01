@@ -1,10 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { Report, Customer } from '@/lib/api';
 
-interface OfflineReport {
+type OfflineReport = {
     id: string;
     timestamp: number;
     data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>;
@@ -12,9 +12,9 @@ interface OfflineReport {
     filename: string;
     type: 'create' | 'update';
     reportId?: number;
-}
+};
 
-interface OfflineContextType {
+type OfflineContextType = {
     isOnline: boolean;
     offlineReports: OfflineReport[];
     saveOfflineReport: (data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>, filename: string, type?: 'create' | 'update', reportId?: number) => void;
@@ -24,14 +24,19 @@ interface OfflineContextType {
     cacheCustomers: (customers: Customer[]) => void;
     cachedReports: Report[];
     cacheReports: (reports: Report[]) => void;
-}
+};
 
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 
-export function OfflineProvider({ children }: { children: ReactNode }) {
+export function OfflineProvider({ children }: { children: ReactNode }): React.JSX.Element {
     const [isOnline, setIsOnline] = useState(true);
     const [offlineReports, setOfflineReports] = useState<OfflineReport[]>([]);
     const [cachedCustomers, setCachedCustomers] = useState<Customer[]>([]);
+
+    const offlineReportsRef = useRef(offlineReports);
+    useEffect(() => {
+        offlineReportsRef.current = offlineReports;
+    }, [offlineReports]);
     const [cachedReports, setCachedReports] = useState<Report[]>([]);
 
     // Initialize state from local storage and event listeners
@@ -140,7 +145,7 @@ export function OfflineProvider({ children }: { children: ReactNode }) {
     };
 
     const syncReports = async () => {
-        const pending = offlineReports.filter(r => r.status === 'pending' || r.status === 'error');
+        const pending = offlineReportsRef.current.filter(r => r.status === 'pending' || r.status === 'error');
         if (pending.length === 0) return;
 
         const toastId = toast.loading(`${pending.length}件のデータを同期中...`);

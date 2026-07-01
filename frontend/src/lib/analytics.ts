@@ -1,68 +1,5 @@
 import { Report } from '@/types/report';
-
-export interface AnalyticsData {
-    kpis: {
-        totalVisits: number;
-        totalProposals: number;
-        activeProjects: number;
-        completedDesigns: number;
-        rejectedDesigns: number;
-        acceptanceRate: number;
-        phoneContacts: number;
-        emailContacts: number;
-    };
-    trends: {
-        date: string;
-        visits: number;
-        proposals: number;
-        completed: number;
-        rejected: number;
-        phone: number;
-        email: number;
-    }[];
-    byArea: {
-        area: string;
-        count: number;
-        proposals: number;
-    }[];
-    byRank: {
-        rank: string;
-        count: number;
-    }[];
-    byAction: {
-        action: string;
-        count: number;
-    }[];
-    byInterviewer: {
-        name: string;
-        visits: number;
-        proposals: number;
-        acceptanceRate: number;
-    }[];
-    designProgress: {
-        status: string;
-        count: number;
-    }[];
-    priority: {
-        totalCustomers: number;
-        totalVisits: number;
-        totalCalls: number;
-        totalProposals: number;
-        completedDesigns: number;
-        rejectedDesigns: number;
-        acceptanceRate: number;
-        coverageRate: number;
-        byCustomer: {
-            name: string;
-            visits: number;
-            calls: number;
-            proposals: number;
-            completed: number;
-            rejected: number;
-            lastVisit: string | null;
-        }[];
-    };
-}
+import { AnalyticsData, PriorityMatrixData } from '@/types/analytics';
 
 export function parseDate(dateStr: string | undefined): Date | null {
     if (!dateStr) return null;
@@ -493,17 +430,7 @@ export function getDateRange(period: 'today' | 'week' | 'month' | 'quarter' | 'y
     return { start, end };
 }
 
-// 重点顧客マトリクスデータの型
-export type PriorityMatrixData = {
-    periods: string[];  // 期間ラベル（「1月」「12/2週」など）
-    customers: {
-        code: string;
-        name: string;
-        values: number[];  // 各期間の値
-        total: number;
-        lastActivity: string | null;
-    }[];
-};
+// 重点顧客マトリクスデータの型（@/types/analytics よりインポート）
 
 // 週番号を取得（ISO週番号）
 function getWeekNumber(date: Date): number {

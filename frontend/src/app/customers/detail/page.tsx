@@ -44,7 +44,7 @@ import toast from 'react-hot-toast';
 import { aggregateMonthlyActivities } from '@/lib/activityUtils';
 import { MonthlyActivityStats } from '@/types/activity';
 
-interface DesignRequest {
+type DesignRequest = {
     designNo: number;
     designProposal: string;
     designType: string;
@@ -52,9 +52,9 @@ interface DesignRequest {
     designProgress: string;
     requests: Report[];
     lastUpdate: string;
-}
+};
 
-interface SalesData {
+type SalesData = {
     found: boolean;
     rank?: string | number;
     rank_class?: string;
@@ -68,7 +68,7 @@ interface SalesData {
     customer_name?: string;
     message?: string;
     updated_at?: string;
-}
+};
 
 function CustomerDetailContent() {
     const { selectedFile } = useFile();

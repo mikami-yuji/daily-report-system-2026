@@ -3,13 +3,13 @@ import { CustomerSummary } from './types';
 import { ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
 import Link from 'next/link';
 
-interface CustomerListProps {
+type CustomerListProps = {
     customers: CustomerSummary[];
     loading: boolean;
     expandedRows: Set<string>;
     toggleRow: (id: string) => void;
     emptyMessage?: string;
-}
+};
 
 export default function CustomerList({ customers, loading, expandedRows, toggleRow, emptyMessage }: CustomerListProps) {
     if (loading) {

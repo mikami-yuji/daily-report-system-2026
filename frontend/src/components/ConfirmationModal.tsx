@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 
-interface ConfirmationModalProps {
+type ConfirmationModalProps = {
     isOpen: boolean;
     onClose: () => void;
     onConfirm: () => void;
@@ -10,7 +10,7 @@ interface ConfirmationModalProps {
     confirmText?: string;
     cancelText?: string;
     isDangerous?: boolean;
-}
+};
 
 export default function ConfirmationModal({
     isOpen,

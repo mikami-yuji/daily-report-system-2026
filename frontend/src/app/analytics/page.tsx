@@ -3,7 +3,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
-import { aggregateAnalytics, getDateRange, AnalyticsData, aggregatePriorityMatrix, PriorityMatrixData, parseDate } from '@/lib/analytics';
+import { aggregateAnalytics, getDateRange, aggregatePriorityMatrix, parseDate } from '@/lib/analytics';
+import { AnalyticsData, PriorityMatrixData } from '@/types/analytics';
 import { getPriorityCustomers, PriorityCustomer, getCustomers, Customer } from '@/lib/api';
 import KPICard from '@/components/KPICard';
 import { Users, FileText, Briefcase, CheckCircle, XCircle, TrendingUp, Phone, Mail, LayoutDashboard, MessageSquare, Palette, Star } from 'lucide-react';
@@ -20,7 +21,7 @@ type MatrixMetric = 'visits' | 'calls' | 'total';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
-export default function AnalyticsPage() {
+export default function AnalyticsPage(): React.JSX.Element {
     const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）

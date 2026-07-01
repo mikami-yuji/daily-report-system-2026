@@ -3,12 +3,13 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
-import { generateMonthCalendar, MonthData, CalendarDay, getDayName, getMonthName } from '@/lib/calendar';
+import { generateMonthCalendar, getDayName, getMonthName } from '@/lib/calendar';
+import { MonthData, CalendarDay } from '@/types/calendar';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Printer, Users, MapPin } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import toast from 'react-hot-toast';
 
-export default function CalendarPage() {
+export default function CalendarPage(): React.JSX.Element {
     const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）

@@ -1,30 +1,5 @@
 import { Report } from './api';
-
-export interface CalendarDay {
-    date: Date;
-    dateString: string;
-    isCurrentMonth: boolean;
-    visits: {
-        customerName: string;
-        action: string;
-        managementNumber: number;
-        hasDesign: boolean;
-        // 追加フィールド
-        interviewer?: string;
-        stayTime?: string;
-        commercialContent?: string;
-        designType?: string;
-        designName?: string;
-    }[];
-}
-
-export interface MonthData {
-    year: number;
-    month: number;
-    days: CalendarDay[];
-    totalVisits: number;
-    uniqueCustomers: number;
-}
+import { CalendarDay, MonthData } from '@/types/calendar';
 
 /**
  * Get the number of days in a month

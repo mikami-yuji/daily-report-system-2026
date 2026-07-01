@@ -22,13 +22,13 @@ import models
 router = APIRouter()
 
 @router.get("/api/health")
-def read_root():
+def read_root() -> Dict[str, str]:
     return {"message": "Daily Report API is running", "excel_dir": config.EXCEL_DIR}
 
 
 
 @router.get("/api/files")
-def list_excel_files():
+def list_excel_files() -> Dict[str, Any]:
     """List all Excel files in the directory"""
     logging.debug(f"Listing files in {config.EXCEL_DIR}")
     if not os.path.exists(config.EXCEL_DIR):
@@ -70,7 +70,7 @@ def list_excel_files():
 
 
 @router.get("/api/customers")
-def get_customers(filename: str = config.DEFAULT_EXCEL_FILE):
+def get_customers(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any]]:
     """Get customer list from the Excel file"""
     try:
         # Get dataframe from cache
@@ -142,7 +142,7 @@ def get_customers(filename: str = config.DEFAULT_EXCEL_FILE):
 
 
 @router.get("/api/priority-customers")
-def get_priority_customers(filename: str = config.DEFAULT_EXCEL_FILE):
+def get_priority_customers(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, str]]:
     """得意先_Listからカラム H (重点顧客) が「重点」の顧客を取得。カラム I の担当者情報も含める"""
     try:
         # 得意先_Listを読み込み
@@ -235,7 +235,7 @@ def get_priority_customers(filename: str = config.DEFAULT_EXCEL_FILE):
 
 
 @router.get("/api/interviewers")
-def get_interviewers(customer_code: str, filename: str = config.DEFAULT_EXCEL_FILE):
+def get_interviewers_by_query(customer_code: str, filename: str = config.DEFAULT_EXCEL_FILE) -> List[str]:
     """Get list of interviewers for a specific customer"""
     excel_file = os.path.join(config.EXCEL_DIR, filename)
     if not os.path.exists(excel_file):
@@ -267,7 +267,7 @@ def get_interviewers(customer_code: str, filename: str = config.DEFAULT_EXCEL_FI
 
 
 @router.get("/api/reports/{management_number}")
-def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCEL_FILE):
+def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCEL_FILE) -> Dict[str, Any]:
     """指定された管理番号の日報を取得"""
     try:
         # Get dataframe from cache
@@ -323,7 +323,7 @@ def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCE
 
 
 @router.get("/api/reports")
-def get_reports(filename: str = config.DEFAULT_EXCEL_FILE):
+def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any]]:
     try:
         logging.debug(f"Fetching reports for {filename} from {config.EXCEL_DIR}")
         # Get dataframe from cache
@@ -400,7 +400,7 @@ def get_interviewers(
     filename: str = config.DEFAULT_EXCEL_FILE,
     customer_name: Optional[str] = None,
     delivery_name: Optional[str] = None
-):
+) -> Dict[str, Any]:
     """Get list of interviewers for a specific customer with optional name filtering"""
     try:
         # Get dataframe from cache
@@ -490,7 +490,11 @@ def get_interviewers(
 
 
 @router.get("/api/designs/{customer_cd}")
-def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename: str = config.DEFAULT_EXCEL_FILE):
+def get_designs(
+    customer_cd: str, 
+    delivery_name: Optional[str] = None, 
+    filename: str = config.DEFAULT_EXCEL_FILE
+) -> Dict[str, Any]:
     """Get list of design requests for a specific customer (optionally filtered by delivery destination)"""
     try:
         logging.info(f"get_designs called: customer_cd={customer_cd}, delivery_name={delivery_name}")
@@ -518,10 +522,10 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
         # Filter by customer code
         customer_reports = df[df['得意先CD'] == customer_cd_float].copy()
         
-        # Fallback to name search if no records found by CD and customer_cd is a string (e.g. manually typed customer name)
-        if len(customer_reports) == 0 and isinstance(customer_cd_float, str) and customer_cd_float.strip():
-            logging.info(f"No designs found for customer_cd={customer_cd_float} as code. Trying name match...")
-            name_lower = customer_cd_float.lower().strip()
+        # Fallback to name search if no records found by CD (e.g. manually typed customer name, or custom code not in list)
+        if len(customer_reports) == 0 and str(customer_cd).strip():
+            logging.info(f"No designs found for customer_cd={customer_cd} as code. Trying name match...")
+            name_lower = str(customer_cd).lower().strip()
             cond = pd.Series(False, index=df.index)
             if '得意先名' in df.columns:
                 cond = cond | df['得意先名'].astype(str).str.lower().str.contains(name_lower, na=False)
@@ -584,7 +588,7 @@ def get_designs(customer_cd: str, delivery_name: Optional[str] = None, filename:
 
 
 @router.get("/api/customers/suggest-area")
-def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE):
+def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE) -> Dict[str, str]:
     """Suggest area for a typed customer name based on historical report entries"""
     try:
         if not customer_name or not customer_name.strip():
@@ -624,7 +628,11 @@ def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE):
 
 
 @router.post("/api/reports")
-def add_report(report: models.ReportInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
+def add_report(
+    report: models.ReportInput, 
+    background_tasks: BackgroundTasks, 
+    filename: str = config.DEFAULT_EXCEL_FILE
+) -> Dict[str, Any]:
     filename = os.path.basename(filename)
     logging.info(f"DEBUG ADD_REPORT: Received payload: {report.model_dump()}")
     excel_file = os.path.join(config.EXCEL_DIR, filename)

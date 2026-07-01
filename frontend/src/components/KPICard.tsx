@@ -1,6 +1,6 @@
 import { LucideIcon } from 'lucide-react';
 
-interface KPICardProps {
+type KPICardProps = {
     title: string;
     value: number | string;
     icon: LucideIcon;
@@ -9,7 +9,7 @@ interface KPICardProps {
         isPositive: boolean;
     };
     color?: 'blue' | 'green' | 'orange' | 'red' | 'purple' | 'yellow';
-}
+};
 
 const colorClasses = {
     blue: {

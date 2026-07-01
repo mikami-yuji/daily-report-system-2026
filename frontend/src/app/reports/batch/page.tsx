@@ -348,9 +348,10 @@ export default function BatchReportPage() {
         }
     };
 
-    const loadDesignsForTypedCustomer = (visitId: string, typedName: string): void => {
+    const loadDesignsForTypedCustomer = (visitId: string, typedName: string, force: boolean = false): void => {
         const visit = visits.find(v => v.id === visitId);
-        if (!visit || visit.得意先CD) return;
+        if (!visit) return;
+        if (visit.得意先CD && !force) return;
 
         const name = typedName.trim();
         if (!name) {
@@ -374,9 +375,10 @@ export default function BatchReportPage() {
             });
     };
 
-    const loadSuggestedAreaForTypedCustomer = (visitId: string, typedName: string): void => {
+    const loadSuggestedAreaForTypedCustomer = (visitId: string, typedName: string, force: boolean = false): void => {
         const visit = visits.find(v => v.id === visitId);
-        if (!visit || visit.得意先CD) return;
+        if (!visit) return;
+        if (visit.得意先CD && !force) return;
 
         const name = typedName.trim();
         if (!name) return;
@@ -749,10 +751,20 @@ export default function BatchReportPage() {
                                                                     }
                                                                     const term = searchTerms[visit.id]?.trim();
                                                                     if (term) {
-                                                                        // 自由記載として訪問先名に設定
-                                                                        updateVisit(visit.id, '訪問先名', term);
-                                                                        loadDesignsForTypedCustomer(visit.id, term);
-                                                                        loadSuggestedAreaForTypedCustomer(visit.id, term);
+                                                                        // 自由記載として訪問先名に設定し、得意先CD等をクリア
+                                                                        setVisits(prev => prev.map(v => 
+                                                                            v.id === visit.id ? {
+                                                                                ...v,
+                                                                                訪問先名: term,
+                                                                                得意先CD: '',
+                                                                                直送先名: '',
+                                                                                直送先CD: '',
+                                                                                重点顧客: '',
+                                                                                ランク: ''
+                                                                            } : v
+                                                                        ));
+                                                                        loadDesignsForTypedCustomer(visit.id, term, true);
+                                                                        loadSuggestedAreaForTypedCustomer(visit.id, term, true);
                                                                         setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                                     }
                                                                     setShowSuggestions({ ...showSuggestions, [visit.id]: false });
@@ -763,9 +775,20 @@ export default function BatchReportPage() {
                                                                     e.preventDefault();
                                                                     const term = searchTerms[visit.id]?.trim();
                                                                     if (term) {
-                                                                        // Enterで自由記載として確定
-                                                                        updateVisit(visit.id, '訪問先名', term);
-                                                                        loadDesignsForTypedCustomer(visit.id, term);
+                                                                        // Enterで自由記載として確定（得意先CD等もクリア）
+                                                                        setVisits(prev => prev.map(v => 
+                                                                            v.id === visit.id ? {
+                                                                                ...v,
+                                                                                訪問先名: term,
+                                                                                得意先CD: '',
+                                                                                直送先名: '',
+                                                                                直送先CD: '',
+                                                                                重点顧客: '',
+                                                                                ランク: ''
+                                                                            } : v
+                                                                        ));
+                                                                        loadDesignsForTypedCustomer(visit.id, term, true);
+                                                                        loadSuggestedAreaForTypedCustomer(visit.id, term, true);
                                                                         setSearchTerms({ ...searchTerms, [visit.id]: '' });
                                                                         setShowSuggestions({ ...showSuggestions, [visit.id]: false });
                                                                     }

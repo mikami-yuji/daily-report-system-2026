@@ -1,10 +1,10 @@
 import React from 'react';
 import { CustomerSummary } from './types';
 
-interface CustomerStatsProps {
+type CustomerStatsProps = {
     customers: CustomerSummary[];
     filteredCustomers: CustomerSummary[];
-}
+};
 
 export default function CustomerStats({ customers, filteredCustomers }: CustomerStatsProps) {
     return (

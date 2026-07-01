@@ -183,6 +183,11 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         setFormData(prev => ({
             ...prev,
             訪問先名: value,
+            得意先CD: '',
+            直送先名: '',
+            直送先CD: '',
+            重点顧客: '',
+            ランク: ''
         }));
 
         filterCustomers(value);

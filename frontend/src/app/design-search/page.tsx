@@ -8,7 +8,7 @@ import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, 
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 
-interface DesignRequest {
+type DesignRequest = {
     designNo: string;
     customerCode: string;
     customerName: string;
@@ -17,7 +17,7 @@ interface DesignRequest {
     designName: string;
     designProgress: string;
     requests: Report[];
-}
+};
 
 export default function DesignSearchPage() {
     const { selectedFile } = useFile();

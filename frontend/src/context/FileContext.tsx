@@ -3,14 +3,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getFiles, ExcelFile } from '@/lib/api';
 
-interface FileContextType {
+type FileContextType = {
   selectedFile: string;
   setSelectedFile: (file: string) => void;
   files: ExcelFile[];
   setFiles: (files: ExcelFile[]) => void;
   isLoadingFiles: boolean;
   refreshFiles: () => Promise<void>;
-}
+};
 
 const FileContext = createContext<FileContextType | undefined>(undefined);
 

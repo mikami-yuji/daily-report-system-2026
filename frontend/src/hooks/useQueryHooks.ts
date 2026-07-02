@@ -12,7 +12,9 @@ import {
     getAllSales,
     addReport,
     updateReport,
-    deleteReport
+    deleteReport,
+    getDesignImages,
+    DesignImage
 } from '@/lib/api';
 import {
     Report,
@@ -128,5 +130,17 @@ export function useDeleteReport() {
         onError: (error: Error) => {
             toast.error(`日報の削除に失敗しました: ${error.message}`);
         },
+    });
+}
+
+/**
+ * デザイン画像一覧取得フック
+ */
+export function useDesignImages(filename?: string) {
+    return useQuery({
+        queryKey: ['design-images', filename],
+        queryFn: () => getDesignImages(filename!),
+        enabled: !!filename,
+        staleTime: 5 * 60 * 1000, // 5分キャッシュ保持
     });
 }

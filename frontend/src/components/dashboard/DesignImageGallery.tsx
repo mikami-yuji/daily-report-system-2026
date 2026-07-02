@@ -3,18 +3,48 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Image as ImageIcon, ChevronLeft, ChevronRight, Download, X, FileText } from 'lucide-react';
-import { getDesignImages, getImageUrl, DesignImage } from '@/lib/api';
+import { getImageUrl, DesignImage } from '@/lib/api';
+import { useDesignImages } from '@/hooks/useQueryHooks';
 
 type DesignImageGalleryProps = {
   selectedFile: string;
 };
 
 export default function DesignImageGallery({ selectedFile }: DesignImageGalleryProps): React.JSX.Element {
-  const [images, setImages] = useState<DesignImage[]>([]);
-  const [allImages, setAllImages] = useState<DesignImage[]>([]);
-  const [imageFolder, setImageFolder] = useState<string>('');
+  const { data, isLoading } = useDesignImages(selectedFile);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
   const [activePreviewImage, setActivePreviewImage] = useState<DesignImage | null>(null);
+
+  const imageFolder = data?.folder || '';
+
+  const allImages = useMemo((): DesignImage[] => {
+    return data?.images || [];
+  }, [data]);
+
+  // デザイン依頼番号（5桁以上の数字）ごとにグループ化し、最新の1枚のみを抽出した画像リスト
+  const images = useMemo((): DesignImage[] => {
+    const rawImages = allImages;
+    const groupedMap = new Map<string, DesignImage>();
+    const nonGrouped: DesignImage[] = [];
+
+    rawImages.forEach((img: DesignImage) => {
+      const match = img.name.match(/\d{5,}/);
+      if (match) {
+        const designId = match[0];
+        const existing = groupedMap.get(designId);
+        if (!existing || (img.mtime || 0) > (existing.mtime || 0)) {
+          groupedMap.set(designId, img);
+        }
+      } else {
+        nonGrouped.push(img);
+      }
+    });
+
+    const filteredImages = [...Array.from(groupedMap.values()), ...nonGrouped];
+    filteredImages.sort((a: DesignImage, b: DesignImage) => (b.mtime || 0) - (a.mtime || 0));
+
+    return filteredImages;
+  }, [allImages]);
 
   // 同一デザインID（5桁以上の数字）の関連画像を抽出
   const relatedImages = useMemo((): DesignImage[] => {
@@ -57,50 +87,18 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
     };
   }, [selectedImageIndex]);
 
-  // 画像データの読み込み
-  useEffect((): void => {
-    if (selectedFile) {
-      getDesignImages(selectedFile).then((data: { images: DesignImage[]; folder?: string }) => {
-        const rawImages = data.images || [];
-        setAllImages(rawImages);
-
-        // デザイン依頼番号（5桁以上の数字）ごとにグループ化し、最新の1枚のみを抽出
-        const groupedMap = new Map<string, DesignImage>();
-        const nonGrouped: DesignImage[] = [];
-
-        rawImages.forEach((img: DesignImage) => {
-          const match = img.name.match(/\d{5,}/);
-          if (match) {
-            const designId = match[0];
-            const existing = groupedMap.get(designId);
-            if (!existing || (img.mtime || 0) > (existing.mtime || 0)) {
-              groupedMap.set(designId, img);
-            }
-          } else {
-            nonGrouped.push(img);
-          }
-        });
-
-        // グループ化した最新画像とIDなし画像を統合し、mtime降順でソート
-        const filteredImages = [...Array.from(groupedMap.values()), ...nonGrouped];
-        filteredImages.sort((a: DesignImage, b: DesignImage) => (b.mtime || 0) - (a.mtime || 0));
-
-        setImages(filteredImages);
-        setImageFolder(data.folder || '');
-      }).catch((err: unknown) => {
-        console.error('Failed to load design images', err);
-      });
-    }
-  }, [selectedFile]);
-
   return (
     <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex items-center gap-2">
         <ImageIcon size={20} className="text-pink-500" />
-        <h2 className="font-semibold text-sm text-sf-text">デザインデータ一覧 ({imageFolder || 'フォルダ検索中...'})</h2>
+        <h2 className="font-semibold text-sm text-sf-text">デザインデータ一覧 ({isLoading ? '読み込み中...' : (imageFolder || 'フォルダ検索中...')})</h2>
       </div>
       <div className="p-6 bg-gray-50/30">
-        {images.length > 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sf-light-blue"></div>
+          </div>
+        ) : images.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
             {images.map((img: DesignImage, i: number) => (
               <button

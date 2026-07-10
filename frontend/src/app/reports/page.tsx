@@ -179,7 +179,7 @@ export default function ReportsPage(): React.JSX.Element {
                             <div
                                 key={i}
                                 className="hover:bg-gray-50 transition-colors cursor-pointer"
-                                onClick={() => handleRowClick(i)}
+                                onClick={() => handleRowClick((currentPage - 1) * itemsPerPage + i)}
                             >
                                 <div className="p-4 flex items-center gap-4">
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -217,7 +217,7 @@ export default function ReportsPage(): React.JSX.Element {
                             <div
                                 key={i}
                                 className="bg-white p-4 rounded border border-sf-border shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-sf-light-blue"
-                                onClick={() => handleRowClick(i)}
+                                onClick={() => handleRowClick((currentPage - 1) * itemsPerPage + i)}
                             >
                                 <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
                                     <div className="flex items-center gap-3">

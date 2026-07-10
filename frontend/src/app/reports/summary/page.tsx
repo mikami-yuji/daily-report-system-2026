@@ -5,7 +5,6 @@ import { useFile } from '@/context/FileContext';
 import { useMonthlySummaryStats } from '@/hooks/useStatsHooks';
 import { ChevronLeft, ChevronRight, Printer, FileText, Users, Phone, MapPin, Palette, Star, TrendingUp, ChevronDown, ChevronUp, CornerDownRight } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
-import toast from 'react-hot-toast';
 
 // ファイル名から担当者名を抽出
 function extractStaffName(filename: string | null): string {
@@ -24,6 +23,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
     const { selectedFile } = useFile();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [collapsedCustomers, setCollapsedCustomers] = useState<Set<string>>(new Set());
+    const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
     const [mounted, setMounted] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
 
@@ -32,6 +32,15 @@ export default function MonthlySummaryPage(): React.ReactElement {
             const next = new Set(prev);
             if (next.has(code)) next.delete(code);
             else next.add(code);
+            return next;
+        });
+    };
+
+    const toggleDateExpand = (date: string): void => {
+        setExpandedDates(prev => {
+            const next = new Set(prev);
+            if (next.has(date)) next.delete(date);
+            else next.add(date);
             return next;
         });
     };
@@ -215,7 +224,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                         const totalGeneralVisits = summary.totalVisits - summary.priorityVisits;
                                         const totalGeneralCalls = summary.totalCalls - summary.priorityCalls;
                                         const totalGeneral = totalGeneralVisits + totalGeneralCalls;
-                                        const totalPriority = summary.priorityVisits + summary.priorityCalls;
+                                        
                                         return (
                                             <>
                                                 <td className="px-4 py-2 text-center text-gray-900 whitespace-nowrap">{totalGeneralVisits}</td>
@@ -479,11 +488,11 @@ export default function MonthlySummaryPage(): React.ReactElement {
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 text-xs text-gray-500 border-b">
                                     <tr>
-                                        <th className="px-4 py-2 text-left font-semibold">日付</th>
-                                        <th className="px-4 py-2 text-center font-semibold">訪問</th>
-                                        <th className="px-4 py-2 text-center font-semibold">電話</th>
-                                        <th className="px-4 py-2 text-center font-semibold">合計</th>
-                                        <th className="px-4 py-2 text-left font-semibold">活動バー</th>
+                                        <th className="px-4 py-3 text-left font-semibold">日付</th>
+                                        <th className="px-4 py-3 text-center font-semibold">訪問</th>
+                                        <th className="px-4 py-3 text-center font-semibold">電話</th>
+                                        <th className="px-4 py-3 text-center font-semibold">合計</th>
+                                        <th className="px-4 py-3 text-left font-semibold">活動バー</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -492,25 +501,105 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                         // 活動バーの最大幅計算（最大値を基準）
                                         const maxTotal = Math.max(...summary.dailyActivity.map(d => d.visits + d.calls), 1);
                                         const barWidth = Math.round((total / maxTotal) * 100);
+                                        const isOfficeOnly = day.visits === 0;
+                                        const isExpanded = expandedDates.has(day.date);
+
                                         return (
-                                            <tr key={day.date} className="border-b border-gray-100 hover:bg-gray-50">
-                                                <td className="px-4 py-2 font-medium text-gray-900">{day.date}</td>
-                                                <td className="px-4 py-2 text-center text-blue-600">{day.visits}</td>
-                                                <td className="px-4 py-2 text-center text-green-600">{day.calls}</td>
-                                                <td className="px-4 py-2 text-center font-semibold text-gray-900">{total}</td>
-                                                <td className="px-4 py-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="flex h-4 rounded-full overflow-hidden" style={{ width: `${barWidth}%`, minWidth: total > 0 ? '8px' : '0' }}>
-                                                            {day.visits > 0 && (
-                                                                <div className="bg-blue-400 h-full" style={{ width: `${(day.visits / total) * 100}%` }} />
-                                                            )}
-                                                            {day.calls > 0 && (
-                                                                <div className="bg-green-400 h-full" style={{ width: `${(day.calls / total) * 100}%` }} />
+                                            <React.Fragment key={day.date}>
+                                                <tr className={`border-b border-gray-100 hover:bg-gray-50/80 transition-colors ${isOfficeOnly ? 'bg-amber-50/15' : ''}`}>
+                                                    <td className="px-4 py-2.5 font-medium text-gray-900">
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => toggleDateExpand(day.date)}
+                                                                className="p-1 hover:bg-gray-100 rounded transition-colors text-gray-400 hover:text-gray-600 print:hidden"
+                                                                title="詳細を表示"
+                                                            >
+                                                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                                            </button>
+                                                            <span>{day.date}</span>
+                                                            {isOfficeOnly && (
+                                                                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 ml-1">
+                                                                    一日社内
+                                                                </span>
                                                             )}
                                                         </div>
-                                                    </div>
-                                                </td>
-                                            </tr>
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-center text-blue-600 font-semibold">{day.visits}</td>
+                                                    <td className="px-4 py-2.5 text-center text-green-600 font-semibold">{day.calls}</td>
+                                                    <td className="px-4 py-2.5 text-center font-bold text-gray-900">{total}</td>
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex h-4 rounded-full overflow-hidden" style={{ width: `${barWidth}%`, minWidth: total > 0 ? '8px' : '0' }}>
+                                                                {day.visits > 0 && (
+                                                                    <div className="bg-blue-400 h-full" style={{ width: `${(day.visits / total) * 100}%` }} />
+                                                                )}
+                                                                {day.calls > 0 && (
+                                                                    <div className="bg-green-400 h-full" style={{ width: `${(day.calls / total) * 100}%` }} />
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                {isExpanded && day.activities && day.activities.length > 0 && (
+                                                    <tr className="bg-gray-50/50 print:hidden">
+                                                        <td colSpan={5} className="px-6 py-3 border-b border-gray-200">
+                                                            <div className="space-y-2">
+                                                                {day.activities.map((act, actIdx) => (
+                                                                    <div key={actIdx} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex flex-col gap-2">
+                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                                                act.action?.includes('訪問') ? 'bg-blue-100 text-blue-800 border border-blue-200' :
+                                                                                act.action?.includes('電話') ? 'bg-green-100 text-green-800 border border-green-200' :
+                                                                                act.action?.includes('社内') ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                                                                'bg-gray-100 text-gray-800 border border-gray-200'
+                                                                            }`}>
+                                                                                {act.action || 'その他'}
+                                                                            </span>
+                                                                            
+                                                                            <span className="font-bold text-gray-900 text-sm">
+                                                                                {act.customer_name || '社内業務等'}
+                                                                            </span>
+
+                                                                            {act.is_priority && (
+                                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                                                                    <Star size={10} className="fill-yellow-500 text-yellow-500" />
+                                                                                    重点
+                                                                                </span>
+                                                                            )}
+
+                                                                            {act.dd_name && (
+                                                                                <span className="text-[10px] text-sf-light-blue bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 font-medium">
+                                                                                    直送先: {act.dd_name}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+
+                                                                        {(act.design_no || act.design_name || act.design_status) && (
+                                                                            <div className="text-xs text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-100 inline-flex items-center gap-1.5 self-start">
+                                                                                <Palette size={12} />
+                                                                                <span className="font-semibold">
+                                                                                    デザイン提案: {act.design_name || '名称未設定'} 
+                                                                                    {act.design_no ? ` (No.${act.design_no})` : ''} 
+                                                                                    【{act.design_status || '進行中'}】
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {act.business_content && (
+                                                                            <div className="text-xs text-gray-700 border-t border-gray-100 pt-2 mt-1">
+                                                                                <span className="font-bold text-gray-500 block mb-1">商談内容:</span>
+                                                                                <p className="whitespace-pre-wrap pl-2.5 border-l-2 border-gray-300 text-gray-700 leading-relaxed font-normal">
+                                                                                    {act.business_content}
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
                                         );
                                     })}
                                 </tbody>

@@ -484,10 +484,62 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
         dailyActivity = []
         mdf['date_str'] = mdf['dt'].dt.strftime('%Y/%m/%d')
         for d, dg in mdf.groupby('date_str'):
+            day_acts = []
+            for _, row in dg.iterrows():
+                def clean_val(val):
+                    if pd.isna(val) or str(val).strip() == '' or str(val).strip().lower() == 'nan' or str(val).strip() == '-':
+                        return None
+                    return str(val).strip()
+                
+                cname = clean_val(row.get(customer_name_col))
+                action = clean_val(row.get(action_col))
+                
+                dd_name = None
+                if dd_name_col in row:
+                    dd_name = clean_val(row.get(dd_name_col))
+                
+                is_p = False
+                if priority_col in row:
+                    p_val = clean_val(row.get(priority_col))
+                    is_p = p_val is not None
+                
+                biz_content = None
+                for col in ['商談内容', '詳細', '商談詳細', '内容']:
+                    if col in row:
+                        biz_content = clean_val(row.get(col))
+                        if biz_content:
+                            break
+                            
+                design_no = None
+                if 'デザイン依頼No.' in row:
+                    design_no = clean_val(row.get('デザイン依頼No.'))
+                elif 'デザイン依頼No' in row:
+                    design_no = clean_val(row.get('デザイン依頼No'))
+                
+                design_name = None
+                if 'デザイン名' in row:
+                    design_name = clean_val(row.get('デザイン名'))
+                
+                design_status = None
+                if design_status_col in row:
+                    design_status = clean_val(row.get(design_status_col))
+                
+                day_acts.append({
+                    "customer_name": cname,
+                    "action": action,
+                    "dd_name": dd_name,
+                    "is_priority": is_p,
+                    "business_content": biz_content,
+                    "design_no": design_no,
+                    "design_name": design_name,
+                    "design_status": design_status
+                })
+
             dailyActivity.append({
                 "date": str(d),
                 "visits": int(dg['is_v'].sum()),
-                "calls": int(dg['is_c'].sum())
+                "calls": int(dg['is_c'].sum()),
+                "activities": day_acts
             })
         dailyActivity.sort(key=lambda x: x['date'])
 

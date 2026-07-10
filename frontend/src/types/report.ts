@@ -161,6 +161,16 @@ export type MonthlySummaryStats = {
         date: string;
         visits: number;
         calls: number;
+        activities?: Array<{
+            customer_name: string | null;
+            action: string | null;
+            dd_name: string | null;
+            is_priority: boolean;
+            business_content: string | null;
+            design_no: string | null;
+            design_name: string | null;
+            design_status: string | null;
+        }>;
     }>;
 };
 

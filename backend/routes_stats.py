@@ -516,6 +516,9 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
                 elif 'デザイン依頼No' in row:
                     design_no = clean_val(row.get('デザイン依頼No'))
                 
+                if design_no:
+                    design_no = design_no.replace('.0', '').strip()
+                
                 design_name = None
                 if 'デザイン名' in row:
                     design_name = clean_val(row.get('デザイン名'))

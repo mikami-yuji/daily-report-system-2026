@@ -549,10 +549,20 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                                             </button>
                                                             <span>{day.date}</span>
-                                                            {isOfficeOnly && (
-                                                                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 ml-1">
+                                                            {isOfficeOnly ? (
+                                                                <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 ml-1 whitespace-nowrap">
                                                                     一日社内
                                                                 </span>
+                                                            ) : (
+                                                                day.activities && Array.from(new Set(
+                                                                    day.activities
+                                                                        .filter(act => act.action && act.action.includes('訪問') && act.area)
+                                                                        .map(act => act.area!)
+                                                                )).map((area, idx) => (
+                                                                    <span key={idx} className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 ml-1 whitespace-nowrap">
+                                                                        {area}
+                                                                    </span>
+                                                                ))
                                                             )}
                                                         </div>
                                                     </td>
@@ -617,7 +627,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                                                         <button
                                                                                             onClick={(e): Promise<void> => handleImageSearch(act.design_no!, e)}
                                                                                             disabled={searchingImage}
-                                                                                            className="ml-1 p-0.5 hover:bg-purple-100 rounded text-purple-700 hover:text-purple-900 transition-colors inline-flex items-center gap-0.5 print:hidden cursor-pointer"
+                                                                                            className="ml-1.5 px-1 py-0.5 bg-pink-50 hover:bg-pink-100 border border-pink-200 rounded text-pink-600 hover:text-pink-800 transition-colors inline-flex items-center gap-0.5 print:hidden cursor-pointer text-[10px] font-bold shadow-sm"
                                                                                             title="デザイン画像を表示"
                                                                                         >
                                                                                             {searchingImage ? (
@@ -625,6 +635,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                                                             ) : (
                                                                                                 <ImageIcon size={10} />
                                                                                             )}
+                                                                                            <span>画像</span>
                                                                                         </button>
                                                                                     )}
                                                                                 </span>

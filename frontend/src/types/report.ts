@@ -170,6 +170,7 @@ export type MonthlySummaryStats = {
             design_no: string | null;
             design_name: string | null;
             design_status: string | null;
+            area: string | null;
         }>;
     }>;
 };

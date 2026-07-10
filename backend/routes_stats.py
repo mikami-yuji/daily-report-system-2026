@@ -527,6 +527,10 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
                 if design_status_col in row:
                     design_status = clean_val(row.get(design_status_col))
                 
+                area = None
+                if area_col in row:
+                    area = clean_val(row.get(area_col))
+                
                 day_acts.append({
                     "customer_name": cname,
                     "action": action,
@@ -535,7 +539,8 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
                     "business_content": biz_content,
                     "design_no": design_no,
                     "design_name": design_name,
-                    "design_status": design_status
+                    "design_status": design_status,
+                    "area": area
                 })
 
             dailyActivity.append({

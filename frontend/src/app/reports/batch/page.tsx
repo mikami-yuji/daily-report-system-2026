@@ -6,7 +6,7 @@ import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport,
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check } from 'lucide-react';
+import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID } from '@/lib/reportUtils';
@@ -268,18 +268,95 @@ export default function BatchReportPage() {
         const req = viewerRequests.find(r => r.requestId === reqId && r.subId === subId);
         if (req) {
             const shortId = req.requestId.split('-')[0]; // ハイフンより前の最初の6桁(枝番なし)のみ
+            
+            // 得意先名の名寄せ正規化関数
+            const normalizeName = (name: string): string => {
+                return name
+                    .replace(/[\(（]株[\)）]/g, '')
+                    .replace(/[\(（]有[\)）]/g, '')
+                    .replace(/株式会社/g, '')
+                    .replace(/有限会社/g, '')
+                    .replace(/\s+/g, '')
+                    .toLowerCase()
+                    .trim();
+            };
+
+            const viewerCustomerNormalized = normalizeName(req.customer || '');
+            let matchedCustomer = customers.find(c => {
+                const masterNameNormalized = normalizeName(c.得意先名 || '');
+                return masterNameNormalized === viewerCustomerNormalized && masterNameNormalized.length > 0;
+            });
+
+            if (!matchedCustomer) {
+                matchedCustomer = customers.find(c => {
+                    const masterNameNormalized = normalizeName(c.得意先名 || '');
+                    if (!masterNameNormalized || !viewerCustomerNormalized) return false;
+                    return masterNameNormalized.includes(viewerCustomerNormalized) || viewerCustomerNormalized.includes(masterNameNormalized);
+                });
+            }
+
             setVisits(prev => prev.map(v => {
                 if (v.id === visitId) {
-                    return {
+                    const baseUpdate = {
                         ...v,
                         'デザイン依頼No.': shortId,
                         デザイン名: req.designContent // 依頼内容＝デザイン名
                     };
+
+                    if (matchedCustomer) {
+                        return {
+                            ...baseUpdate,
+                            訪問先名: matchedCustomer.得意先名 || '',
+                            直送先名: matchedCustomer.直送先名 || '',
+                            得意先CD: matchedCustomer.得意先CD || '',
+                            直送先CD: matchedCustomer.直送先CD || '',
+                            エリア: matchedCustomer.エリア || '',
+                            重点顧客: matchedCustomer.重点顧客 || '',
+                            ランク: matchedCustomer.ランク || ''
+                        };
+                    } else {
+                        return {
+                            ...baseUpdate,
+                            訪問先名: req.customer || '',
+                            得意先CD: '',
+                            直送先名: '',
+                            直送先CD: '',
+                            重点顧客: '',
+                            ランク: ''
+                        };
+                    }
                 }
                 return v;
             }));
+
+            // 得意先CDがあれば非同期で面談者とデザイン案件を自動ロード
+            if (matchedCustomer && matchedCustomer.得意先CD) {
+                const customerCd = matchedCustomer.得意先CD;
+                const customerName = matchedCustomer.得意先名;
+                const devivName = matchedCustomer.直送先名;
+
+                getDesigns(customerCd, selectedFile || '', devivName || undefined)
+                    .then(designs => {
+                        setVisits(prev => prev.map(v =>
+                            v.id === visitId ? { ...v, designs } : v
+                        ));
+                    })
+                    .catch(err => console.error('Failed to fetch designs on viewer select:', err));
+
+                getInterviewers(customerCd, selectedFile || '', customerName, devivName)
+                    .then(interviewers => {
+                        setVisits(prev => prev.map(v =>
+                            v.id === visitId ? { ...v, interviewers } : v
+                        ));
+                    })
+                    .catch(err => console.error('Failed to fetch interviewers on viewer select:', err));
+            } else {
+                setVisits(prev => prev.map(v =>
+                    v.id === visitId ? { ...v, designs: [], interviewers: [] } : v
+                ));
+            }
         }
-    }, [viewerRequests]);
+    }, [viewerRequests, customers, selectedFile]);
 
     const [submitting, setSubmitting] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
@@ -1314,10 +1391,23 @@ export default function BatchReportPage() {
                                             <div className="space-y-4">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div>
-                                                        <label className="block text-xs font-medium text-sf-text-weak mb-1">デザイン依頼No.</label>
-                                                        <input
-                                                            type="text"
-                                                            value={visit['デザイン依頼No.']}
+                                                         <div className="flex items-center justify-between mb-1">
+                                                             <label className="block text-xs font-medium text-sf-text-weak">デザイン依頼No.</label>
+                                                             {visit['デザイン依頼No.'] && (
+                                                                 <a
+                                                                     href={`http://192.168.1.5:8888/documents/detail/${String(visit['デザイン依頼No.']).split('-')[0]}`}
+                                                                     target="_blank"
+                                                                     rel="noopener noreferrer"
+                                                                     className="text-[10px] text-sf-light-blue hover:underline flex items-center gap-1 font-semibold"
+                                                                     title="企画課ビューアで詳細を確認"
+                                                                 >
+                                                                     <ExternalLink size={10} /> ビューアで確認
+                                                                 </a>
+                                                             )}
+                                                         </div>
+                                                         <input
+                                                             type="text"
+                                                             value={visit['デザイン依頼No.']}
                                                             onChange={(e) => updateVisit(visit.id, 'デザイン依頼No.', e.target.value)}
                                                             placeholder="依頼番号"
                                                             readOnly={visit.designMode === 'existing'}

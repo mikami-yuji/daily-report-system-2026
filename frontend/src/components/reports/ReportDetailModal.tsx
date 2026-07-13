@@ -3,7 +3,7 @@ import { Report, updateReport, deleteReport, updateReportComment, updateReportAp
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, Image as ImageIcon, ExternalLink } from 'lucide-react';
 import DesignImagePreviewModal from './DesignImagePreviewModal';
 import toast from 'react-hot-toast';
 
@@ -405,18 +405,29 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                         <span className="text-sm text-sf-text text-right flex-1 flex items-center justify-end gap-1.5 font-semibold text-sf-light-blue">
                                             {cleanText(report['デザイン依頼No.']) || '-'}
                                             {report['デザイン依頼No.'] && (
-                                                <button
-                                                    onClick={(e) => handleImageSearch(String(report['デザイン依頼No.']), e)}
-                                                    disabled={searchingImage}
-                                                    className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors cursor-pointer"
-                                                    title="関連画像を検索"
-                                                >
-                                                    {searchingImage ? (
-                                                        <Loader2 size={14} className="animate-spin" />
-                                                    ) : (
-                                                        <ImageIcon size={14} />
-                                                    )}
-                                                </button>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={(e) => handleImageSearch(String(report['デザイン依頼No.']), e)}
+                                                        disabled={searchingImage}
+                                                        className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors cursor-pointer"
+                                                        title="関連画像を検索"
+                                                    >
+                                                        {searchingImage ? (
+                                                            <Loader2 size={14} className="animate-spin" />
+                                                        ) : (
+                                                            <ImageIcon size={14} />
+                                                        )}
+                                                    </button>
+                                                    <a
+                                                        href={`http://192.168.1.5:8888/documents/detail/${String(report['デザイン依頼No.']).split('-')[0]}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center justify-center cursor-pointer"
+                                                        title="企画課ビューアで詳細を確認"
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                    </a>
+                                                </div>
                                             )}
                                         </span>
                                     </div>

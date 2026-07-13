@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
-import { X, Truck, Loader2, Check } from 'lucide-react';
+import { X, Truck, Loader2, Check, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
 
@@ -447,11 +447,76 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         const req = viewerRequests.find(r => r.requestId === reqId && r.subId === subId);
         if (req) {
             const shortId = req.requestId.split('-')[0]; // ハイフンより前の最初の6桁(枝番なし)のみ
-            setFormData(prev => ({
-                ...prev,
-                'デザイン依頼No.': shortId,
-                デザイン名: req.designContent // 依頼内容＝デザイン名
-            }));
+            
+            // 得意先名の名寄せ正規化関数
+            const normalizeName = (name: string): string => {
+                return name
+                    .replace(/[\(（]株[\)）]/g, '')
+                    .replace(/[\(（]有[\)）]/g, '')
+                    .replace(/株式会社/g, '')
+                    .replace(/有限会社/g, '')
+                    .replace(/\s+/g, '')
+                    .toLowerCase()
+                    .trim();
+            };
+
+            const viewerCustomerNormalized = normalizeName(req.customer || '');
+            let matchedCustomer = customers.find(c => {
+                const masterNameNormalized = normalizeName(c.得意先名 || '');
+                return masterNameNormalized === viewerCustomerNormalized && masterNameNormalized.length > 0;
+            });
+
+            if (!matchedCustomer) {
+                matchedCustomer = customers.find(c => {
+                    const masterNameNormalized = normalizeName(c.得意先名 || '');
+                    if (!masterNameNormalized || !viewerCustomerNormalized) return false;
+                    return masterNameNormalized.includes(viewerCustomerNormalized) || viewerCustomerNormalized.includes(masterNameNormalized);
+                });
+            }
+
+            setFormData(prev => {
+                const baseUpdate = {
+                    ...prev,
+                    'デザイン依頼No.': shortId,
+                    デザイン名: req.designContent // 依頼内容＝デザイン名
+                };
+
+                if (matchedCustomer) {
+                    return {
+                        ...baseUpdate,
+                        訪問先名: matchedCustomer.得意先名 || '',
+                        直送先名: matchedCustomer.直送先名 || '',
+                        得意先CD: matchedCustomer.得意先CD || '',
+                        直送先CD: matchedCustomer.直送先CD || '',
+                        エリア: matchedCustomer.エリア || '',
+                        重点顧客: matchedCustomer.重点顧客 || '',
+                        ランク: matchedCustomer.ランク || ''
+                    };
+                } else {
+                    return {
+                        ...baseUpdate,
+                        訪問先名: req.customer || '',
+                        得意先CD: '',
+                        直送先名: '',
+                        直送先CD: '',
+                        重点顧客: '',
+                        ランク: ''
+                    };
+                }
+            });
+
+            // 得意先CDがあれば非同期で面談者とデザイン案件を自動ロード
+            if (matchedCustomer && matchedCustomer.得意先CD) {
+                getInterviewers(matchedCustomer.得意先CD, selectedFile, matchedCustomer.得意先名)
+                    .then(d => setInterviewers(d))
+                    .catch(() => setInterviewers([]));
+                getDesigns(matchedCustomer.得意先CD, selectedFile)
+                    .then(d => setDesigns(d))
+                    .catch(() => setDesigns([]));
+            } else {
+                setInterviewers([]);
+                setDesigns([]);
+            }
         }
     };
 
@@ -986,7 +1051,20 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                 {(designMode === 'new' || designMode === 'existing') && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-sm font-medium text-sf-text mb-1">デザイン依頼No.</label>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="block text-sm font-medium text-sf-text">デザイン依頼No.</label>
+                                                {formData['デザイン依頼No.'] && (
+                                                    <a
+                                                        href={`http://192.168.1.5:8888/documents/detail/${String(formData['デザイン依頼No.']).split('-')[0]}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-xs text-sf-light-blue hover:underline flex items-center gap-1 font-semibold"
+                                                        title="企画課ビューアで詳細を確認"
+                                                    >
+                                                        <ExternalLink size={12} /> ビューアで確認
+                                                    </a>
+                                                )}
+                                            </div>
                                             <input
                                                 type="text"
                                                 name="デザイン依頼No."

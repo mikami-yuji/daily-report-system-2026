@@ -324,73 +324,106 @@ def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCE
 
 @router.get("/api/reports")
 def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any]]:
-    try:
-        logging.debug(f"Fetching reports for {filename} from {config.EXCEL_DIR}")
-        # Get dataframe from cache
-        df = cache.get_cached_dataframe(filename, '営業日報')
-        
-        # Clean up column names (remove newlines and strip)
-        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
-        
-        # Rename specific columns to match frontend expectations
-        df = df.rename(columns={
-            '得意先CD.': '得意先CD',
-            '訪問先名得意先名': '訪問先名',
-            '直送先CD.': '直送先CD',
-            '直送先名.': '直送先名',
-            'コメント': '上長コメント',  # Excel uses 'コメント' for manager comment
-            'コメント返信欄': 'コメント返信欄'  # Keep as-is for reply field
-        })
-        
-        # Replace all NaN, infinity, and null values with None
-        # Use fillna to replace NaN with None
-        df = df.fillna(value='')
-        
-        # Convert dates to string to avoid serialization issues
-        if '日付' in df.columns:
-             df['日付'] = df['日付'].astype(str)
-             
-        # システム確認用デザインNo.が空の場合、デザイン依頼No.で補完する
-        if 'システム確認用デザインNo.' in df.columns and 'デザイン依頼No.' in df.columns:
-            import numpy as np
-            df['システム確認用デザインNo.'] = np.where(
-                (df['システム確認用デザインNo.'] == '') | df['システム確認用デザインNo.'].isna(), 
-                df['デザイン依頼No.'], 
-                df['システム確認用デザインNo.']
-            )
-        
-        # Convert to dict and manually clean any remaining problematic values
-        records = df.to_dict(orient="records")
-        
-        # Clean the records to ensure JSON compatibility
-        import math
-        cleaned_records = []
-        for record in records:
-            cleaned_record = {}
-            for key, value in record.items():
-                if isinstance(value, float):
-                    if math.isnan(value) or math.isinf(value):
+    import time
+    import math
+    import re
+    
+    max_retries = 2
+    last_error = None
+    
+    for attempt in range(max_retries + 1):
+        try:
+            logging.info(f"Fetching reports for {filename} from {config.EXCEL_DIR} (attempt {attempt + 1}/{max_retries + 1})")
+            # キャッシュからDataFrameを取得
+            df = cache.get_cached_dataframe(filename, '営業日報')
+            
+            # 列名のクリーンアップ（改行除去・空白トリム）
+            df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+            
+            # フロントエンド期待値に合わせた列名のリネーム
+            df = df.rename(columns={
+                '得意先CD.': '得意先CD',
+                '訪問先名得意先名': '訪問先名',
+                '直送先CD.': '直送先CD',
+                '直送先名.': '直送先名',
+                'コメント': '上長コメント',
+                'コメント返信欄': 'コメント返信欄'
+            })
+            
+            # NaN・無限大・null値を空文字に置換
+            df = df.fillna(value='')
+            
+            # 日付列を文字列に変換（シリアライズエラー回避）
+            if '日付' in df.columns:
+                 df['日付'] = df['日付'].astype(str)
+                 
+            # システム確認用デザインNo.が空の場合、デザイン依頼No.で補完する
+            if 'システム確認用デザインNo.' in df.columns and 'デザイン依頼No.' in df.columns:
+                import numpy as np
+                df['システム確認用デザインNo.'] = np.where(
+                    (df['システム確認用デザインNo.'] == '') | df['システム確認用デザインNo.'].isna(), 
+                    df['デザイン依頼No.'], 
+                    df['システム確認用デザインNo.']
+                )
+            
+            # レコード変換とJSON互換性のクリーニング
+            records = df.to_dict(orient="records")
+            
+            cleaned_records = []
+            for record in records:
+                cleaned_record = {}
+                for key, value in record.items():
+                    if isinstance(value, float):
+                        if math.isnan(value) or math.isinf(value):
+                            cleaned_record[key] = None
+                        # 得意先CD・直送先CDを小数なし文字列に変換
+                        elif key in ['得意先CD', '直送先CD'] and not math.isnan(value):
+                            cleaned_record[key] = str(int(value))
+                        else:
+                            cleaned_record[key] = value
+                    elif value == '':
                         cleaned_record[key] = None
-                    # Convert customer code to string without decimal
-                    elif key in ['得意先CD', '直送先CD'] and not math.isnan(value):
-                        cleaned_record[key] = str(int(value))
+                    elif isinstance(value, str):
+                        # Excelの改行コードアーティファクトを正規の改行に置換
+                        cleaned_value = re.sub(r'_x000D_', '\n', value)
+                        cleaned_value = cleaned_value.replace('\r', '')
+                        cleaned_record[key] = cleaned_value
                     else:
                         cleaned_record[key] = value
-                elif value == '':
-                    cleaned_record[key] = None
-                elif isinstance(value, str):
-                    # Replace Excel's carriage return artifacts with proper newlines
-                    import re
-                    cleaned_value = re.sub(r'_x000D_', '\n', value)
-                    cleaned_value = cleaned_value.replace('\r', '')
-                    cleaned_record[key] = cleaned_value
-                else:
-                    cleaned_record[key] = value
-            cleaned_records.append(cleaned_record)
+                cleaned_records.append(cleaned_record)
 
-        return cleaned_records
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            logging.info(f"Successfully fetched {len(cleaned_records)} reports for {filename}")
+            return cleaned_records
+            
+        except HTTPException:
+            # HTTPException（404など）はそのまま再送出
+            raise
+        except (PermissionError, OSError) as e:
+            # ファイルロック・ネットワーク障害は一時的な可能性があるためリトライ
+            last_error = e
+            logging.warning(f"File access error for {filename} (attempt {attempt + 1}): {type(e).__name__}: {e}")
+            if attempt < max_retries:
+                time.sleep(1)
+                # キャッシュをクリアして再試行
+                cache.CACHE.pop((filename, '営業日報'), None)
+                continue
+            else:
+                logging.error(f"All retries exhausted for {filename}: {e}")
+                import traceback
+                traceback.print_exc()
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"ファイルへのアクセスに失敗しました（{type(e).__name__}）。ファイルが他のユーザーに開かれているか、ネットワーク接続を確認してください。"
+                )
+        except Exception as e:
+            # その他の予期しないエラー
+            logging.error(f"Unexpected error fetching reports for {filename}: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500, 
+                detail=f"日報データの読み込みに失敗しました: {type(e).__name__}: {str(e)}"
+            )
 
 
 

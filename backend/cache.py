@@ -35,7 +35,13 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
         logging.error(f"File not found: {excel_file}")
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found at {excel_file}")
     
-    current_mtime = os.path.getmtime(excel_file)
+    try:
+        current_mtime = os.path.getmtime(excel_file)
+    except OSError as e:
+        # ファイルのメタデータ取得失敗はそのまま上位に伝播（リトライ可能）
+        logging.warning(f"Cannot access file metadata for {excel_file}: {e}")
+        raise
+    
     cache_key = (filename, sheet_name)
     
     if cache_key in CACHE:
@@ -77,8 +83,13 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
             logging.warning(f"Failed to save disk cache: {e}")
             
         return df.copy()
+    except (PermissionError, OSError) as e:
+        # ファイルロック・ネットワーク障害はそのまま上位に伝播（リトライ可能）
+        logging.warning(f"File access error reading Excel {excel_file}: {type(e).__name__}: {e}")
+        raise
     except Exception as e:
         logging.error(f"Reading Excel failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
+

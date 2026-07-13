@@ -1395,13 +1395,13 @@ export default function BatchReportPage() {
                                                              <label className="block text-xs font-medium text-sf-text-weak">デザイン依頼No.</label>
                                                              {visit['デザイン依頼No.'] && (
                                                                  <a
-                                                                     href={`http://192.168.1.5:8888/documents/detail/${String(visit['デザイン依頼No.']).split('-')[0]}`}
+                                                                     href="http://192.168.1.5:8888/"
                                                                      target="_blank"
                                                                      rel="noopener noreferrer"
                                                                      className="text-[10px] text-sf-light-blue hover:underline flex items-center gap-1 font-semibold"
-                                                                     title="企画課ビューアで詳細を確認"
+                                                                     title="企画課ビューアを開く"
                                                                  >
-                                                                     <ExternalLink size={10} /> ビューアで確認
+                                                                     <ExternalLink size={10} /> ビューアを開く
                                                                  </a>
                                                              )}
                                                          </div>

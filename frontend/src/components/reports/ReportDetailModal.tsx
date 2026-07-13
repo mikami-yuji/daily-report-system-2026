@@ -419,11 +419,11 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                                         )}
                                                     </button>
                                                     <a
-                                                        href={`http://192.168.1.5:8888/documents/detail/${String(report['デザイン依頼No.']).split('-')[0]}`}
+                                                        href="http://192.168.1.5:8888/"
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center justify-center cursor-pointer"
-                                                        title="企画課ビューアで詳細を確認"
+                                                        title="企画課ビューアを開く"
                                                     >
                                                         <ExternalLink size={14} />
                                                     </a>

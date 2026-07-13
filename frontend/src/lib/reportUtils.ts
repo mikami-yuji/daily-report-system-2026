@@ -83,3 +83,21 @@ export function convertYYYYMMDDToYYMMDD(yyyyMmDd: string): string {
     if (yyyy.length !== 4 || mm.length !== 2 || dd.length !== 2) return '';
     return `${yyyy.slice(2)}/${mm}/${dd}`;
 }
+
+/**
+ * セキュアコンテキスト（HTTPS/localhost）以外でも動作するUUID v4生成関数
+ */
+export function generateUUID(): string {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+        try {
+            return window.crypto.randomUUID();
+        } catch (e) {
+            // フォールバックへ
+        }
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}

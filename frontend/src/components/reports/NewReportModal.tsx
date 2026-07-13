@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Truck, Loader2, Check } from 'lucide-react';
@@ -82,6 +82,87 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         initialDesignData ? 'existing' : (initialDraft?.designMode || 'none')
     );
     const [designs, setDesigns] = useState<Design[]>([]);
+    
+    // 企画課ビューア連携用のステート
+    const [viewerRequests, setViewerRequests] = useState<ViewerDesignRequest[]>([]);
+    const [viewerAuthError, setViewerAuthError] = useState(false);
+
+    // ファイル名から担当営業名（名字）を抽出するヘルパー
+    const extractSalesPersonName = (filename: string | null | undefined): string => {
+        if (!filename) return '';
+        const base = String(filename).replace(/\.xlsm$/, '');
+        const matchBrackets = base.match(/【(.*?)】/);
+        let name = matchBrackets ? matchBrackets[1] : base;
+        name = name.replace(/^日報_/, '');
+        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
+        name = name.replace(/[\(（].*?[\)）]/, '');
+        return name.trim();
+    };
+
+    const [passcode, setPasscode] = useState('');
+    const [isVerifying, setIsVerifying] = useState(false);
+
+    // 企画課ビューアから最新デザイン依頼を取得
+    const loadViewerRequests = async (code?: string) => {
+        setIsVerifying(true);
+        try {
+            const savedCode = code || (typeof window !== 'undefined' ? localStorage.getItem('viewer_passcode') : null) || '';
+            const data = await getLatestDesignRequests(savedCode);
+            if (data && data.documents) {
+                setViewerRequests(data.documents);
+            }
+            setViewerAuthError(false);
+            if (code) {
+                localStorage.setItem('viewer_passcode', code);
+                toast.success('企画課ビューアに接続しました！');
+            }
+        } catch (err: any) {
+            console.error('Failed to fetch design requests from viewer:', err);
+            if (err.response?.status === 401) {
+                setViewerAuthError(true);
+            }
+        } finally {
+            setIsVerifying(false);
+        }
+    };
+
+    useEffect(() => {
+        loadViewerRequests();
+    }, []);
+
+    const [viewerSearchTerm, setViewerSearchTerm] = useState('');
+    const activeSalesPerson = extractSalesPersonName(selectedFile);
+    
+    // 担当営業名が自分自身の「進行中」の依頼を抽出
+    const filteredViewerRequests = viewerRequests.filter(req => {
+        if (!req) return false;
+        if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
+            return false;
+        }
+        if (!req.salesPerson || !activeSalesPerson) return false;
+        
+        let isRepMatch = false;
+        try {
+            const viewerRep = String(req.salesPerson).toLowerCase().trim();
+            const activeRep = String(activeSalesPerson).toLowerCase().trim();
+            isRepMatch = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
+        } catch (e) {
+            console.error('Error filtering viewer requests:', e);
+        }
+
+        if (!isRepMatch) return false;
+
+        // キーワード検索によるさらなる絞り込み
+        if (viewerSearchTerm.trim()) {
+            const term = viewerSearchTerm.toLowerCase().trim();
+            const reqId = String(req.requestId || '').toLowerCase();
+            const content = String(req.designContent || '').toLowerCase();
+            const customer = String(req.customer || '').toLowerCase();
+            return reqId.includes(term) || content.includes(term) || customer.includes(term);
+        }
+        
+        return true;
+    });
     const [startOutTime, setStartOutTime] = useState('');
     const [endOutTime, setEndOutTime] = useState('');
     // 得意先リストからエリア一覧を動的に取得
@@ -355,6 +436,21 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 デザイン種別: selectedDesign.デザイン種別,
                 デザイン名: selectedDesign.デザイン名,
                 デザイン進捗状況: selectedDesign.デザイン進捗状況
+            }));
+        }
+    };
+
+    const handleViewerDesignSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const key = e.target.value;
+        if (!key) return;
+        const [reqId, subId] = key.split('_');
+        const req = viewerRequests.find(r => r.requestId === reqId && r.subId === subId);
+        if (req) {
+            const shortId = req.requestId.split('-')[0]; // ハイフンより前の最初の6桁(枝番なし)のみ
+            setFormData(prev => ({
+                ...prev,
+                'デザイン依頼No.': shortId,
+                デザイン名: req.designContent // 依頼内容＝デザイン名
             }));
         }
     };
@@ -829,9 +925,49 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                     </label>
                                 </div>
 
+                                {designMode === 'new' && (
+                                    <div className="mb-3">
+                                        <label className="block text-sm font-medium text-sf-text mb-1">デザイン作成依頼（企画課）から選択</label>
+                                        {viewerAuthError ? (
+                                            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-3 flex flex-col gap-1.5 shadow-sm">
+                                                <div className="font-bold flex items-center justify-between">
+                                                    <span>⚠️ 企画課ビューアとのデータ連携が未接続です</span>
+                                                </div>
+                                                <div className="text-gray-600 text-[11px] leading-normal">
+                                                    連携用のパスコードが設定されていないか、有効期限が切れています。
+                                                    「設定」画面からパスコードを登録し、ログイン接続テストを行ってください。
+                                                </div>
+                                                <div className="mt-1">
+                                                    <a 
+                                                        href="/settings" 
+                                                        className="inline-block px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold transition-colors cursor-pointer"
+                                                    >
+                                                        設定画面でパスコードを登録する
+                                                    </a>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <select
+                                                onChange={handleViewerDesignSelect}
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                            >
+                                                <option value="">最新の作成依頼を選択してください (自分の案件のみ)</option>
+                                                {filteredViewerRequests.map((req) => {
+                                                    const shortId = req.requestId.split('-')[0];
+                                                    return (
+                                                        <option key={`${req.requestId}_${req.subId}`} value={`${req.requestId}_${req.subId}`}>
+                                                            {shortId} - {req.designContent} ({req.customer})
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                        )}
+                                    </div>
+                                )}
+
                                 {designMode === 'existing' && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-sf-text mb-1">過去のデザイン案件</label>
+                                    <div className="mb-3">
+                                        <label className="block text-sm font-medium text-sf-text mb-1">過去の日報履歴から選択</label>
                                         <select
                                             onChange={handleDesignSelect}
                                             value={formData['デザイン依頼No.']}

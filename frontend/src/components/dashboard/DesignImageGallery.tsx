@@ -3,8 +3,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Image as ImageIcon, ChevronLeft, ChevronRight, Download, X, FileText } from 'lucide-react';
-import { getImageUrl, DesignImage } from '@/lib/api';
+import { getImageUrl, DesignImage, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useDesignImages } from '@/hooks/useQueryHooks';
+
+type ExtendedDesignImage = DesignImage & {
+  url?: string;
+  isViewerImage?: boolean;
+};
 
 type DesignImageGalleryProps = {
   selectedFile: string;
@@ -13,21 +18,67 @@ type DesignImageGalleryProps = {
 export default function DesignImageGallery({ selectedFile }: DesignImageGalleryProps): React.JSX.Element {
   const { data, isLoading } = useDesignImages(selectedFile);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
-  const [activePreviewImage, setActivePreviewImage] = useState<DesignImage | null>(null);
+  const [activePreviewImage, setActivePreviewImage] = useState<ExtendedDesignImage | null>(null);
+  
+  // 企画課ビューアから取得したカンプ画像用のステート
+  const [viewerImages, setViewerImages] = useState<ExtendedDesignImage[]>([]);
+
+  useEffect(() => {
+    // ファイル名から担当営業名（名字）を抽出するヘルパー
+    const extractName = (filename: string): string => {
+      const base = filename.replace(/\.xlsm$/, '');
+      const match = base.match(/【(.*?)】/);
+      let name = match ? match[1] : base;
+      name = name.replace(/^日報_/, '');
+      name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
+      name = name.replace(/[\(（].*?[\)）]/, '');
+      return name.trim();
+    };
+
+    const activeRep = extractName(selectedFile || '');
+    if (!activeRep) return;
+
+    getLatestDesignRequests()
+      .then(data => {
+        if (data && data.documents) {
+          // 担当営業が一致し、進行中で、かつカンプ画像(compUrl)がある案件のみ抽出
+          const list = data.documents.filter(doc => {
+            if (doc.status === 'completed' || doc.status === 'rejected') return false;
+            if (!doc.compUrl || !doc.salesPerson) return false;
+            
+            const viewerRep = doc.salesPerson.toLowerCase().trim();
+            const rep = activeRep.toLowerCase().trim();
+            return viewerRep.includes(rep) || rep.includes(viewerRep);
+          }).map(doc => ({
+            name: `[企画課最新カンプ] ${doc.requestId.split('-')[0]} - ${doc.designContent}`,
+            path: doc.compUrl!,
+            folder: '企画課デザインビューア',
+            mtime: doc.requestedAt ? new Date(doc.requestedAt).getTime() / 1000 : 0,
+            url: `http://192.168.1.5:8888${doc.compUrl}`,
+            isViewerImage: true
+          }));
+          setViewerImages(list);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load viewer images for gallery:', err);
+      });
+  }, [selectedFile]);
 
   const imageFolder = data?.folder || '';
 
-  const allImages = useMemo((): DesignImage[] => {
-    return data?.images || [];
-  }, [data]);
+  const allImages = useMemo((): ExtendedDesignImage[] => {
+    const local = data?.images || [];
+    return [...viewerImages, ...local];
+  }, [data, viewerImages]);
 
   // デザイン依頼番号（5桁以上の数字）ごとにグループ化し、最新の1枚のみを抽出した画像リスト
-  const images = useMemo((): DesignImage[] => {
+  const images = useMemo((): ExtendedDesignImage[] => {
     const rawImages = allImages;
-    const groupedMap = new Map<string, DesignImage>();
-    const nonGrouped: DesignImage[] = [];
+    const groupedMap = new Map<string, ExtendedDesignImage>();
+    const nonGrouped: ExtendedDesignImage[] = [];
 
-    rawImages.forEach((img: DesignImage) => {
+    rawImages.forEach((img: ExtendedDesignImage) => {
       const match = img.name.match(/\d{5,}/);
       if (match) {
         const designId = match[0];
@@ -41,13 +92,13 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
     });
 
     const filteredImages = [...Array.from(groupedMap.values()), ...nonGrouped];
-    filteredImages.sort((a: DesignImage, b: DesignImage) => (b.mtime || 0) - (a.mtime || 0));
+    filteredImages.sort((a: ExtendedDesignImage, b: ExtendedDesignImage) => (b.mtime || 0) - (a.mtime || 0));
 
     return filteredImages;
   }, [allImages]);
 
   // 同一デザインID（5桁以上の数字）の関連画像を抽出
-  const relatedImages = useMemo((): DesignImage[] => {
+  const relatedImages = useMemo((): ExtendedDesignImage[] => {
     if (selectedImageIndex === null || images.length === 0 || !images[selectedImageIndex]) {
       return [];
     }
@@ -57,12 +108,17 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
       return [currentImg];
     }
     const designId = match[0];
-    const list = allImages.filter((img: DesignImage) => {
+    const list = allImages.filter((img: ExtendedDesignImage) => {
       const m = img.name.match(/\d{5,}/);
       return m && m[0] === designId;
     });
-    return list.sort((a: DesignImage, b: DesignImage) => (b.mtime || 0) - (a.mtime || 0));
+    return list.sort((a: ExtendedDesignImage, b: ExtendedDesignImage) => (b.mtime || 0) - (a.mtime || 0));
   }, [selectedImageIndex, images, allImages]);
+
+  // 企画課ビューア側のカンプ画像URLまたは現行のFastAPI経由の画像URLを返す
+  const getSrc = (img: ExtendedDesignImage): string => {
+    return img.isViewerImage && img.url ? img.url : getImageUrl(img.path);
+  };
 
   // 代表画像のインデックスが変更されたときにアクティブプレビューを初期化
   useEffect((): void => {
@@ -100,7 +156,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
           </div>
         ) : images.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {images.map((img: DesignImage, i: number) => (
+            {images.map((img: ExtendedDesignImage, i: number) => (
               <button
                 key={i}
                 onClick={(): void => setSelectedImageIndex(i)}
@@ -109,7 +165,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                 <div className="w-full aspect-[3/4] bg-gray-50 flex items-center justify-center p-3 relative overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={getImageUrl(img.path)}
+                    src={getSrc(img)}
                     alt={img.name}
                     className="max-w-full max-h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
                     loading="lazy"
@@ -194,7 +250,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={getImageUrl(activePreviewImage.path)}
+                      src={getSrc(activePreviewImage)}
                       alt={activePreviewImage.name}
                       className="max-w-full max-h-[55vh] object-contain drop-shadow-lg animate-fadeIn"
                     />
@@ -203,7 +259,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
 
                 <div className="absolute bottom-4 flex gap-3">
                   <a
-                    href={getImageUrl(activePreviewImage.path)}
+                    href={getSrc(activePreviewImage)}
                     download={activePreviewImage.name}
                     className="flex items-center gap-1.5 px-4 py-2 bg-white/90 hover:bg-white hover:text-sf-light-blue shadow text-xs font-semibold rounded-lg text-gray-700 transition-colors border border-gray-200/50"
                   >
@@ -218,7 +274,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                   <span className="text-xs font-bold text-sf-text">バリエーション・履歴 ({relatedImages.length})</span>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                  {relatedImages.map((relImg: DesignImage, idx: number) => {
+                  {relatedImages.map((relImg: ExtendedDesignImage, idx: number) => {
                     const isActive = relImg.path === activePreviewImage.path;
                     return (
                       <button
@@ -236,7 +292,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                           ) : (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={getImageUrl(relImg.path)}
+                              src={getSrc(relImg)}
                               alt={relImg.name}
                               className="max-w-full max-h-full object-contain"
                               loading="lazy"

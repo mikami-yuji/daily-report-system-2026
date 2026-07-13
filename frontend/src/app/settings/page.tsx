@@ -1,17 +1,58 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, BellOff, Smartphone, Wifi, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Smartphone, Wifi, WifiOff, Key, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { getLatestDesignRequests } from '@/lib/api';
+import toast from 'react-hot-toast';
 
 export default function SettingsPage(): React.JSX.Element {
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [isOnline, setIsOnline] = useState(true);
     const [isStandalone, setIsStandalone] = useState(false);
+    const [viewerPasscode, setViewerPasscode] = useState('');
+    const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'failed'>('idle');
+    const [testMessage, setTestMessage] = useState('');
+    const [isTesting, setIsTesting] = useState(false);
+
+    const handleTestConnection = async () => {
+        if (!viewerPasscode) {
+            setTestStatus('failed');
+            setTestMessage('パスコードが入力されていません。');
+            return;
+        }
+        setIsTesting(true);
+        setTestStatus('idle');
+        setTestMessage('');
+        try {
+            const data = await getLatestDesignRequests(viewerPasscode);
+            if (data && data.documents) {
+                setTestStatus('success');
+                const count = data.documents.length;
+                setTestMessage(`接続成功！データを正常にロードしました (進行中: ${count}件)`);
+                localStorage.setItem('viewer_passcode', viewerPasscode);
+                toast.success('企画課ビューアに接続・保存しました！');
+            } else {
+                setTestStatus('failed');
+                setTestMessage(data.message || '接続に失敗しました。');
+            }
+        } catch (error: any) {
+            console.error('Test connection error:', error);
+            setTestStatus('failed');
+            const detail = error.response?.data?.detail || '接続エラーが発生しました。サーバーの起動状態とパスコードをご確認ください。';
+            setTestMessage(`接続失敗: ${detail}`);
+        } finally {
+            setIsTesting(false);
+        }
+    };
 
     useEffect(() => {
         // Check online status and standalone status asynchronously to avoid cascading renders
         requestAnimationFrame(() => {
             setIsOnline(navigator.onLine);
+            if (typeof window !== 'undefined') {
+                const savedCode = localStorage.getItem('viewer_passcode') || '';
+                setViewerPasscode(savedCode);
+            }
 
             // Check if running as PWA
             const isPWA = window.matchMedia('(display-mode: standalone)').matches ||
@@ -125,6 +166,62 @@ export default function SettingsPage(): React.JSX.Element {
                                 </>
                             )}
                         </button>
+                    </div>
+                </div>
+
+                {/* 企画課ビューア連携設定 Card */}
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 font-sans">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                        <Key size={20} className="text-amber-500" />
+                        企画課デザインビューア連携設定
+                    </h2>
+
+                    <div className="space-y-4">
+                        <p className="text-sm text-gray-600">
+                            企画課ビューアとの自動データ連携に必要なパスコードを設定します。<br/>
+                            ここに登録・ログインを完了させることで、日報の入力画面からデザイン依頼情報を選択するだけで自動補完できるようになります。
+                        </p>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">社内専用パスコード</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="password"
+                                        placeholder="パスコードを入力"
+                                        value={viewerPasscode}
+                                        onChange={(e) => {
+                                            setViewerPasscode(e.target.value);
+                                            setTestStatus('idle');
+                                        }}
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleTestConnection}
+                                        disabled={isTesting || !viewerPasscode}
+                                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-semibold disabled:bg-amber-300 transition-colors flex items-center gap-1 cursor-pointer"
+                                    >
+                                        {isTesting && <Loader2 size={16} className="animate-spin" />}
+                                        接続テスト & 保存
+                                    </button>
+                                </div>
+                            </div>
+
+                            {testStatus === 'success' && (
+                                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-xs flex items-start gap-2">
+                                    <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0" />
+                                    <span>{testMessage}</span>
+                                </div>
+                            )}
+
+                            {testStatus === 'failed' && (
+                                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-start gap-2">
+                                    <XCircle size={16} className="mt-0.5 flex-shrink-0" />
+                                    <span>{testMessage}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

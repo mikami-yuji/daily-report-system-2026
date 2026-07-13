@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report, getSuggestedArea } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
+import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID } from '@/lib/reportUtils';
 
 // バリデーションエラーの型
 type ValidationErrors = {
@@ -53,7 +53,7 @@ type VisitEntry = {
 
 // 空の訪問ブロックを作成
 const createEmptyVisit = (): VisitEntry => ({
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     得意先CD: '',
     訪問先名: '',
     直送先CD: '',
@@ -124,6 +124,7 @@ export default function BatchReportPage() {
 
     // 検索用state
     const [searchTerms, setSearchTerms] = useState<{ [key: string]: string }>({});
+    const [viewerSearchTerms, setViewerSearchTerms] = useState<{ [key: string]: string }>({});
     const [showSuggestions, setShowSuggestions] = useState<{ [key: string]: boolean }>({});
 
     // 得意先リスト選択時にonBlurの自由記載を抑制するためのフラグ
@@ -180,6 +181,106 @@ export default function BatchReportPage() {
     const [areaOptions, setAreaOptions] = useState<string[]>([]);
 
     // 送信中フラグ
+    // 企画課ビューア連携用のステート
+    const [viewerRequests, setViewerRequests] = useState<ViewerDesignRequest[]>([]);
+    const [viewerAuthError, setViewerAuthError] = useState(false);
+    const [passcode, setPasscode] = useState('');
+    const [isVerifying, setIsVerifying] = useState(false);
+
+    // ファイル名から担当営業名（名字）を抽出するヘルパー
+    const extractSalesPersonName = useCallback((filename: string | null | undefined): string => {
+        if (!filename) return '';
+        const base = String(filename).replace(/\.xlsm$/, '');
+        const matchBrackets = base.match(/【(.*?)】/);
+        let name = matchBrackets ? matchBrackets[1] : base;
+        name = name.replace(/^日報_/, '');
+        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
+        name = name.replace(/[\(（].*?[\)）]/, '');
+        return name.trim();
+    }, []);
+
+    // 企画課ビューアから最新デザイン依頼を取得
+    const loadViewerRequests = useCallback(async (code?: string) => {
+        setIsVerifying(true);
+        try {
+            const savedCode = code || (typeof window !== 'undefined' ? localStorage.getItem('viewer_passcode') : null) || '';
+            const data = await getLatestDesignRequests(savedCode);
+            if (data && data.documents) {
+                setViewerRequests(data.documents);
+            }
+            setViewerAuthError(false);
+            if (code) {
+                localStorage.setItem('viewer_passcode', code);
+                toast.success('企画課ビューアに接続しました！');
+            }
+        } catch (err: any) {
+            console.error('Failed to fetch design requests from viewer:', err);
+            if (err.response?.status === 401) {
+                setViewerAuthError(true);
+            }
+        } finally {
+            setIsVerifying(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadViewerRequests();
+    }, [loadViewerRequests]);
+
+    const activeSalesPerson = useMemo(() => extractSalesPersonName(selectedFile || ''), [selectedFile, extractSalesPersonName]);
+    
+    // 担当営業名が自分自身の「進行中」の依頼を抽出
+    const filteredViewerRequests = useMemo(() => {
+        if (!Array.isArray(viewerRequests)) return [];
+        return viewerRequests.filter(req => {
+            if (!req) return false;
+            if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
+                return false;
+            }
+            if (!req.salesPerson || !activeSalesPerson) return false;
+            
+            try {
+                const viewerRep = String(req.salesPerson).toLowerCase().trim();
+                const activeRep = String(activeSalesPerson).toLowerCase().trim();
+                return viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
+            } catch (e) {
+                console.error('Error filtering viewer requests:', e);
+                return false;
+            }
+        });
+    }, [viewerRequests, activeSalesPerson]);
+
+    // 訪問ごとのキーワード検索フィルタリング
+    const getFilteredRequestsForVisit = useCallback((visitId: string) => {
+        const term = (viewerSearchTerms[visitId] || '').toLowerCase().trim();
+        if (!term) return filteredViewerRequests;
+        return filteredViewerRequests.filter(req => {
+            const reqId = String(req.requestId || '').toLowerCase();
+            const content = String(req.designContent || '').toLowerCase();
+            const customer = String(req.customer || '').toLowerCase();
+            return reqId.includes(term) || content.includes(term) || customer.includes(term);
+        });
+    }, [filteredViewerRequests, viewerSearchTerms]);
+
+    const handleViewerDesignSelect = useCallback((visitId: string, value: string) => {
+        if (!value) return;
+        const [reqId, subId] = value.split('_');
+        const req = viewerRequests.find(r => r.requestId === reqId && r.subId === subId);
+        if (req) {
+            const shortId = req.requestId.split('-')[0]; // ハイフンより前の最初の6桁(枝番なし)のみ
+            setVisits(prev => prev.map(v => {
+                if (v.id === visitId) {
+                    return {
+                        ...v,
+                        'デザイン依頼No.': shortId,
+                        デザイン名: req.designContent // 依頼内容＝デザイン名
+                    };
+                }
+                return v;
+            }));
+        }
+    }, [viewerRequests]);
+
     const [submitting, setSubmitting] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
 
@@ -1131,27 +1232,83 @@ export default function BatchReportPage() {
                                             </label>
                                         </div>
 
-                                        {/* 既存デザイン選択プルダウン */}
-                                        {visit.designMode === 'existing' && (
-                                            <div className="mb-4">
-                                                <label className="block text-xs font-medium text-sf-text-weak mb-1">過去のデザイン案件</label>
-                                                <select
-                                                    value={visit['デザイン依頼No.']}
-                                                    onChange={(e) => handleDesignSelect(visit.id, e.target.value)}
-                                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
-                                                >
-                                                    <option value="">選択してください</option>
-                                                    {visit.designs.map((design) => (
-                                                        <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
-                                                            {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                {visit.designs.length === 0 && visit.得意先CD && (
-                                                    <p className="text-xs text-gray-500 mt-1">この得意先のデザイン案件はありません</p>
-                                                )}
-                                            </div>
-                                        )}
+                                         {/* 新規デザイン作成依頼（企画課）選択 */}
+                                         {visit.designMode === 'new' && (
+                                             <div className="mb-4">
+                                                 <label className="block text-xs font-medium text-sf-text-weak mb-1">デザイン作成依頼（企画課）から選択</label>
+                                                 {viewerAuthError ? (
+                                                     <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-3 flex flex-col gap-1.5 shadow-sm">
+                                                         <div className="font-bold flex items-center justify-between">
+                                                             <span>⚠️ 企画課ビューアとのデータ連携が未接続です</span>
+                                                         </div>
+                                                         <div className="text-gray-600 text-[11px] leading-normal">
+                                                             連携用のパスコードが設定されていないか、有効期限が切れています。
+                                                             「設定」画面からパスコードを登録し、ログイン接続テストを行ってください。
+                                                         </div>
+                                                         <div className="mt-1">
+                                                             <a 
+                                                                 href="/settings" 
+                                                                 className="inline-block px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-xs font-semibold transition-colors cursor-pointer"
+                                                             >
+                                                                 設定画面でパスコードを登録する
+                                                             </a>
+                                                         </div>
+                                                     </div>
+                                                 ) : (
+                                                     <div className="space-y-2">
+                                                          <input
+                                                              type="text"
+                                                              value={viewerSearchTerms[visit.id] || ''}
+                                                              onChange={(e) => setViewerSearchTerms(prev => ({
+                                                                  ...prev,
+                                                                  [visit.id]: e.target.value
+                                                              }))}
+                                                              placeholder="キーワードで絞り込み (依頼No / 得意先 / 依頼内容)"
+                                                              className="w-full px-3 py-1.5 border border-sf-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                                          />
+                                                          <select
+                                                              onChange={(e) => handleViewerDesignSelect(visit.id, e.target.value)}
+                                                              className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                                          >
+                                                              <option value="">最新の作成依頼を選択してください (自分の案件のみ)</option>
+                                                              {getFilteredRequestsForVisit(visit.id).map((req) => {
+                                                                  const shortId = req.requestId.split('-')[0];
+                                                                  return (
+                                                                      <option key={`${req.requestId}_${req.subId}`} value={`${req.requestId}_${req.subId}`}>
+                                                                          {shortId} - {req.designContent} ({req.customer})
+                                                                      </option>
+                                                                  );
+                                                              })}
+                                                          </select>
+                                                          {(viewerSearchTerms[visit.id] || '').trim() && getFilteredRequestsForVisit(visit.id).length === 0 && (
+                                                              <p className="text-xs text-amber-600">検索条件に一致する案件はありません</p>
+                                                          )}
+                                                      </div>
+                                                 )}
+                                             </div>
+                                         )}
+
+                                         {/* 既存デザイン（過去履歴）選択 */}
+                                         {visit.designMode === 'existing' && (
+                                             <div className="mb-4">
+                                                 <label className="block text-xs font-medium text-sf-text-weak mb-1">過去のデザイン案件</label>
+                                                 <select
+                                                     value={visit['デザイン依頼No.']}
+                                                     onChange={(e) => handleDesignSelect(visit.id, e.target.value)}
+                                                     className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                                 >
+                                                     <option value="">選択してください</option>
+                                                     {visit.designs.map((design) => (
+                                                         <option key={String(design.デザイン依頼No)} value={String(design.デザイン依頼No)}>
+                                                             {design.デザイン依頼No} - {design.デザイン名} ({design.デザイン進捗状況})
+                                                         </option>
+                                                     ))}
+                                                 </select>
+                                                 {visit.designs.length === 0 && visit.得意先CD && (
+                                                     <p className="text-xs text-gray-500 mt-1">この得意先のデザイン案件はありません</p>
+                                                 )}
+                                             </div>
+                                         )}
 
                                         {(visit.designMode === 'new' || visit.designMode === 'existing') && (
                                             <div className="space-y-4">

@@ -12,6 +12,7 @@ import routes_reports
 import routes_images
 import routes_sales
 import routes_stats
+import routes_proxy
 
 # Setup logging
 logging.basicConfig(
@@ -53,6 +54,7 @@ app.include_router(routes_reports.router)
 app.include_router(routes_images.router)
 app.include_router(routes_sales.router)
 app.include_router(routes_stats.router)
+app.include_router(routes_proxy.router)
 
 # Mount static files
 STATIC_DIR = os.path.join(config.BUNDLE_DIR, "static")
@@ -82,8 +84,21 @@ if os.path.exists(STATIC_DIR):
         return FileResponse(si) if os.path.exists(si) else {"detail": "Not Found"}
 
 if __name__ == "__main__":
-    import uvicorn, webbrowser, threading
+    import uvicorn, webbrowser, threading, socket
+    def get_local_ip():
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(('8.8.8.8', 80))
+            ip = s.getsockname()[0]
+        except Exception:
+            ip = '127.0.0.1'
+        finally:
+            s.close()
+        return ip
+
     def ob():
-        import time; time.sleep(2); webbrowser.open("http://localhost:8001")
+        import time; time.sleep(2)
+        local_ip = get_local_ip()
+        webbrowser.open(f"http://{local_ip}:8001")
     threading.Thread(target=ob, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")

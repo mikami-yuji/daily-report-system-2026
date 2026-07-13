@@ -196,3 +196,21 @@ export type PriorityCustomer = {
     得意先名: string;
     担当者?: string;
 };
+
+export type ViewerDesignRequest = {
+    requestId: string;
+    subId: string;
+    deliveryDate?: string;
+    requestDate?: string;
+    requestedAt?: string;
+    salesPerson: string;
+    planner: string;
+    customer: string;
+    shippingAddress: string;
+    designType: string;
+    designContent: string;
+    status: string;
+    submissionId?: string;
+    compUrl?: string;
+    pdfUrl?: string;
+};

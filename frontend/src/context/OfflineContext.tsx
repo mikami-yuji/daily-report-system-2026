@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { Report, Customer } from '@/lib/api';
+import { generateUUID } from '@/lib/reportUtils';
 
 type OfflineReport = {
     id: string;
@@ -115,7 +116,7 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
 
     const saveOfflineReport = (data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>, filename: string, type: 'create' | 'update' = 'create', reportId?: number) => {
         const newReport: OfflineReport = {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             timestamp: Date.now(),
             data,
             status: 'pending',

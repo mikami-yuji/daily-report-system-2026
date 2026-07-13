@@ -10,6 +10,7 @@ import {
     MonthlySummaryStats,
     SalesData,
     PriorityCustomer,
+    ViewerDesignRequest,
 } from '@/types/report';
 
 export type {
@@ -22,6 +23,7 @@ export type {
     MonthlySummaryStats,
     SalesData,
     PriorityCustomer,
+    ViewerDesignRequest,
 };
 
 // 常に/apiプレフィックスを使用（EXE版でのルート競合を防ぐため）
@@ -44,9 +46,22 @@ const apiLong = axios.create({
 // エラーハンドリングの共通インターセプター設定
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleResponseError = (error: any): Promise<never> => {
-    const message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
+    const isProxy401 = error.config?.url?.includes('/proxy/') && error.response?.status === 401;
+    let message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
     console.error('API Error:', error);
-    toast.error(`通信エラー: ${message}`);
+    if (isProxy401) {
+        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+        let redirectNotice = '';
+        if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+            redirectNotice = '\n★Cookie共有のため、日報システムへも「http://192.168.1.5:8001」でアクセスし直す必要があります。';
+        }
+        message = `企画課ビューアへのログインが必要です。下記URLからログインしてください。\nhttp://192.168.1.5:8888/viewer.html${redirectNotice}`;
+        toast.error(`通信エラー: ${message}`, {
+            duration: 12000, // URLと案内を確認・コピーしやすくするため表示時間を長め(12秒)に設定
+        });
+    } else {
+        toast.error(`通信エラー: ${message}`);
+    }
     return Promise.reject(error);
 };
 
@@ -248,4 +263,13 @@ export const getAllSales = async (): Promise<SalesData[]> => {
         console.error('Error fetching all sales data:', error);
         return [];
     }
+};
+
+export const getLatestDesignRequests = async (passcode?: string): Promise<{ documents: ViewerDesignRequest[]; message?: string }> => {
+    const params: Record<string, string> = {};
+    if (passcode) {
+        params.passcode = passcode;
+    }
+    const response = await api.get(`${API_URL}/proxy/design-requests`, { params });
+    return response.data;
 };

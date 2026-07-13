@@ -1395,7 +1395,7 @@ export default function BatchReportPage() {
                                                              <label className="block text-xs font-medium text-sf-text-weak">デザイン依頼No.</label>
                                                              {visit['デザイン依頼No.'] && (
                                                                  <a
-                                                                     href="http://192.168.1.5:8888/"
+                                                                     href="http://192.168.1.5:8888/viewer.html"
                                                                      target="_blank"
                                                                      rel="noopener noreferrer"
                                                                      className="text-[10px] text-sf-light-blue hover:underline flex items-center gap-1 font-semibold"

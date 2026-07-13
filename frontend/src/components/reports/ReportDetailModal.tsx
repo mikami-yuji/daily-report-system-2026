@@ -419,7 +419,7 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                                         )}
                                                     </button>
                                                     <a
-                                                        href="http://192.168.1.5:8888/"
+                                                        href="http://192.168.1.5:8888/viewer.html"
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center justify-center cursor-pointer"

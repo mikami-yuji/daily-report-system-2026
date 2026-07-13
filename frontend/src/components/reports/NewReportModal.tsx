@@ -1055,7 +1055,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                                 <label className="block text-sm font-medium text-sf-text">デザイン依頼No.</label>
                                                 {formData['デザイン依頼No.'] && (
                                                     <a
-                                                        href="http://192.168.1.5:8888/"
+                                                        href="http://192.168.1.5:8888/viewer.html"
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="text-xs text-sf-light-blue hover:underline flex items-center gap-1 font-semibold"

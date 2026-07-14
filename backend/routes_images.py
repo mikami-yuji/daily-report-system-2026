@@ -21,6 +21,10 @@ import models
 
 router = APIRouter()
 
+# Memory cache for design image lists to prevent network scan timeouts
+IMAGE_LIST_CACHE = {}
+CACHE_EXPIRY_MINUTES = 15
+
 @router.get("/api/images/list")
 def get_design_images(filename: str) -> dict:
     """
@@ -29,6 +33,15 @@ def get_design_images(filename: str) -> dict:
     Logic: Extract name from filename '...【Name】.xlsm' -> Search folder containing 'Name'
     """
     filename = os.path.basename(filename)
+    
+    # Check memory cache first to prevent repeated heavy network scans
+    cache_key = filename
+    if cache_key in IMAGE_LIST_CACHE:
+        cached_data = IMAGE_LIST_CACHE[cache_key]
+        if datetime.now() - cached_data['timestamp'] < timedelta(minutes=CACHE_EXPIRY_MINUTES):
+            logging.info(f"Returning cached design image list for {filename}")
+            return {"images": cached_data['images'], "folder": cached_data['folder']}
+
     DESIGN_DIR = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ"
     
     logging.info(f"--- get_design_images called with filename: {filename} ---")
@@ -140,7 +153,7 @@ def get_design_images(filename: str) -> dict:
         valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf')
         
         image_files = []
-        max_depth = 3
+        max_depth = 2
         
         # スタックを用いた高速な反復走査 (ディレクトリパスと探索深度を管理)
         stack = [(target_path, 0)]
@@ -185,7 +198,16 @@ def get_design_images(filename: str) -> dict:
         # 更新日時順にソート (新しい画像が先頭)
         image_files.sort(key=lambda x: x['mtime'], reverse=True)
         
-        return {"images": image_files[:500], "folder": matched_dir}
+        result_images = image_files[:500]
+        
+        # Save to memory cache to prevent network timeout on subsequent loads
+        IMAGE_LIST_CACHE[cache_key] = {
+            "images": result_images,
+            "folder": matched_dir,
+            "timestamp": datetime.now()
+        }
+        
+        return {"images": result_images, "folder": matched_dir}
 
     except Exception as e:
         logging.exception("Error in get_design_images")

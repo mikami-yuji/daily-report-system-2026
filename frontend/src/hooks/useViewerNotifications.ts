@@ -61,14 +61,6 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
             const data = await getLatestDesignRequests(passcode);
             if (!data || !data.documents) return;
 
-            // 担当営業名が一致し、無効でない案件のみ抽出
-            const myRequests = data.documents.filter((req: ViewerDesignRequest): boolean => {
-                if (!req || !req.salesPerson) return false;
-                const viewerRep = String(req.salesPerson).toLowerCase().trim();
-                const activeRep = String(activeSalesPerson).toLowerCase().trim();
-                return viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
-            });
-
             // ローカルストレージから前回のスナップショットを取得
             const savedSnapshotStr = localStorage.getItem('viewer_snapshot');
             let oldSnapshot: SnapshotData = {};
@@ -83,7 +75,9 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
             const newSnapshot: SnapshotData = {};
             const notifications: string[] = [];
 
-            myRequests.forEach((req: ViewerDesignRequest): void => {
+            // 全案件をスナップショットに保存し、アクティブな営業担当者の案件のみ通知判定を行う
+            data.documents.forEach((req: ViewerDesignRequest): void => {
+                if (!req) return;
                 const reqId = req.requestId;
                 const status = req.status;
                 const hasComp = !!req.compUrl;
@@ -95,29 +89,37 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
                     designContent: content,
                 };
 
-                // 前回データとの差分をチェック (前回が存在する場合のみ通知。初回はスナップショット構築のみ)
-                if (savedSnapshotStr && oldSnapshot[reqId]) {
-                    const old = oldSnapshot[reqId];
+                // 現在のアクティブな営業担当者名と一致するか判定
+                if (!req.salesPerson) return;
+                const viewerRep = String(req.salesPerson).toLowerCase().trim();
+                const activeRep = String(activeSalesPerson).toLowerCase().trim();
+                const isMyRequest = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
 
-                    // 1. ステータス変更
-                    if (old.status !== status) {
-                        const statusLabelMap: Record<string, string> = {
-                            inProgress: '進行中',
-                            completed: '完了',
-                            rejected: '却下',
-                            inSubmission: '入稿中'
-                        };
-                        const oldLabel = statusLabelMap[old.status] || old.status;
-                        const newLabel = statusLabelMap[status] || status;
-                        notifications.push(`デザイン「${content}」の状況が「${oldLabel}」から「${newLabel}」になりました。`);
+                if (isMyRequest) {
+                    // 前回データとの差分をチェック (前回が存在する場合のみ通知。初回はスナップショット構築のみ)
+                    if (savedSnapshotStr && oldSnapshot[reqId]) {
+                        const old = oldSnapshot[reqId];
+
+                        // 1. ステータス変更
+                        if (old.status !== status) {
+                            const statusLabelMap: Record<string, string> = {
+                                inProgress: '進行中',
+                                completed: '完了',
+                                rejected: '却下',
+                                inSubmission: '入稿中'
+                            };
+                            const oldLabel = statusLabelMap[old.status] || old.status;
+                            const newLabel = statusLabelMap[status] || status;
+                            notifications.push(`デザイン「${content}」の状況が「${oldLabel}」から「${newLabel}」になりました。`);
+                        }
+                        // 2. カンプアップロード完了 (ステータスそのままでカンプURLが追加された場合)
+                        else if (!old.hasComp && hasComp && status !== 'completed') {
+                            notifications.push(`デザイン「${content}」の新しいカンプ画像がアップロードされました。`);
+                        }
+                    } else if (savedSnapshotStr && !oldSnapshot[reqId]) {
+                        // 新しい依頼が追加された場合
+                        notifications.push(`新しいデザイン依頼「${content}」が企画課に登録されました。`);
                     }
-                    // 2. カンプアップロード完了 (ステータスそのままでカンプURLが追加された場合)
-                    else if (!old.hasComp && hasComp && status !== 'completed') {
-                        notifications.push(`デザイン「${content}」の新しいカンプ画像がアップロードされました。`);
-                    }
-                } else if (savedSnapshotStr && !oldSnapshot[reqId]) {
-                    // 新しい依頼が追加された場合
-                    notifications.push(`新しいデザイン依頼「${content}」が企画課に登録されました。`);
                 }
             });
 

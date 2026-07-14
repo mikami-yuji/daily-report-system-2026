@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
-import { useReports } from '@/hooks/useQueryHooks';
+import { useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
 import { useDashboardStats } from '@/hooks/useStatsHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
@@ -16,6 +16,8 @@ import KPICards from '@/components/dashboard/KPICards';
 import DashboardCharts from '@/components/dashboard/DashboardCharts';
 import RecentReportsTable from '@/components/dashboard/RecentReportsTable';
 import DesignImageGallery from '@/components/dashboard/DesignImageGallery';
+import UnfilledImportantDesigns from '@/components/dashboard/UnfilledImportantDesigns';
+import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 
 export default function Home(): React.JSX.Element {
   const { selectedFile } = useFile();
@@ -26,6 +28,18 @@ export default function Home(): React.JSX.Element {
   
   // 2. バックエンド集計データ取得 (グラフや統計カード用)
   const { data: backendStats, isLoading: isStatsLoading } = useDashboardStats(selectedFile || undefined);
+
+  // 3. 企画課ビューワーから全案件取得
+  const { data: viewerData } = useViewerDesignRequests();
+
+  // 新規日報モーダル管理ステート (重要デザイン自動補完用)
+  const [showNewReportModal, setShowNewReportModal] = useState<boolean>(false);
+  const [initialDesignData, setInitialDesignData] = useState<InitialDesignData | undefined>(undefined);
+
+  const handleOpenNewReportModal = (data: InitialDesignData): void => {
+    setInitialDesignData(data);
+    setShowNewReportModal(true);
+  };
 
   const isLoading = isReportsLoading || isStatsLoading;
 
@@ -68,6 +82,14 @@ export default function Home(): React.JSX.Element {
       {/* 新着コメント通知 */}
       <UnreadComments reports={reports} selectedFile={selectedFile} />
 
+      {/* 未入力の重要デザイン依頼警告 */}
+      <UnfilledImportantDesigns
+        reports={rawReports}
+        viewerData={viewerData}
+        selectedFile={selectedFile || ''}
+        onWriteReport={handleOpenNewReportModal}
+      />
+
       {/* KPI 統計カード */}
       <KPICards stats={backendStats.summary} />
 
@@ -88,6 +110,19 @@ export default function Home(): React.JSX.Element {
           onSuccess={handleEditSuccess}
           selectedFile={selectedFile || ''}
           reports={rawReports}
+        />
+      )}
+
+      {/* 新規日報作成モーダル (重要デザイン自動補完用) */}
+      {showNewReportModal && selectedFile && (
+        <NewReportModal
+          onClose={(): void => setShowNewReportModal(false)}
+          onSuccess={(): void => {
+            setShowNewReportModal(false);
+            queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile) });
+          }}
+          selectedFile={selectedFile}
+          initialDesignData={initialDesignData}
         />
       )}
     </div>

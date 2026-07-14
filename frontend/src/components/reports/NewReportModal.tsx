@@ -13,6 +13,7 @@ export type InitialDesignData = {
     デザイン名?: string;
     デザイン種別?: string;
     デザイン進捗状況?: string;
+    designMode?: 'new' | 'existing';
 };
 
 type NewReportModalProps = {
@@ -79,7 +80,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [interviewers, setInterviewers] = useState<string[]>([]);
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(
-        initialDesignData ? 'existing' : (initialDraft?.designMode || 'none')
+        initialDesignData?.designMode || (initialDesignData ? 'existing' : (initialDraft?.designMode || 'none'))
     );
     const [designs, setDesigns] = useState<Design[]>([]);
     
@@ -226,12 +227,22 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             setAreaOptions(areas);
 
             // initialDesignData がある場合、該当得意先情報を埋める
-            if (initialDesignData?.得意先CD) {
-                const customer = data.find(c => String(c.得意先CD) === initialDesignData.得意先CD);
+            if (initialDesignData) {
+                let customer = null;
+                if (initialDesignData.得意先CD) {
+                    customer = data.find(c => String(c.得意先CD) === initialDesignData.得意先CD);
+                } else if (initialDesignData.得意先名) {
+                    // 得意先CDがない場合、得意先名から名寄せする (完全一致 -> 前方一致 -> 部分一致)
+                    const name = String(initialDesignData.得意先名).toLowerCase().trim();
+                    customer = data.find(c => String(c.得意先名).toLowerCase() === name) ||
+                               data.find(c => String(c.得意先名).toLowerCase().startsWith(name)) ||
+                               data.find(c => name.includes(String(c.得意先名).toLowerCase()) || String(c.得意先名).toLowerCase().includes(name));
+                }
+
                 if (customer) {
                     setFormData(prev => ({
                         ...prev,
-                        訪問先名: customer.得意先名 || '',
+                        訪問先名: customer.直送先名 ? `${customer.得意先名}　${customer.直送先名}` : (customer.得意先名 || ''),
                         直送先名: customer.直送先名 || '',
                         得意先CD: customer.得意先CD || '',
                         直送先CD: customer.直送先CD || '',
@@ -239,11 +250,14 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                         重点顧客: customer.重点顧客 || '',
                         ランク: customer.ランク || ''
                     }));
-                }
 
-                // Fetch interviewers and designs for this customer
-                getInterviewers(initialDesignData.得意先CD, selectedFile, initialDesignData.得意先名).then(d => setInterviewers(d)).catch(() => setInterviewers([]));
-                getDesigns(initialDesignData.得意先CD, selectedFile).then(d => setDesigns(d)).catch(() => setDesigns([]));
+                    // Fetch interviewers and designs for this customer
+                    const cCd = customer.得意先CD;
+                    const cName = customer.得意先名;
+                    const cDeli = customer.直送先名 || undefined;
+                    getInterviewers(cCd, selectedFile, cName, cDeli).then(d => setInterviewers(d)).catch(() => setInterviewers([]));
+                    getDesigns(cCd, selectedFile, cDeli).then(d => setDesigns(d)).catch(() => setDesigns([]));
+                }
             }
 
         }).catch(err => {
@@ -676,7 +690,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
 
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto pt-10 md:pt-16" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
                     <div className="flex items-center gap-3">

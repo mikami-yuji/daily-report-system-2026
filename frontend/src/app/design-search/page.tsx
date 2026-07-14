@@ -2,12 +2,14 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
-import { useReports } from '@/hooks/useQueryHooks';
+import { useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage } from '@/lib/api';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
+import PdfPreviewModal from '@/components/reports/PdfPreviewModal';
+import { ViewerDesignRequest } from '@/types/report';
 
 type DesignRequest = {
     designNo: string;
@@ -25,6 +27,48 @@ export default function DesignSearchPage() {
 
     // React Queryでデータ取得（自動キャッシュ）
     const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
+
+    // 企画課ビューワーからデザインデータ取得
+    const { data: viewerData } = useViewerDesignRequests();
+
+    // PDFプレビュー用ステート
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+    const [previewPdfUrl, setPreviewPdfUrl] = useState<string>('');
+    const [previewPdfTitle, setPreviewPdfTitle] = useState<string>('');
+
+    // ファイル名から担当営業名（名字）を抽出するヘルパー
+    const extractSalesPersonName = (filename: string | null | undefined): string => {
+        if (!filename) return '';
+        const base = String(filename).replace(/\.xlsm$/, '');
+        const matchBrackets = base.match(/【(.*?)】/);
+        let name = matchBrackets ? matchBrackets[1] : base;
+        name = name.replace(/^日報_/, '');
+        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
+        name = name.replace(/[\(（].*?[\)）]/, '');
+        return name.trim();
+    };
+
+    const activeSalesPerson = useMemo((): string => extractSalesPersonName(selectedFile), [selectedFile]);
+
+    // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId)
+    const viewerMap = useMemo((): Map<string, ViewerDesignRequest> => {
+        const map = new Map<string, ViewerDesignRequest>();
+        if (!viewerData || !viewerData.documents || !activeSalesPerson) return map;
+
+        viewerData.documents.forEach((doc: ViewerDesignRequest): void => {
+            if (!doc.salesPerson) return;
+            const viewerRep = String(doc.salesPerson).toLowerCase().trim();
+            const activeRep = String(activeSalesPerson).toLowerCase().trim();
+            const isRepMatch = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
+            
+            if (isRepMatch) {
+                // requestIdは "123456-01" 等。ハイフン前を取り出す
+                const shortId = doc.requestId.split('-')[0].trim();
+                map.set(shortId, doc);
+            }
+        });
+        return map;
+    }, [viewerData, activeSalesPerson]);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<string[]>([]);
@@ -546,12 +590,30 @@ export default function DesignSearchPage() {
                                                     <div className="flex items-center gap-2">
                                                         {req.designNo}
                                                         <button
-                                                            onClick={(e) => handleImageSearch(req.designNo, e)}
+                                                            onClick={(e: React.MouseEvent) => handleImageSearch(req.designNo, e)}
                                                             className="p-1 rounded hover:bg-sf-light-blue/10 text-pink-500 transition-colors"
                                                             title="関連画像を検索"
                                                         >
                                                             <ImageIcon size={16} />
                                                         </button>
+                                                        {(() => {
+                                                            const matchedViewer = viewerMap.get(req.designNo);
+                                                            if (!matchedViewer || !matchedViewer.pdfUrl) return null;
+                                                            return (
+                                                                <button
+                                                                    onClick={(e: React.MouseEvent) => {
+                                                                        e.stopPropagation();
+                                                                        setPreviewPdfUrl(matchedViewer.pdfUrl!);
+                                                                        setPreviewPdfTitle(`仕様書: ${matchedViewer.requestId} - ${matchedViewer.designContent}`);
+                                                                        setIsPdfModalOpen(true);
+                                                                    }}
+                                                                    className="p-1 rounded hover:bg-sf-light-blue/10 text-red-500 transition-colors"
+                                                                    title="PDF仕様書をプレビュー"
+                                                                >
+                                                                    <FileText size={16} />
+                                                                </button>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-sf-text">{req.customerCode}</td>
@@ -694,6 +756,13 @@ export default function DesignSearchPage() {
                     initialDesignData={initialDesignData}
                 />
             )}
+            {/* PDF仕様書プレビューモーダル */}
+            <PdfPreviewModal
+                isOpen={isPdfModalOpen}
+                onClose={(): void => setIsPdfModalOpen(false)}
+                pdfUrl={previewPdfUrl}
+                title={previewPdfTitle}
+            />
         </>
     );
 }

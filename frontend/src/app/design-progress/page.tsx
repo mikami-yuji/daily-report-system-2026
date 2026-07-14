@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useFiles, useReports } from '@/hooks/useQueryHooks';
+import { useFiles, useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
 import { Report } from '@/lib/api';
-import { Search, Calendar, FileText, TrendingUp, Package } from 'lucide-react';
+import { Search, Calendar, FileText, TrendingUp, Package, Image as ImageIcon, ExternalLink, Key, Loader2 } from 'lucide-react';
+import PdfPreviewModal from '@/components/reports/PdfPreviewModal';
+import { ViewerDesignRequest } from '@/types/report';
 
 export default function DesignProgressPage() {
     // React Queryでファイル一覧取得
@@ -25,12 +27,60 @@ export default function DesignProgressPage() {
     // React Queryでレポート取得
     const { data: reports = [], isLoading } = useReports(selectedFile || undefined);
 
+    // 企画課ビューワーからデザインデータ取得
+    const { data: viewerData, isLoading: isLoadingViewer } = useViewerDesignRequests();
+
+    // PDFプレビュー用ステート
+    const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
+    const [previewPdfUrl, setPreviewPdfUrl] = useState<string>('');
+    const [previewPdfTitle, setPreviewPdfTitle] = useState<string>('');
+
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [selectedDesignNo, setSelectedDesignNo] = useState<string>('');
+
+    // ファイル名から担当営業名（名字）を抽出するヘルパー
+    const extractSalesPersonName = (filename: string | null | undefined): string => {
+        if (!filename) return '';
+        const base = String(filename).replace(/\.xlsm$/, '');
+        const matchBrackets = base.match(/【(.*?)】/);
+        let name = matchBrackets ? matchBrackets[1] : base;
+        name = name.replace(/^日報_/, '');
+        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
+        name = name.replace(/[\(（].*?[\)）]/, '');
+        return name.trim();
+    };
+
+    const activeSalesPerson = useMemo((): string => extractSalesPersonName(selectedFile), [selectedFile]);
+
+    // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId)
+    const viewerMap = useMemo((): Map<string, ViewerDesignRequest> => {
+        const map = new Map<string, ViewerDesignRequest>();
+        if (!viewerData || !viewerData.documents || !activeSalesPerson) return map;
+
+        viewerData.documents.forEach((doc: ViewerDesignRequest): void => {
+            if (!doc.salesPerson) return;
+            const viewerRep = String(doc.salesPerson).toLowerCase().trim();
+            const activeRep = String(activeSalesPerson).toLowerCase().trim();
+            const isRepMatch = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
+            
+            if (isRepMatch) {
+                // requestIdは "123456-01" 等。ハイフン前を取り出す
+                const shortId = doc.requestId.split('-')[0].trim();
+                map.set(shortId, doc);
+            }
+        });
+        return map;
+    }, [viewerData, activeSalesPerson]);
+
+    // 選択されたデザインNo.に対応するビューワー側データ
+    const currentViewerDesign = useMemo((): ViewerDesignRequest | null => {
+        if (!selectedDesignNo) return null;
+        return viewerMap.get(selectedDesignNo) || null;
+    }, [selectedDesignNo, viewerMap]);
     // デザイン依頼があるカスタマー一覧を抽出
-    const customers = useMemo(() => {
+    const customers = useMemo((): string[] => {
         const customerSet = new Set<string>();
-        reports.forEach(r => {
+        reports.forEach((r: Report): void => {
             const custId = r.得意先CD ? String(r.得意先CD) : '';
             const designNo = r['デザイン依頼No.'];
             if (custId && custId !== '-' && designNo && designNo !== '-') {
@@ -41,10 +91,10 @@ export default function DesignProgressPage() {
     }, [reports]);
 
     // 選択されたカスタマーのデザイン番号を抽出
-    const designNumbers = useMemo(() => {
+    const designNumbers = useMemo((): string[] => {
         if (!selectedCustomer) return [];
         const designSet = new Set<string>();
-        reports.forEach(r => {
+        reports.forEach((r: Report): void => {
             if (String(r.得意先CD) === selectedCustomer) {
                 const designNo = r['デザイン依頼No.'];
                 if (designNo && designNo !== '-') {
@@ -56,14 +106,14 @@ export default function DesignProgressPage() {
     }, [selectedCustomer, reports]);
 
     // When a design number is selected, build progress history
-    const progressHistory = useMemo(() => {
+    const progressHistory = useMemo((): Report[] => {
         if (selectedCustomer && selectedDesignNo) {
             return reports
-                .filter(r =>
+                .filter((r: Report): boolean =>
                     String(r.得意先CD) === selectedCustomer &&
                     String(r['デザイン依頼No.']) === selectedDesignNo
                 )
-                .sort((a, b) => {
+                .sort((a: Report, b: Report): number => {
                     const dateA = new Date(a.日付 || '').getTime();
                     const dateB = new Date(b.日付 || '').getTime();
                     return dateB - dateA;
@@ -72,8 +122,8 @@ export default function DesignProgressPage() {
         return [];
     }, [selectedDesignNo, selectedCustomer, reports]);
 
-    const getCustomerName = (customerCD: string) => {
-        const report = reports.find(r => String(r.得意先CD) === customerCD);
+    const getCustomerName = (customerCD: string): string => {
+        const report = reports.find((r: Report): boolean => String(r.得意先CD) === customerCD);
         return report?.訪問先名 || customerCD;
     };
 
@@ -168,30 +218,159 @@ export default function DesignProgressPage() {
                 ) : (
                     <div className="p-6">
                         {/* Summary */}
-                        <div className="mb-6 p-4 bg-gray-50 rounded border border-sf-border">
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                <div>
-                                    <p className="text-xs text-sf-text-weak mb-1">得意先CD</p>
-                                    <p className="font-semibold text-sf-text">{selectedCustomer}</p>
+                        <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* 左カラム: 日報登録データ */}
+                            <div className="p-5 bg-gray-50 rounded-xl border border-sf-border shadow-sm flex flex-col justify-between">
+                                <h4 className="font-semibold text-xs text-sf-text-weak uppercase tracking-wider mb-4 pb-2 border-b border-sf-border flex items-center gap-1.5">
+                                    <FileText size={14} className="text-sf-light-blue" />
+                                    日報登録データサマリー
+                                </h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-xs text-sf-text-weak mb-0.5">得意先CD</p>
+                                        <p className="font-bold text-sm text-sf-text">{selectedCustomer}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-sf-text-weak mb-0.5">得意先名</p>
+                                        <p className="font-bold text-sm text-sf-text truncate" title={getCustomerName(selectedCustomer)}>{getCustomerName(selectedCustomer)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-sf-text-weak mb-0.5">デザイン依頼No.</p>
+                                        <p className="font-bold text-sm text-sf-text">{selectedDesignNo}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-sf-text-weak mb-0.5">最新進捗状況</p>
+                                        <p className="font-bold text-sm text-sf-text">
+                                            {progressHistory.length > 0 ? progressHistory[0].デザイン進捗状況 : '-'}
+                                        </p>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <p className="text-xs text-sf-text-weak mb-0.5">累計活動回数</p>
+                                        <p className="font-extrabold text-sf-light-blue text-2xl">{progressHistory.length} <span className="text-xs font-normal text-sf-text-weak">件の日報履歴</span></p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-xs text-sf-text-weak mb-1">得意先名</p>
-                                    <p className="font-semibold text-sf-text">{getCustomerName(selectedCustomer)}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-sf-text-weak mb-1">デザイン依頼No.</p>
-                                    <p className="font-semibold text-sf-text">{selectedDesignNo}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-sf-text-weak mb-1">最新進捗状況</p>
-                                    <p className="font-semibold text-sf-text">
-                                        {progressHistory.length > 0 ? progressHistory[0].デザイン進捗状況 : '-'}
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-sf-text-weak mb-1">更新回数</p>
-                                    <p className="font-semibold text-sf-light-blue text-xl">{progressHistory.length}</p>
-                                </div>
+                            </div>
+
+                            {/* 右カラム: 企画課ビューワー情報 (リアルタイム) */}
+                            <div className="p-5 bg-amber-50/20 rounded-xl border border-amber-200/60 shadow-sm flex flex-col justify-between">
+                                <h4 className="font-semibold text-xs text-amber-700/80 uppercase tracking-wider mb-4 pb-2 border-b border-amber-200/50 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <ImageIcon size={14} className="text-amber-500" />
+                                        企画課ビューワー連携 (リアルタイム)
+                                    </span>
+                                    {isLoadingViewer && <Loader2 size={12} className="animate-spin text-amber-600" />}
+                                </h4>
+
+                                {(() => {
+                                    const hasPasscode = typeof window !== 'undefined' ? !!localStorage.getItem('viewer_passcode') : false;
+                                    if (!hasPasscode) {
+                                        return (
+                                            <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+                                                <Key size={32} className="text-amber-500/60 mb-2 animate-bounce" />
+                                                <p className="text-xs text-amber-800 font-bold mb-1">連携用パスコードが未設定です</p>
+                                                <p className="text-[10px] text-gray-500 mb-3">設定画面からパスコードを入力すると、企画課側のリアルタイム進捗と仕様書PDFを確認できます。</p>
+                                                <a href="/settings" className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded text-[11px] font-bold shadow-sm transition-colors cursor-pointer">
+                                                    設定画面へ行く
+                                                </a>
+                                            </div>
+                                        );
+                                    }
+
+                                    if (isLoadingViewer) {
+                                        return (
+                                            <div className="flex-1 flex items-center justify-center p-8 text-sf-text-weak text-xs">
+                                                <Loader2 size={18} className="animate-spin mr-2" /> 企画課から最新データを読み込み中...
+                                            </div>
+                                        );
+                                    }
+
+                                    if (!currentViewerDesign) {
+                                        return (
+                                            <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+                                                <Package size={32} className="text-gray-300 mb-2" />
+                                                <p className="text-xs text-gray-500 font-medium">企画課ビューワー側に該当案件が見つかりません</p>
+                                                <p className="text-[10px] text-gray-400 mt-1 max-w-[280px]">日報のデザインNo.「{selectedDesignNo}」に一致するビューワーのRequestIdがありません。または、担当営業者名（{activeSalesPerson}）が一致していない可能性があります。</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    // ステータスの日本語表示マップ
+                                    const statusLabelMap: Record<string, { label: string, color: string }> = {
+                                        inProgress: { label: 'デザイン作成中', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+                                        completed: { label: 'カンプアップ完了', color: 'bg-green-50 text-green-700 border-green-200' },
+                                        rejected: { label: '却下', color: 'bg-red-50 text-red-700 border-red-200' },
+                                        inSubmission: { label: '入稿手配中', color: 'bg-purple-50 text-purple-700 border-purple-200' }
+                                    };
+                                    const statusInfo = statusLabelMap[currentViewerDesign.status] || { label: currentViewerDesign.status, color: 'bg-gray-50 text-gray-700 border-gray-200' };
+
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                                            {/* テキスト情報 */}
+                                            <div className="space-y-3 flex flex-col justify-between text-xs text-sf-text">
+                                                <div>
+                                                    <p className="text-xs text-sf-text-weak mb-0.5">企画課ステータス</p>
+                                                    <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-md border ${statusInfo.color}`}>
+                                                        {statusInfo.label}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-sf-text-weak mb-0.5">担当デザイナー (プランナー)</p>
+                                                    <p className="font-bold">{currentViewerDesign.planner || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-sf-text-weak mb-0.5">納品予定日 (納期)</p>
+                                                    <p className="font-bold text-amber-700">{currentViewerDesign.deliveryDate || '-'}</p>
+                                                </div>
+                                                {currentViewerDesign.pdfUrl && (
+                                                    <div className="pt-1">
+                                                        <button
+                                                            onClick={(): void => {
+                                                                setPreviewPdfUrl(currentViewerDesign.pdfUrl!);
+                                                                setPreviewPdfTitle(`仕様書: ${currentViewerDesign.requestId} - ${currentViewerDesign.designContent}`);
+                                                                setIsPdfModalOpen(true);
+                                                            }}
+                                                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded font-semibold text-[11px] transition-colors cursor-pointer"
+                                                        >
+                                                            <FileText size={12} />
+                                                            仕様書PDFをプレビュー
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* カンプ画像サムネイル */}
+                                            <div className="flex flex-col justify-center items-center bg-white border border-sf-border rounded-lg p-2 relative h-32 md:h-full min-h-[100px]">
+                                                {currentViewerDesign.compUrl ? (
+                                                    <>
+                                                        <a
+                                                            href={`http://192.168.1.5:8888${currentViewerDesign.compUrl}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="relative w-full h-full flex items-center justify-center group overflow-hidden"
+                                                            title="カンプ画像を別タブで開く"
+                                                        >
+                                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                            <img
+                                                                src={`http://192.168.1.5:8888${currentViewerDesign.compUrl}`}
+                                                                alt="最新カンプ画像"
+                                                                className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold gap-1 rounded">
+                                                                <ExternalLink size={12} /> 開く
+                                                            </div>
+                                                        </a>
+                                                        <p className="text-[9px] text-sf-text-weak mt-1">最新アップロード画像 (カンプ)</p>
+                                                    </>
+                                                ) : (
+                                                    <div className="flex flex-col items-center text-sf-text-weak text-[10px]">
+                                                        <ImageIcon size={24} className="opacity-30 mb-1" />
+                                                        <span>カンプ画像未登録</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                         {/* Timeline */}
@@ -267,6 +446,14 @@ export default function DesignProgressPage() {
                     {progressHistory.length} 件の進捗記録
                 </div>
             )}
+
+            {/* PDF仕様書プレビューモーダル */}
+            <PdfPreviewModal
+                isOpen={isPdfModalOpen}
+                onClose={(): void => setIsPdfModalOpen(false)}
+                pdfUrl={previewPdfUrl}
+                title={previewPdfTitle}
+            />
         </div>
     );
 }

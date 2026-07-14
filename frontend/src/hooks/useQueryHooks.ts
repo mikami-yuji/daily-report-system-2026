@@ -14,13 +14,15 @@ import {
     updateReport,
     deleteReport,
     getDesignImages,
-    DesignImage
+    DesignImage,
+    getLatestDesignRequests
 } from '@/lib/api';
 import {
     Report,
     ExcelFile,
     Customer,
-    SalesData
+    SalesData,
+    ViewerDesignRequest
 } from '@/types/report';
 import toast from 'react-hot-toast';
 
@@ -142,5 +144,20 @@ export function useDesignImages(filename?: string) {
         queryFn: () => getDesignImages(filename!),
         enabled: !!filename,
         staleTime: 5 * 60 * 1000, // 5分キャッシュ保持
+    });
+}
+
+/**
+ * 企画課ビューワーのデザイン依頼データ取得フック
+ * 負荷軽減のため staleTime を長めに設定
+ */
+export function useViewerDesignRequests() {
+    return useQuery({
+        queryKey: ['viewer-design-requests'],
+        queryFn: () => getLatestDesignRequests(),
+        staleTime: 10 * 60 * 1000,  // 10分間はキャッシュを使用
+        gcTime: 30 * 60 * 1000,     // 30分間キャッシュ保持
+        retry: 1,                    // リトライは1回のみ
+        refetchOnWindowFocus: false, // フォーカス時の自動再取得なし
     });
 }

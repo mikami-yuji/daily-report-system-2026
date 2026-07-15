@@ -672,6 +672,7 @@ def add_report(
     if not os.path.exists(excel_file):
         raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
     
+    wb = None
     try:
         # Load workbook with openpyxl to preserve formulas and macros
         wb = openpyxl.load_workbook(excel_file, keep_vba=True)
@@ -811,7 +812,6 @@ def add_report(
         
         # Save the workbook (Critical path - blocking)
         wb.save(excel_file)
-        wb.close()
 
         # Create backup in background
         background_tasks.add_task(cache.create_backup, excel_file)
@@ -835,6 +835,9 @@ def add_report(
     except Exception as e:
         logging.error(f"Error in add_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if wb:
+            wb.close()
 
 # コメント更新専用エンドポイント
 
@@ -847,6 +850,7 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
     
     filename = os.path.basename(filename)
     logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
+    wb = None
     try:
         excel_file = os.path.join(config.EXCEL_DIR, filename)
         logging.debug(f"excel_file: {excel_file}")
@@ -889,7 +893,6 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
         try:
             # 一時ファイルに保存
             wb.save(temp_file)
-            wb.close()
             logging.debug(f"saved to temp: {temp_file}")
             
             # 一時ファイルが正常か確認（読み込みテスト）
@@ -925,6 +928,12 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
     except Exception as e:
         logging.error(f"Error in update_report_reply: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if wb:
+            try:
+                wb.close()
+            except:
+                pass
 
 
 
@@ -936,6 +945,7 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
     
     filename = os.path.basename(filename)
     logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
+    wb = None
     try:
         excel_file = os.path.join(config.EXCEL_DIR, filename)
         
@@ -987,7 +997,6 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
             
             if conflicts:
                 conflict_msg = ", ".join(conflicts)
-                wb.close()
                 raise HTTPException(
                     status_code=409, 
                     detail=f"他の方がコメントを編集しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
@@ -1007,7 +1016,6 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
         
         try:
             wb.save(temp_file)
-            wb.close()
             
             # 一時ファイルが正常か確認
             test_wb = openpyxl.load_workbook(temp_file, read_only=True)
@@ -1041,6 +1049,12 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
     except Exception as e:
         logging.error(f"Error in update_report_comment: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if wb:
+            try:
+                wb.close()
+            except:
+                pass
 
 
 
@@ -1052,6 +1066,7 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
     
     filename = os.path.basename(filename)
     logging.debug(f"update_report_approval: management_number={management_number}")
+    wb = None
     try:
         excel_file = os.path.join(config.EXCEL_DIR, filename)
         
@@ -1076,7 +1091,6 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
                         break
         
         if not target_row:
-            wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
         # --- Optimistic Locking Check ---
@@ -1109,7 +1123,6 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
             
             if conflicts:
                 conflict_msg = ", ".join(conflicts)
-                wb.close()
                 raise HTTPException(
                     status_code=409, 
                     detail=f"他の方が承認ステータスを更新しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
@@ -1143,7 +1156,6 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
         
         try:
             wb.save(temp_file)
-            wb.close()
             
             test_wb = openpyxl.load_workbook(temp_file, read_only=True)
             test_wb.close()
@@ -1175,6 +1187,12 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
     except Exception as e:
         logging.error(f"Error in update_report_approval: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if wb:
+            try:
+                wb.close()
+            except:
+                pass
 
 
 
@@ -1183,6 +1201,7 @@ def update_report(management_number: int, report: models.ReportInput, background
     """既存の日報を更新（全項目対応）"""
     filename = os.path.basename(filename)
     logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
+    wb = None
     try:
         excel_file = os.path.join(config.EXCEL_DIR, filename)
         
@@ -1277,7 +1296,6 @@ def update_report(management_number: int, report: models.ReportInput, background
         
         # Save the workbook (Critical path - blocking)
         wb.save(excel_file)
-        wb.close()
         
         # Create backup in background
         background_tasks.add_task(cache.create_backup, excel_file)
@@ -1291,8 +1309,15 @@ def update_report(management_number: int, report: models.ReportInput, background
     except HTTPException:
         raise
     except Exception as e:
+        # 例外が発生した場合は500エラーとして上位に伝搬します
         logging.error(f"Error in update_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if wb:
+            try:
+                wb.close()
+            except:
+                pass
 
 
 
@@ -1300,6 +1325,7 @@ def update_report(management_number: int, report: models.ReportInput, background
 def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を削除"""
     filename = os.path.basename(filename)
+    wb = None
     try:
         excel_file = os.path.join(config.EXCEL_DIR, filename)
         
@@ -1332,7 +1358,6 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
         
         # Save the workbook
         wb.save(excel_file)
-        wb.close()
         
         # Clear cache for this file
         cache_key = (filename, '営業日報')
@@ -1350,6 +1375,12 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
     except Exception as e:
         logging.error(f"Error in delete_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+    finally:
+        if wb:
+            try:
+                wb.close()
+            except:
+                pass
 
 
 

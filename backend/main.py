@@ -98,7 +98,9 @@ if __name__ == "__main__":
 
     def ob():
         import time; time.sleep(2)
+        # ホストPC自身は常に127.0.0.1で開くことで、DHCP等でIPが変わってもlocalStorageが維持されるようにします
+        webbrowser.open("http://127.0.0.1:8001")
         local_ip = get_local_ip()
-        webbrowser.open(f"http://{local_ip}:8001")
+        logging.info(f"For access from other computers on the network, use: http://{local_ip}:8001")
     threading.Thread(target=ob, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")

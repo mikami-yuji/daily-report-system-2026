@@ -50,6 +50,32 @@ export default function SettingsPage(): React.JSX.Element {
             if (typeof window !== 'undefined') {
                 const savedCode = localStorage.getItem('viewer_passcode') || '';
                 setViewerPasscode(savedCode);
+                if (savedCode) {
+                    const verifyConnection = async (code: string): Promise<void> => {
+                        setIsTesting(true);
+                        setTestStatus('idle');
+                        setTestMessage('');
+                        try {
+                            const data = await getLatestDesignRequests(code);
+                            if (data && data.documents) {
+                                setTestStatus('success');
+                                const count = data.documents.length;
+                                setTestMessage(`接続成功！データを正常にロードしました (進行中: ${count}件)`);
+                            } else {
+                                setTestStatus('failed');
+                                setTestMessage(data.message || '接続に失敗しました。');
+                            }
+                        } catch (error: any) {
+                            console.error('Initial verification error:', error);
+                            setTestStatus('failed');
+                            const detail = error.response?.data?.detail || '接続エラーが発生しました。';
+                            setTestMessage(`接続失敗: ${detail}`);
+                        } finally {
+                            setIsTesting(false);
+                        }
+                    };
+                    verifyConnection(savedCode);
+                }
             }
 
             // Check if running as PWA

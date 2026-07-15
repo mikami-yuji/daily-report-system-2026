@@ -268,7 +268,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 toast('キャッシュされた得意先リストを使用します', { icon: '📡', id: 'cached-customers' });
             }
         });
-    }, [selectedFile, isOnline, cacheCustomers, cachedCustomers, initialDesignData]);
+    }, [selectedFile, isOnline, initialDesignData]);
 
 
     // Handle customer name change with keyword search across all fields including kana

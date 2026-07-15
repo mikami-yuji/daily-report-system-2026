@@ -24,6 +24,8 @@ type UseViewerNotificationsProps = {
  */
 export function useViewerNotifications({ selectedFile, enabled = true }: UseViewerNotificationsProps): void {
     const lastCheckedRef = useRef<number>(0);
+    const lastSalesPersonRef = useRef<string>('');
+    const isCheckingRef = useRef<boolean>(false);
     const enabledRef = useRef<boolean>(enabled);
     const selectedFileRef = useRef<string>(selectedFile);
 
@@ -57,9 +59,21 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
         // パスコードが未設定の場合はAPIリクエストを行わず負荷を軽減
         if (!passcode) return;
 
+        const now = Date.now();
+        // 担当営業が変わっておらず、かつ前回のチェックから5分(300,000ms)経過していない場合はスキップ
+        if (activeSalesPerson === lastSalesPersonRef.current && now - lastCheckedRef.current < 5 * 60 * 1000) {
+            return;
+        }
+
+        // 多重チェックを防止
+        if (isCheckingRef.current) return;
+        isCheckingRef.current = true;
+
         try {
             const data = await getLatestDesignRequests(passcode);
-            if (!data || !data.documents) return;
+            if (!data || !data.documents) {
+                return;
+            }
 
             // ローカルストレージから前回のスナップショットを取得
             const savedSnapshotStr = localStorage.getItem('viewer_snapshot');
@@ -73,7 +87,7 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
             }
 
             const newSnapshot: SnapshotData = {};
-            const notifications: string[] = [];
+            const notifications: { id: string; msg: string }[] = [];
 
             // 全案件をスナップショットに保存し、アクティブな営業担当者の案件のみ通知判定を行う
             data.documents.forEach((req: ViewerDesignRequest): void => {
@@ -110,23 +124,33 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
                             };
                             const oldLabel = statusLabelMap[old.status] || old.status;
                             const newLabel = statusLabelMap[status] || status;
-                            notifications.push(`デザイン「${content}」の状況が「${oldLabel}」から「${newLabel}」になりました。`);
+                            notifications.push({
+                                id: `viewer-status-${reqId}-${status}`,
+                                msg: `デザイン「${content}」の状況が「${oldLabel}」から「${newLabel}」になりました。`
+                            });
                         }
                         // 2. カンプアップロード完了 (ステータスそのままでカンプURLが追加された場合)
                         else if (!old.hasComp && hasComp && status !== 'completed') {
-                            notifications.push(`デザイン「${content}」の新しいカンプ画像がアップロードされました。`);
+                            notifications.push({
+                                id: `viewer-comp-${reqId}`,
+                                msg: `デザイン「${content}」の新しいカンプ画像がアップロードされました。`
+                            });
                         }
                     } else if (savedSnapshotStr && !oldSnapshot[reqId]) {
                         // 新しい依頼が追加された場合
-                        notifications.push(`新しいデザイン依頼「${content}」が企画課に登録されました。`);
+                        notifications.push({
+                            id: `viewer-new-${reqId}`,
+                            msg: `新しいデザイン依頼「${content}」が企画課に登録されました。`
+                        });
                     }
                 }
             });
 
             // 差分が検出された場合は通知を表示
             if (notifications.length > 0) {
-                notifications.forEach((msg: string): void => {
+                notifications.forEach(({ id, msg }): void => {
                     toast(msg, {
+                        id, // 一意のIDを指定して重複表示を防止
                         icon: '🔔',
                         duration: 6000,
                     });
@@ -136,8 +160,11 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
             // スナップショットを更新保存
             localStorage.setItem('viewer_snapshot', JSON.stringify(newSnapshot));
             lastCheckedRef.current = Date.now();
+            lastSalesPersonRef.current = activeSalesPerson;
         } catch (error) {
             console.error('Error checking viewer notifications:', error);
+        } finally {
+            isCheckingRef.current = false;
         }
     };
 

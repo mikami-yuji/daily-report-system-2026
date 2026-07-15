@@ -57,6 +57,7 @@ const handleResponseError = (error: any): Promise<never> => {
         }
         message = `企画課ビューアへのログインが必要です。下記URLからログインしてください。\nhttp://192.168.1.5:8888/viewer.html${redirectNotice}`;
         toast.error(`通信エラー: ${message}`, {
+            id: 'proxy-unauthorized',
             duration: 12000, // URLと案内を確認・コピーしやすくするため表示時間を長め(12秒)に設定
         });
     } else {

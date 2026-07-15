@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import toast from 'react-hot-toast';
 import { getLatestDesignRequests } from '@/lib/api';
 import { ViewerDesignRequest } from '@/types/report';
 
@@ -146,7 +145,8 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
                 }
             });
 
-            // 差分が検出された場合は通知を表示
+            // 差分が検出された場合は通知を表示（ポップアップ停止のためコメントアウト）
+            /*
             if (notifications.length > 0) {
                 notifications.forEach(({ id, msg }): void => {
                     toast(msg, {
@@ -156,6 +156,7 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
                     });
                 });
             }
+            */
 
             // スナップショットを更新保存
             localStorage.setItem('viewer_snapshot', JSON.stringify(newSnapshot));

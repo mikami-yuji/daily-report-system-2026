@@ -2,6 +2,9 @@
 
 ## [2026-07-15]
 ### 修正 (Fixed)
+- **企画課ビューワーにおけるエラー以外のポップアップ（トースト通知）の停止**:
+  - バックグラウンドでのデザイン状況更新の通知フック `useViewerNotifications` の呼び出しを [AppLayout.tsx](file:///c:/Users/asahi/.gemini/antigravity/playground/pyro-eclipse-2026/daily-report-system-2026/frontend/src/components/AppLayout.tsx) から削除し、自動トースト通知を完全に停止しました。これにより不要なポーリングやAPI呼び出しも無効化され、不要なバックエンド負荷を削減しました。
+  - 設定画面（[settings/page.tsx](file:///c:/Users/asahi/.gemini/antigravity/playground/pyro-eclipse-2026/daily-report-system-2026/frontend/src/app/settings/page.tsx)）、新規日報入力モーダル（[NewReportModal.tsx](file:///c:/Users/asahi/.gemini/antigravity/playground/pyro-eclipse-2026/daily-report-system-2026/frontend/src/components/reports/NewReportModal.tsx)）、日報一括入力画面（[batch/page.tsx](file:///c:/Users/asahi/.gemini/antigravity/playground/pyro-eclipse-2026/daily-report-system-2026/frontend/src/app/reports/batch/page.tsx)）において、企画課ビューアへの接続テストや接続が成功した際のエラー以外のポップアップ（`toast.success`による成功トースト）を削除しました。接続状態のUIテキストやアイコン表示はそのまま維持されます。
 - **企画課ビューワー通知重複ポップアップバグの修正**:
   - [useViewerNotifications.ts](file:///c:/Users/asahi/.gemini/antigravity/playground/pyro-eclipse-2026/daily-report-system-2026/frontend/src/hooks/useViewerNotifications.ts) において、以前はスナップショット（ローカルストレージ）への保存対象を現在開いている日報ファイルの担当営業の案件のみに絞り込んでいましたが、これが原因で日報ファイル（営業担当者）を切り替えるたびに他担当者の案件が新規登録と見なされて通知が重複してポップアップされる問題が発生していました。
   - 修正により、スナップショット自体にはAPIから取得したすべての案件の状況を保存し、通知の画面表示判定を行う際のみ現在の営業担当者の案件にフィルタリングする設計としました。これにより営業担当者の切り替え時にも正しい状態差分が判定され、重複通知が完全に解消されました。

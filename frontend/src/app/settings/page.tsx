@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Bell, BellOff, Smartphone, Wifi, WifiOff, Key, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { getLatestDesignRequests } from '@/lib/api';
-import toast from 'react-hot-toast';
 
 export default function SettingsPage(): React.JSX.Element {
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -30,7 +29,6 @@ export default function SettingsPage(): React.JSX.Element {
                 const count = data.documents.length;
                 setTestMessage(`接続成功！データを正常にロードしました (進行中: ${count}件)`);
                 localStorage.setItem('viewer_passcode', viewerPasscode);
-                toast.success('企画課ビューアに接続・保存しました！');
             } else {
                 setTestStatus('failed');
                 setTestMessage(data.message || '接続に失敗しました。');

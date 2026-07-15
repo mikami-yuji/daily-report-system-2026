@@ -211,7 +211,6 @@ export default function BatchReportPage() {
             setViewerAuthError(false);
             if (code) {
                 localStorage.setItem('viewer_passcode', code);
-                toast.success('企画課ビューアに接続しました！');
             }
         } catch (err: any) {
             console.error('Failed to fetch design requests from viewer:', err);

@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [2026-08-10]
+### 修正 (Fixed)
+- **GitHub Actions CI/CD パイプラインにおける ESLint エラーの解消**:
+  - `settings/page.tsx`、`NewReportModal.tsx`、`batch/page.tsx` における `catch (err: any)` の明示的 any 型（`@typescript-eslint/no-explicit-any`）を `unknown` および型キャストに修正しました。
+  - `PdfPreviewModal.tsx` 内の `useEffect` での同期的状態更新（`react-hooks/set-state-in-effect`）を `requestAnimationFrame` に変更し、無駄な同期レンダリングを回避しました。
+  - `backend/requirements.txt` に `python-multipart` および `requests` を明記し、サーバー単体起動およびビルド時の依存関係欠落を解消しました。
+
 ## [2026-07-15]
 ### 修正 (Fixed)
 - **企画課ビューワーにおけるエラー以外のポップアップ（トースト通知）の停止**:

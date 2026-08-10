@@ -22,8 +22,10 @@ export default function PdfPreviewModal({ isOpen, onClose, pdfUrl, title = 'PDFä
     useEffect((): (() => void) => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
-            setIsLoading(true);
-            setHasError(false);
+            requestAnimationFrame((): void => {
+                setIsLoading(true);
+                setHasError(false);
+            });
         } else {
             document.body.style.overflow = '';
         }

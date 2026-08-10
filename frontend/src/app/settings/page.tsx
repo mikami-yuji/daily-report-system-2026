@@ -33,10 +33,11 @@ export default function SettingsPage(): React.JSX.Element {
                 setTestStatus('failed');
                 setTestMessage(data.message || '接続に失敗しました。');
             }
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Test connection error:', error);
             setTestStatus('failed');
-            const detail = error.response?.data?.detail || '接続エラーが発生しました。サーバーの起動状態とパスコードをご確認ください。';
+            const err = error as { response?: { data?: { detail?: string } } };
+            const detail = err.response?.data?.detail || '接続エラーが発生しました。サーバーの起動状態とパスコードをご確認ください。';
             setTestMessage(`接続失敗: ${detail}`);
         } finally {
             setIsTesting(false);
@@ -65,10 +66,11 @@ export default function SettingsPage(): React.JSX.Element {
                                 setTestStatus('failed');
                                 setTestMessage(data.message || '接続に失敗しました。');
                             }
-                        } catch (error: any) {
+                        } catch (error: unknown) {
                             console.error('Initial verification error:', error);
                             setTestStatus('failed');
-                            const detail = error.response?.data?.detail || '接続エラーが発生しました。';
+                            const err = error as { response?: { data?: { detail?: string } } };
+                            const detail = err.response?.data?.detail || '接続エラーが発生しました。';
                             setTestMessage(`接続失敗: ${detail}`);
                         } finally {
                             setIsTesting(false);

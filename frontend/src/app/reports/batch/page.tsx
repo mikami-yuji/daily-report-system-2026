@@ -212,9 +212,10 @@ export default function BatchReportPage() {
             if (code) {
                 localStorage.setItem('viewer_passcode', code);
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Failed to fetch design requests from viewer:', err);
-            if (err.response?.status === 401) {
+            const error = err as { response?: { status?: number } };
+            if (error.response?.status === 401) {
                 setViewerAuthError(true);
             }
         } finally {

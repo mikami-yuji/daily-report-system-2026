@@ -76,10 +76,10 @@ def get_customers(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, A
     """Get customer list from the Excel file"""
     try:
         # Get dataframe from cache
-        df = cache.get_cached_dataframe(filename, '得意先_List')
+        df = cache.get_cached_dataframe(filename, excel_schema.SHEET_CUSTOMERS)
         
         # Clean up column names
-        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        excel_schema.clean_column_names(df)
         
         # デバッグログ: カラム名を出力
         logging.info(f"得意先_List columns: {list(df.columns)}")
@@ -148,10 +148,10 @@ def get_priority_customers(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Di
     """得意先_Listからカラム H (重点顧客) が「重点」の顧客を取得。カラム I の担当者情報も含める"""
     try:
         # 得意先_Listを読み込み
-        df = cache.get_cached_dataframe(filename, '得意先_List')
+        df = cache.get_cached_dataframe(filename, excel_schema.SHEET_CUSTOMERS)
         
         # カラム名をクリーンアップ
-        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        excel_schema.clean_column_names(df)
         
         # カラム名を保存
         col_customer_cd = df.columns[0]  # 得意先CD
@@ -273,10 +273,10 @@ def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCE
     """指定された管理番号の日報を取得"""
     try:
         # Get dataframe from cache
-        df = cache.get_cached_dataframe(filename, '営業日報')
+        df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
         
         # Clean up column names
-        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        excel_schema.clean_column_names(df)
         
         # Rename specific columns
         df = df.rename(columns={
@@ -337,10 +337,10 @@ def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any
         try:
             logging.info(f"Fetching reports for {filename} from {config.EXCEL_DIR} (attempt {attempt + 1}/{max_retries + 1})")
             # キャッシュからDataFrameを取得
-            df = cache.get_cached_dataframe(filename, '営業日報')
+            df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
             
             # 列名のクリーンアップ（改行除去・空白トリム）
-            df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+            excel_schema.clean_column_names(df)
             
             # フロントエンド期待値に合わせた列名のリネーム
             df = df.rename(columns={
@@ -439,10 +439,10 @@ def get_interviewers(
     """Get list of interviewers for a specific customer with optional name filtering"""
     try:
         # Get dataframe from cache
-        df = cache.get_cached_dataframe(filename, '営業日報')
+        df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
         
         # Clean up column names
-        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        excel_schema.clean_column_names(df)
         
         # Rename specific columns to standard names
         df = df.rename(columns={
@@ -535,10 +535,10 @@ def get_designs(
         logging.info(f"get_designs called: customer_cd={customer_cd}, delivery_name={delivery_name}")
         
         # Get dataframe from cache
-        df = cache.get_cached_dataframe(filename, '営業日報')
+        df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
         
         # Clean up column names
-        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        excel_schema.clean_column_names(df)
         
         # Rename specific columns
         df = df.rename(columns={
@@ -629,8 +629,8 @@ def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE) 
         if not customer_name or not customer_name.strip():
             return {"customer_name": customer_name, "suggested_area": ""}
             
-        df = cache.get_cached_dataframe(filename, '営業日報')
-        df.columns = [str(col).replace('\n', '') for col in df.columns]
+        df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
+        excel_schema.clean_column_names(df)
         
         name_lower = customer_name.lower().strip()
         cond = pd.Series(False, index=df.index)

@@ -9,6 +9,45 @@ SHEET_CUSTOMERS = "得意先_List"
 SHEET_SALES = "売上推移データ"
 SHEET_SETTINGS = "設定"
 
+# --- Column Names ---
+class ColumnNames:
+    MANAGEMENT_NUMBER = "管理番号"
+    DATE = "日付"
+    ACTION_CONTENT = "行動内容"
+    AREA = "エリア"
+    CUSTOMER_CD = "得意先CD"
+    DIRECT_DELIVERY_CD = "直送先CD"
+    CUSTOMER_NAME = "訪問先名"
+    DIRECT_DELIVERY_NAME = "直送先名"
+    PRIORITY_CUSTOMER = "重点顧客"
+    RANK = "ランク"
+    CUSTOMER_TARGET = "得意先目標"
+    INTERVIEWEE = "面談者"
+    STAY_TIME = "滞在時間"
+    DESIGN_PROPOSAL = "デザイン提案有無"
+    DESIGN_TYPE = "デザイン種別"
+    DESIGN_NAME = "デザイン名"
+    DESIGN_STATUS = "デザイン進捗状況"
+    DESIGN_REQUEST_NO = "デザイン依頼No."
+    BUSINESS_CONTENT = "商談内容"
+    PROPOSAL_ITEM = "提案物"
+    NEXT_PLAN = "次回プラン"
+    COMPETITOR_INFO = "競合他社情報"
+    BOSS_COMMENT = "上長コメント"
+    COMMENT_REPLY = "コメント返信欄"
+    APPROVAL_BOSS = "上長"
+    APPROVAL_YAMAZUMI = "山澄常務"
+    APPROVAL_OKAMOTO = "岡本常務"
+    APPROVAL_NAKANO = "中野次長"
+    READ_CHECK = "既読チェック"
+
+
+def clean_column_names(df) -> Any:
+    """DataFrameのカラム名から改行や前後の余分な空白を除去します"""
+    if df is not None and hasattr(df, 'columns'):
+        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+    return df
+
 # --- Column Indices for "営業日報" (1-indexed for openpyxl) ---
 class DailyReportColumns:
     MANAGEMENT_NUMBER = 1      # A: 管理番号

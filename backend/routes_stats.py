@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Any
 import config
 import cache
 import models
+import excel_schema
 
 router = APIRouter()
 
@@ -92,18 +93,18 @@ def get_team_summary(month: str = None):
         for filename in target_files:
             try:
                 staff_name = extract_staff_name_py(filename)
-                df = cache.get_cached_dataframe(filename, '営業日報')
+                df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
                 if df is None or df.empty:
                     logging.debug(f"File {filename}: Empty dataframe.")
                     continue
 
                 # カラムクリーンアップ
-                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+                excel_schema.clean_column_names(df)
                 
-                date_col = next((c for c in df.columns if '日付' in c), '日付')
-                action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
-                priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
-                area_col = next((c for c in df.columns if 'エリア' in c), 'エリア')
+                date_col = next((c for c in df.columns if '日付' in c), excel_schema.ColumnNames.DATE)
+                action_col = next((c for c in df.columns if '行動内容' in c), excel_schema.ColumnNames.ACTION_CONTENT)
+                priority_col = next((c for c in df.columns if '重点' in c), excel_schema.ColumnNames.PRIORITY_CUSTOMER)
+                area_col = next((c for c in df.columns if 'エリア' in c), excel_schema.ColumnNames.AREA)
 
                 # 日付パースとフィルタ
                 df['dt'] = df[date_col].apply(parse_dt)
@@ -177,7 +178,7 @@ def get_dashboard_stats(filename: str = config.DEFAULT_EXCEL_FILE):
         logging.info(f"--- Dashboard Stats for {filename} ---")
         # Excelファイルが読めない場合（他のユーザーが開いている等）は空レスポンスを返す
         try:
-            df = cache.get_cached_dataframe(filename, '営業日報')
+            df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
         except Exception as read_err:
             logging.warning(f"Dashboard: Cannot read file {filename}: {read_err}")
             return empty_response
@@ -189,13 +190,13 @@ def get_dashboard_stats(filename: str = config.DEFAULT_EXCEL_FILE):
         logging.info(f"Dashboard: Raw rows={len(df)}")
 
         # カラム名のクリーンアップ
-        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
-        date_col = next((c for c in df.columns if '日付' in c or '年月日' in c), '日付')
-        action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
-        priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
-        customer_col = next((c for c in df.columns if '得意先CD' in c), '得意先CD')
-        customer_name_col = next((c for c in df.columns if '訪問先名' in c or '得意先名' in c), '訪問先名')
-        area_col = next((c for c in df.columns if 'エリア' in c), 'エリア')
+        excel_schema.clean_column_names(df)
+        date_col = next((c for c in df.columns if '日付' in c or '年月日' in c), excel_schema.ColumnNames.DATE)
+        action_col = next((c for c in df.columns if '行動内容' in c), excel_schema.ColumnNames.ACTION_CONTENT)
+        priority_col = next((c for c in df.columns if '重点' in c), excel_schema.ColumnNames.PRIORITY_CUSTOMER)
+        customer_col = next((c for c in df.columns if '得意先CD' in c), excel_schema.ColumnNames.CUSTOMER_CD)
+        customer_name_col = next((c for c in df.columns if '訪問先名' in c or '得意先名' in c), excel_schema.ColumnNames.CUSTOMER_NAME)
+        area_col = next((c for c in df.columns if 'エリア' in c), excel_schema.ColumnNames.AREA)
 
         logging.info(f"Dashboard: Cols detected - date={date_col}, action={action_col}")
 
@@ -321,7 +322,7 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
     try:
         logging.info(f"--- Monthly Summary Stats for {filename}, month={month} ---")
         try:
-            df = cache.get_cached_dataframe(filename, '営業日報')
+            df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
         except Exception as read_err:
             logging.warning(f"MonthlySummary: Cannot read file {filename}: {read_err}")
             return empty_response
@@ -329,18 +330,18 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
         if df is None or df.empty:
             return empty_response
 
-        df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
-        date_col = next((c for c in df.columns if '日付' in c or '年月日' in c), '日付')
-        action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
-        priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
-        customer_col = next((c for c in df.columns if '得意先CD' in c), '得意先CD')
-        customer_name_col = next((c for c in df.columns if '訪問先名' in c or '得意先名' in c), '訪問先名')
-        area_col = next((c for c in df.columns if 'エリア' in c), 'エリア')
-        dd_code_col = next((c for c in df.columns if '直送先CD' in c), '直送先CD')
-        dd_name_col = next((c for c in df.columns if '直送先名' in c), '直送先名')
-        rank_col = next((c for c in df.columns if 'ランク' in c), 'ランク')
-        design_exist_col = next((c for c in df.columns if 'デザイン提案有無' in c), 'デザイン提案有無')
-        design_status_col = next((c for c in df.columns if 'デザイン進捗状況' in c), 'デザイン進捗状況')
+        excel_schema.clean_column_names(df)
+        date_col = next((c for c in df.columns if '日付' in c or '年月日' in c), excel_schema.ColumnNames.DATE)
+        action_col = next((c for c in df.columns if '行動内容' in c), excel_schema.ColumnNames.ACTION_CONTENT)
+        priority_col = next((c for c in df.columns if '重点' in c), excel_schema.ColumnNames.PRIORITY_CUSTOMER)
+        customer_col = next((c for c in df.columns if '得意先CD' in c), excel_schema.ColumnNames.CUSTOMER_CD)
+        customer_name_col = next((c for c in df.columns if '訪問先名' in c or '得意先名' in c), excel_schema.ColumnNames.CUSTOMER_NAME)
+        area_col = next((c for c in df.columns if 'エリア' in c), excel_schema.ColumnNames.AREA)
+        dd_code_col = next((c for c in df.columns if '直送先CD' in c), excel_schema.ColumnNames.DIRECT_DELIVERY_CD)
+        dd_name_col = next((c for c in df.columns if '直送先名' in c), excel_schema.ColumnNames.DIRECT_DELIVERY_NAME)
+        rank_col = next((c for c in df.columns if 'ランク' in c), excel_schema.ColumnNames.RANK)
+        design_exist_col = next((c for c in df.columns if 'デザイン提案有無' in c), excel_schema.ColumnNames.DESIGN_PROPOSAL)
+        design_status_col = next((c for c in df.columns if 'デザイン進捗状況' in c), excel_schema.ColumnNames.DESIGN_STATUS)
 
         def parse_dt(x):
             if pd.isna(x): return pd.NaT
@@ -647,9 +648,9 @@ def get_points_table(target_months_count: int = 7):
                 # 1. 重点件数（得意先_Listから個人の重点顧客の数を数える）
                 priority_count = 0
                 try:
-                    cust_df = cache.get_cached_dataframe(filename, '得意先_List')
+                    cust_df = cache.get_cached_dataframe(filename, excel_schema.SHEET_CUSTOMERS)
                     if cust_df is not None and not cust_df.empty:
-                        cust_df.columns = [str(col).replace('\n', '').strip() for col in cust_df.columns]
+                        excel_schema.clean_column_names(cust_df)
                         priority_col = next((c for c in cust_df.columns if '重点' in c), None)
                         rep_col = cust_df.columns[8] if len(cust_df.columns) > 8 else None
                         
@@ -689,7 +690,7 @@ def get_points_table(target_months_count: int = 7):
                     logging.warning(f"Error reading priority count for {filename}: {cust_err}")
 
                 # 2. 日報データの読み込み
-                df = cache.get_cached_dataframe(filename, '営業日報')
+                df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
                 if df is None or df.empty:
                     # 空白レコードを追加
                     monthly_data = {label: {"priority_calls": 0, "general_calls": 0, "priority_visits": 0, "general_visits": 0} for _, label in month_keys}
@@ -706,11 +707,11 @@ def get_points_table(target_months_count: int = 7):
                     continue
 
                 # カラムクリーンアップ
-                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+                excel_schema.clean_column_names(df)
                 
-                date_col = next((c for c in df.columns if '日付' in c), '日付')
-                action_col = next((c for c in df.columns if '行動内容' in c), '行動内容')
-                priority_col = next((c for c in df.columns if '重点' in c), '重点顧客')
+                date_col = next((c for c in df.columns if '日付' in c), excel_schema.ColumnNames.DATE)
+                action_col = next((c for c in df.columns if '行動内容' in c), excel_schema.ColumnNames.ACTION_CONTENT)
+                priority_col = next((c for c in df.columns if '重点' in c), excel_schema.ColumnNames.PRIORITY_CUSTOMER)
 
                 df['dt'] = df[date_col].apply(parse_dt)
                 df = df.dropna(subset=['dt'])

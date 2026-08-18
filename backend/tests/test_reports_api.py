@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import routes_reports
+import routes_stats
 import models
 
 def test_api_health():
@@ -38,3 +39,11 @@ def test_report_input_model_validation():
     assert report.直送先CD == ""
     assert report.面談者 == "田中様"
     assert report.行動内容 == ""
+
+def test_dashboard_stats_endpoint():
+    """/api/stats/dashboard エンドポイント関数のテスト"""
+    response = routes_stats.get_dashboard_stats()
+    assert isinstance(response, dict)
+    assert "summary" in response
+    assert "monthly" in response
+    assert "ranking" in response

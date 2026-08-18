@@ -29,12 +29,21 @@ def cleanup_old_backups(
     - 保持件数が max_keep（デフォルト50件）を超える場合、古い順に削除
     - 安全のため、最低 min_keep（デフォルト5件）は常に保持
     """
+    # 【絶対安全ガード 1】対象ディレクトリが「backup」フォルダでない場合は絶対に削除処理を実行しない
+    norm_backup_dir = os.path.abspath(backup_dir)
+    if os.path.basename(norm_backup_dir).lower() != 'backup':
+        logging.error(f"SAFETY ABORT: Attempted to run backup cleanup on non-backup directory: {backup_dir}")
+        return 0
+
     if not os.path.exists(backup_dir):
         return 0
 
     deleted_count = 0
     now = datetime.now()
     cutoff_time = now - timedelta(days=max_age_days)
+
+    # タイムスタンプ（_YYYYMMDD または _YYYYMMDD_HHMMSS）の存在を必須とする安全パターン
+    TIMESTAMP_REQUIRED_PATTERN = re.compile(r'_\d{8}(?:_\d{2,6})?(?:_\d+)?\.[^.]+$', re.IGNORECASE)
 
     # 厳密なファイル名マッチャーの構築
     pattern = None
@@ -49,6 +58,10 @@ def cleanup_old_backups(
         backup_files = []
         for f in os.listdir(backup_dir):
             if f.startswith('~$'):
+                continue
+            
+            # 【絶対安全ガード 2】タイムスタンプサフィックスのない原本ファイル形式は絶対に除外
+            if not TIMESTAMP_REQUIRED_PATTERN.search(f):
                 continue
             
             # パターン一致またはプレフィックス一致判定

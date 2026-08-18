@@ -18,6 +18,8 @@ from typing import Optional, List, Dict, Any
 import config
 import cache
 import models
+import excel_schema
+import excel_io
 
 router = APIRouter()
 
@@ -763,59 +765,20 @@ def add_report(
                 target_cell.protection = copy(source_cell.protection)
                 target_cell.alignment = copy(source_cell.alignment)
 
-        # Define the columns to write to and their values
-        # 2026年度版カラム構造（K列に「得意先目標」が追加）
-        
-        # 自由入力（得意先CDが空で、訪問先名が入っている場合）は、ダミーの得意先CD「999999」を入れる
-        write_customer_cd = report.得意先CD
-        if not write_customer_cd and report.訪問先名:
-            write_customer_cd = "999999"
-
-        columns_to_write = {
-            1: new_mgmt_num,        # A: 管理番号
-            2: report.日付,          # B: 日付
-            3: report.行動内容,       # C: 行動内容
-            4: report.エリア,         # D: エリア
-            5: write_customer_cd,    # E: 得意先CD.
-            6: report.直送先CD,       # F: 直送先CD.
-            7: report.訪問先名,       # G: 訪問先名/得意先名
-            8: report.直送先名,       # H: 直送先名
-            9: report.重点顧客,       # I: 重点顧客
-            10: report.ランク,        # J: ランク
-            11: current_target,       # K: 得意先目標（得意先_Listから自動取得）
-            12: report.面談者,        # L: 面談者
-            13: report.滞在時間,      # M: 滞在時間
-            14: report.デザイン提案有無,  # N: デザイン提案有無
-            15: report.デザイン種別,   # O: デザイン種別
-            16: report.デザイン名,     # P: デザイン名
-            17: report.デザイン進捗状況, # Q: デザイン進捗状況
-            18: report.デザイン依頼No,  # R: デザイン依頼No.
-            19: report.商談内容,       # S: 商談内容
-            20: report.提案物,         # T: 提案物
-            21: report.次回プラン,     # U: 次回プラン
-            22: report.競合他社情報,   # V: 競合他社情報
-            23: report.上長コメント,   # W: 上長コメント
-            24: report.コメント返信欄  # X: コメント返信欄
-        }
+        # Prepare data to write using excel_schema
+        columns_to_write = excel_schema.get_new_report_column_data(report, new_mgmt_num, current_target)
 
         for col_idx, value in columns_to_write.items():
             target_cell = ws.cell(row=next_row, column=col_idx)
             target_cell.value = value
             
             # Copy style from the row above (max_mgmt_row)
-            # Ensure we are copying from a valid row
             if max_mgmt_row >= 2:
                 source_cell = ws.cell(row=max_mgmt_row, column=col_idx)
                 copy_style(source_cell, target_cell)
 
-
-        
-        # Save the workbook (Critical path - blocking)
-        wb.save(excel_file)
-
-        # Create backup in background
-        background_tasks.add_task(cache.create_backup, excel_file)
-        
+        # Save workbook safely with retry
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
         
         # Clear cache
         cache_key = (filename, '営業日報')
@@ -827,17 +790,17 @@ def add_report(
             "management_number": new_mgmt_num,
             "file_path": os.path.abspath(excel_file)
         }
-    except PermissionError:
-        raise HTTPException(
-            status_code=409,
-            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
-        )
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in add_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         if wb:
-            wb.close()
+            try:
+                wb.close()
+            except Exception:
+                pass
 
 # コメント更新専用エンドポイント
 
@@ -882,35 +845,11 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
             wb.close()
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
         
-        # 2026年度版: X列(24) = コメント返信欄
-        ws.cell(row=target_row, column=24, value=reply.コメント返信欄)
-        logging.debug("cell set, saving to temp file...")
+        # Set reply column from excel_schema
+        ws.cell(row=target_row, column=excel_schema.DailyReportColumns.COMMENT_REPLY, value=reply.コメント返信欄)
         
-        # 安全な保存: 一時ファイルに保存してから置き換え
-        temp_dir = tempfile.gettempdir()
-        temp_file = os.path.join(temp_dir, f"temp_{filename}")
-        
-        try:
-            # 一時ファイルに保存
-            wb.save(temp_file)
-            logging.debug(f"saved to temp: {temp_file}")
-            
-            # 一時ファイルが正常か確認（読み込みテスト）
-            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
-            test_wb.close()
-            logging.debug("temp file verified")
-            
-            # 元のファイルを一時ファイルで置き換え
-            shutil.copy2(temp_file, excel_file)
-            logging.debug("replaced original file")
-            
-        finally:
-            # 一時ファイルを削除
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
+        # 安全な保存（リトライ・バックアップ付き）
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
         
         # Clear cache
         cache_key = (filename, '営業日報')
@@ -920,11 +859,6 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
         return {"success": True, "management_number": management_number}
     except HTTPException:
         raise
-    except PermissionError:
-        raise HTTPException(
-            status_code=409,
-            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
-        )
     except Exception as e:
         logging.error(f"Error in update_report_reply: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -932,7 +866,7 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
         if wb:
             try:
                 wb.close()
-            except:
+            except Exception:
                 pass
 
 
@@ -977,8 +911,8 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
         if comment.original_values:
             logging.debug(f"Performing conflict check for Comment {management_number}")
             check_fields = {
-                23: '上長コメント',
-                24: 'コメント返信欄'
+                excel_schema.DailyReportColumns.BOSS_COMMENT: '上長コメント',
+                excel_schema.DailyReportColumns.COMMENT_REPLY: 'コメント返信欄'
             }
             conflicts = []
             for col_idx, field_name in check_fields.items():
@@ -1003,49 +937,23 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
                 )
         # --------------------------------
         
-        # Update only provided fields
-        # 2026年度版: W列(23) = 上長コメント, X列(24) = コメント返信欄
+        # Update only provided fields using excel_schema
         if comment.上長コメント is not None:
-            ws.cell(row=target_row, column=23, value=comment.上長コメント)
+            ws.cell(row=target_row, column=excel_schema.COMMENT_COLUMN_MAPPING['上長コメント'], value=comment.上長コメント)
         if comment.コメント返信欄 is not None:
-            ws.cell(row=target_row, column=24, value=comment.コメント返信欄)
+            ws.cell(row=target_row, column=excel_schema.COMMENT_COLUMN_MAPPING['コメント返信欄'], value=comment.コメント返信欄)
         
-        # 安全な保存: 一時ファイルに保存してから置き換え
-        temp_dir = tempfile.gettempdir()
-        temp_file = os.path.join(temp_dir, f"temp_{filename}")
-        
-        try:
-            wb.save(temp_file)
-            
-            # 一時ファイルが正常か確認
-            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
-            test_wb.close()
-            
-            # 元のファイルを置き換え
-            shutil.copy2(temp_file, excel_file)
-        finally:
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
+        # 安全な保存（リトライ・バックアップ付き）
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
         
         # Clear cache
         cache_key = (filename, '営業日報')
         if cache_key in cache.CACHE:
             del cache.CACHE[cache_key]
         
-        # Create backup in background
-        background_tasks.add_task(cache.create_backup, excel_file)
-        
         return {"success": True, "management_number": management_number}
     except HTTPException:
         raise
-    except PermissionError:
-        raise HTTPException(
-            status_code=409,
-            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
-        )
     except Exception as e:
         logging.error(f"Error in update_report_comment: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1053,7 +961,7 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
         if wb:
             try:
                 wb.close()
-            except:
+            except Exception:
                 pass
 
 
@@ -1096,15 +1004,8 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
         # --- Optimistic Locking Check ---
         if approval.original_values:
             logging.debug(f"Performing conflict check for Approval {management_number}")
-            column_mapping = {
-                '上長': 25,           # Y列
-                '山澄常務': 26,        # Z列
-                '岡本常務': 27,        # AA列
-                '中野次長': 28,        # AB列
-                '既読チェック': 29     # AC列
-            }
             conflicts = []
-            for field_name, col_idx in column_mapping.items():
+            for field_name, col_idx in excel_schema.APPROVAL_COLUMN_MAPPING.items():
                 if getattr(approval, field_name) is not None:
                     current_val = ws.cell(row=target_row, column=col_idx).value
                     current_str = str(current_val) if current_val is not None else ""
@@ -1129,61 +1030,23 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
                 )
         # --------------------------------
         
-        # Update only provided fields
-        # 2026年度版カラムマッピング: Y=上長(25), Z=山澄常務(26), AA=岡本常務(27), AB=中野次長(28), AC=既読チェック(29)
-        column_mapping = {
-            '上長': 25,           # Y列
-            '山澄常務': 26,        # Z列
-            '岡本常務': 27,        # AA列
-            '中野次長': 28,        # AB列
-            '既読チェック': 29     # AC列
-        }
+        # Update only provided fields using excel_schema
+        for field_name, col_idx in excel_schema.APPROVAL_COLUMN_MAPPING.items():
+            val = getattr(approval, field_name, None)
+            if val is not None:
+                ws.cell(row=target_row, column=col_idx, value=val)
         
-        if approval.上長 is not None:
-            ws.cell(row=target_row, column=column_mapping['上長'], value=approval.上長)
-        if approval.山澄常務 is not None:
-            ws.cell(row=target_row, column=column_mapping['山澄常務'], value=approval.山澄常務)
-        if approval.岡本常務 is not None:
-            ws.cell(row=target_row, column=column_mapping['岡本常務'], value=approval.岡本常務)
-        if approval.中野次長 is not None:
-            ws.cell(row=target_row, column=column_mapping['中野次長'], value=approval.中野次長)
-        if approval.既読チェック is not None:
-            ws.cell(row=target_row, column=column_mapping['既読チェック'], value=approval.既読チェック)
-        
-        # 安全な保存
-        temp_dir = tempfile.gettempdir()
-        temp_file = os.path.join(temp_dir, f"temp_{filename}")
-        
-        try:
-            wb.save(temp_file)
-            
-            test_wb = openpyxl.load_workbook(temp_file, read_only=True)
-            test_wb.close()
-            
-            shutil.copy2(temp_file, excel_file)
-        finally:
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
+        # 安全な保存（リトライ・バックアップ付き）
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
         
         # Clear cache
         cache_key = (filename, '営業日報')
         if cache_key in cache.CACHE:
             del cache.CACHE[cache_key]
         
-        # Create backup in background
-        background_tasks.add_task(cache.create_backup, excel_file)
-        
         return {"success": True, "management_number": management_number}
     except HTTPException:
         raise
-    except PermissionError:
-        raise HTTPException(
-            status_code=409,
-            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
-        )
     except Exception as e:
         logging.error(f"Error in update_report_approval: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1191,7 +1054,7 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
         if wb:
             try:
                 wb.close()
-            except:
+            except Exception:
                 pass
 
 
@@ -1235,9 +1098,9 @@ def update_report(management_number: int, report: models.ReportInput, background
             
             # Fields to check for conflicts (critical text fields)
             check_fields = {
-                23: '上長コメント',
-                24: 'コメント返信欄',
-                19: '商談内容'
+                excel_schema.DailyReportColumns.BOSS_COMMENT: '上長コメント',
+                excel_schema.DailyReportColumns.COMMENT_REPLY: 'コメント返信欄',
+                excel_schema.DailyReportColumns.BUSINESS_CONTENT: '商談内容'
             }
             
             conflicts = []
@@ -1264,41 +1127,14 @@ def update_report(management_number: int, report: models.ReportInput, background
                 )
         # --------------------------------
         
-        # Update all fields (2026年度版カラム構造 - K列に得意先目標が追加)
-        columns_to_write = {
-            2: report.日付,              # B: 日付
-            3: report.行動内容,           # C: 行動内容
-            4: report.エリア,             # D: エリア
-            5: report.得意先CD,           # E: 得意先CD.
-            6: report.直送先CD,           # F: 直送先CD.
-            7: report.訪問先名,           # G: 訪問先名/得意先名
-            8: report.直送先名,           # H: 直送先名
-            9: report.重点顧客,           # I: 重点顧客
-            10: report.ランク,            # J: ランク
-            # 11: 得意先目標 (K) - 手動入力のため省略
-            12: report.面談者,            # L: 面談者
-            13: report.滞在時間,          # M: 滞在時間
-            14: report.デザイン提案有無,   # N: デザイン提案有無
-            15: report.デザイン種別,       # O: デザイン種別
-            16: report.デザイン名,         # P: デザイン名
-            17: report.デザイン進捗状況,   # Q: デザイン進捗状況
-            18: report.デザイン依頼No,     # R: デザイン依頼No.
-            19: report.商談内容,           # S: 商談内容
-            20: report.提案物,             # T: 提案物
-            21: report.次回プラン,         # U: 次回プラン
-            22: report.競合他社情報,       # V: 競合他社情報
-            23: report.上長コメント,       # W: 上長コメント
-            24: report.コメント返信欄      # X: コメント返信欄
-        }
+        # Update all fields using excel_schema
+        columns_to_write = excel_schema.get_update_report_column_data(report)
 
         for col_idx, value in columns_to_write.items():
             ws.cell(row=target_row, column=col_idx, value=value)
         
-        # Save the workbook (Critical path - blocking)
-        wb.save(excel_file)
-        
-        # Create backup in background
-        background_tasks.add_task(cache.create_backup, excel_file)
+        # Save workbook safely with retry
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
         
         # Clear cache for this file
         cache_key = (filename, '営業日報')
@@ -1309,14 +1145,13 @@ def update_report(management_number: int, report: models.ReportInput, background
     except HTTPException:
         raise
     except Exception as e:
-        # 例外が発生した場合は500エラーとして上位に伝搬します
         logging.error(f"Error in update_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         if wb:
             try:
                 wb.close()
-            except:
+            except Exception:
                 pass
 
 
@@ -1356,8 +1191,8 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
         # Delete the row
         ws.delete_rows(target_row, 1)
         
-        # Save the workbook
-        wb.save(excel_file)
+        # Save workbook safely with retry
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
         
         # Clear cache for this file
         cache_key = (filename, '営業日報')
@@ -1367,11 +1202,6 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
         return {"message": "Report deleted successfully", "management_number": management_number}
     except HTTPException:
         raise
-    except PermissionError:
-        raise HTTPException(
-            status_code=409,
-            detail="ファイルが開かれているため保存できません。Excelファイルを閉じてから再度実行してください。"
-        )
     except Exception as e:
         logging.error(f"Error in delete_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1379,7 +1209,7 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
         if wb:
             try:
                 wb.close()
-            except:
+            except Exception:
                 pass
 
 

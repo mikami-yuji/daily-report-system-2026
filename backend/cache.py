@@ -9,11 +9,22 @@ from fastapi import HTTPException
 import pandas as pd
 import config
 
+import re
+
 CACHE = {}
 
-def cleanup_old_backups(backup_dir: str, prefix: str = "", max_keep: int = 50, max_age_days: int = 30, min_keep: int = 5) -> int:
+def cleanup_old_backups(
+    backup_dir: str, 
+    base_name: str = "", 
+    ext: str = "", 
+    prefix: str = "", 
+    max_keep: int = 50, 
+    max_age_days: int = 30, 
+    min_keep: int = 5
+) -> int:
     """
     バックアップディレクトリ内の古いバックアップファイルを自動クリーンアップします。
+    - base_name と ext が指定されている場合は正規表現（f"{base_name}_YYYYMMDD_HHMMSS{ext}"）で厳密に一致判定
     - max_age_days（デフォルト30日）を超えた古いファイルを削除
     - 保持件数が max_keep（デフォルト50件）を超える場合、古い順に削除
     - 安全のため、最低 min_keep（デフォルト5件）は常に保持
@@ -25,22 +36,39 @@ def cleanup_old_backups(backup_dir: str, prefix: str = "", max_keep: int = 50, m
     now = datetime.now()
     cutoff_time = now - timedelta(days=max_age_days)
 
+    # 厳密なファイル名マッチャーの構築
+    pattern = None
+    if base_name and ext:
+        # 例: ^2026年度日報_\d{8}_\d{6}(\.xlsm|\.xlsx|\.csv)$
+        pattern = re.compile(rf"^{re.escape(base_name)}_\d{{8}}_\d{{6}}(?:_\d+)?{re.escape(ext)}$", re.IGNORECASE)
+    elif base_name:
+        pattern = re.compile(rf"^{re.escape(base_name)}_\d{{8}}_\d{{6}}(?:_\d+)?\.[^.]+$", re.IGNORECASE)
+
     try:
         # バックアップファイルを収集
         backup_files = []
         for f in os.listdir(backup_dir):
             if f.startswith('~$'):
                 continue
-            if prefix and not f.startswith(prefix):
+            
+            # パターン一致またはプレフィックス一致判定
+            if pattern:
+                if not pattern.match(f):
+                    continue
+            elif prefix:
+                if not f.startswith(prefix):
+                    continue
+            elif not f.endswith(('.xlsm', '.xlsx', '.csv')):
                 continue
-            if f.endswith(('.xlsm', '.xlsx', '.csv')):
-                fp = os.path.join(backup_dir, f)
-                if os.path.isfile(fp):
-                    try:
-                        mtime = os.path.getmtime(fp)
-                        backup_files.append((fp, datetime.fromtimestamp(mtime)))
-                    except OSError:
-                        continue
+
+            fp = os.path.join(backup_dir, f)
+            if os.path.isfile(fp):
+                try:
+                    mtime = os.path.getmtime(fp)
+                    backup_files.append((fp, datetime.fromtimestamp(mtime)))
+                except OSError as os_err:
+                    logging.debug(f"Cannot get mtime for backup file {fp}: {os_err}")
+                    continue
 
         # 新しい順（降順）にソート
         backup_files.sort(key=lambda x: x[1], reverse=True)
@@ -62,14 +90,16 @@ def cleanup_old_backups(backup_dir: str, prefix: str = "", max_keep: int = 50, m
             excess_files = remaining_files[max_keep:]
             files_to_delete.extend(excess_files)
 
-        # 削除実行
+        # 削除実行（ファイルロック時は安全にスキップ）
         for fp in set(files_to_delete):
             try:
                 os.remove(fp)
                 deleted_count += 1
-                logging.info(f"Cleaned up old backup: {fp}")
-            except Exception as del_err:
-                logging.warning(f"Failed to remove old backup {fp}: {del_err}")
+                logging.info(f"Cleaned up old backup: {os.path.basename(fp)}")
+            except PermissionError:
+                logging.info(f"Backup file is currently open/locked, skipping cleanup for: {os.path.basename(fp)}")
+            except OSError as del_err:
+                logging.warning(f"Could not remove old backup {os.path.basename(fp)}: {del_err}")
 
     except Exception as e:
         logging.warning(f"Error during backup cleanup: {e}")
@@ -81,7 +111,7 @@ def create_backup(file_path: str, max_keep: int = 50, max_age_days: int = 30) ->
     try:
         backup_dir = os.path.join(os.path.dirname(file_path), 'backup')
         if not os.path.exists(backup_dir):
-            os.makedirs(backup_dir)
+            os.makedirs(backup_dir, exist_ok=True)
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = os.path.basename(file_path)
@@ -92,10 +122,19 @@ def create_backup(file_path: str, max_keep: int = 50, max_age_days: int = 30) ->
         shutil.copy2(file_path, backup_path)
         logging.info(f"Backup created: {backup_path}")
 
-        # バックアップ世代管理・クリーンアップ実行（同名ファイルのプレフィックスを対象）
-        cleanup_old_backups(backup_dir, prefix=f"{name}_", max_keep=max_keep, max_age_days=max_age_days)
+        # バックアップ世代管理・クリーンアップ実行（完全一致パターンで判定）
+        cleanup_old_backups(
+            backup_dir, 
+            base_name=name, 
+            ext=ext, 
+            max_keep=max_keep, 
+            max_age_days=max_age_days
+        )
 
         return backup_path
+    except PermissionError as perm_err:
+        logging.warning(f"Permission denied creating backup in {os.path.dirname(file_path)}: {perm_err}")
+        return None
     except Exception as e:
         logging.warning(f"Failed to create backup: {e}")
         return None

@@ -78,3 +78,43 @@ def test_cleanup_old_backups_by_age_with_min_keep(tmp_path):
     
     remaining = os.listdir(str(backup_dir))
     assert len(remaining) == 3
+
+
+def test_cleanup_old_backups_exact_matching(tmp_path):
+    """base_nameとextによる厳密一致判定（似た名前の別ファイルを巻き込まない）テスト"""
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    
+    base_time = time.time() - (60 * 86400)
+    
+    # 1. "report" の古いバックアップ 10件
+    for i in range(10):
+        f = backup_dir / f"report_202601{i+1:02d}_120000.xlsm"
+        f.write_text("report backup")
+        os.utime(str(f), (base_time + i * 10, base_time + i * 10))
+        
+    # 2. 似た名前の "report_extra" の古いバックアップ 5件
+    for i in range(5):
+        f = backup_dir / f"report_extra_202601{i+1:02d}_120000.xlsm"
+        f.write_text("report_extra backup")
+        os.utime(str(f), (base_time + i * 10, base_time + i * 10))
+        
+    assert len(os.listdir(str(backup_dir))) == 15
+    
+    # "report" (.xlsm) のみを対象に max_keep=5 でクリーンアップ
+    deleted = cache.cleanup_old_backups(
+        str(backup_dir), 
+        base_name="report", 
+        ext=".xlsm", 
+        max_keep=5, 
+        max_age_days=365, 
+        min_keep=2
+    )
+    assert deleted == 5
+    
+    remaining = os.listdir(str(backup_dir))
+    assert len(remaining) == 10  # reportが5件残 + report_extraが5件すべて無傷で残
+    
+    # report_extra のファイルが一切削除されていないことを確認
+    extra_files = [f for f in remaining if f.startswith("report_extra")]
+    assert len(extra_files) == 5

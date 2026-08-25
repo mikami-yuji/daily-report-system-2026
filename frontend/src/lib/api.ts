@@ -36,11 +36,13 @@ const LONG_TIMEOUT = 60000;    // 60秒（ファイル操作用）
 // axiosインスタンス作成（タイムアウト付き）
 const api = axios.create({
     timeout: DEFAULT_TIMEOUT,
+    withCredentials: true,
 });
 
 // 長時間操作用インスタンス
 const apiLong = axios.create({
     timeout: LONG_TIMEOUT,
+    withCredentials: true,
 });
 
 // エラーハンドリングの共通インターセプター設定
@@ -53,9 +55,9 @@ const handleResponseError = (error: any): Promise<never> => {
         const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
         let redirectNotice = '';
         if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-            redirectNotice = '\n★Cookie共有のため、日報システムへも「http://192.168.1.5:8001」でアクセスし直す必要があります。';
+            redirectNotice = '\n★Cookie共有のため、日報システムへも「http://192.168.1.5:8001」でアクセスすることをお勧めします。';
         }
-        message = `企画課ビューアへのログインが必要です。下記URLからログインしてください。\nhttp://192.168.1.5:8888/viewer.html${redirectNotice}`;
+        message = `企画課ビューアの認証が必要です。「設定」画面でビューアのパスコードを保存するか、下記URLからログインしてください。\nhttp://192.168.1.5:8888/viewer.html${redirectNotice}`;
         toast.error(`通信エラー: ${message}`, {
             id: 'proxy-unauthorized',
             duration: 12000, // URLと案内を確認・コピーしやすくするため表示時間を長め(12秒)に設定
@@ -268,8 +270,9 @@ export const getAllSales = async (): Promise<SalesData[]> => {
 
 export const getLatestDesignRequests = async (passcode?: string): Promise<{ documents: ViewerDesignRequest[]; message?: string }> => {
     const params: Record<string, string> = {};
-    if (passcode) {
-        params.passcode = passcode;
+    const code = passcode || (typeof window !== 'undefined' ? localStorage.getItem('viewer_passcode') || '' : '');
+    if (code) {
+        params.passcode = code;
     }
     const response = await api.get(`${API_URL}/proxy/design-requests`, { params });
     return response.data;

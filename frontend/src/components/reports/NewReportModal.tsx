@@ -1102,6 +1102,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                                 <option value="別注（改版）">別注（改版）</option>
                                                 <option value="別注（再版）">別注（再版）</option>
                                                 <option value="SP（新版）">SP（新版）</option>
+                                                {formData.デザイン種別 && !['-', '別注（新版）', '別注（改版）', '別注（再版）', 'SP（新版）'].includes(formData.デザイン種別) && (
+                                                    <option value={formData.デザイン種別}>{formData.デザイン種別}</option>
+                                                )}
                                             </select>
                                         </div>
                                         <div className="md:col-span-2">

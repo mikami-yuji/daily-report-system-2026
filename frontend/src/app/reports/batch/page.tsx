@@ -1416,27 +1416,21 @@ export default function BatchReportPage() {
                                                     </div>
                                                     <div>
                                                         <label className="block text-xs font-medium text-sf-text-weak mb-1">デザイン種別</label>
-                                                        {visit.designMode === 'existing' ? (
-                                                            <input
-                                                                type="text"
-                                                                value={visit.デザイン種別}
-                                                                readOnly
-                                                                className="w-full px-3 py-2 border border-sf-border rounded bg-gray-100"
-                                                            />
-                                                        ) : (
-                                                            <select
-                                                                value={visit.デザイン種別}
-                                                                onChange={(e) => updateVisit(visit.id, 'デザイン種別', e.target.value)}
-                                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
-                                                            >
-                                                                <option value="">選択してください</option>
-                                                                <option value="-">-</option>
-                                                                <option value="別注（新版）">別注（新版）</option>
-                                                                <option value="別注（改版）">別注（改版）</option>
-                                                                <option value="別注（再版）">別注（再版）</option>
-                                                                <option value="SP（新版）">SP（新版）</option>
-                                                            </select>
-                                                        )}
+                                                        <select
+                                                            value={visit.デザイン種別}
+                                                            onChange={(e) => updateVisit(visit.id, 'デザイン種別', e.target.value)}
+                                                            className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                                        >
+                                                            <option value="">選択してください</option>
+                                                            <option value="-">-</option>
+                                                            <option value="別注（新版）">別注（新版）</option>
+                                                            <option value="別注（改版）">別注（改版）</option>
+                                                            <option value="別注（再版）">別注（再版）</option>
+                                                            <option value="SP（新版）">SP（新版）</option>
+                                                            {visit.デザイン種別 && !['-', '別注（新版）', '別注（改版）', '別注（再版）', 'SP（新版）'].includes(visit.デザイン種別) && (
+                                                                <option value={visit.デザイン種別}>{visit.デザイン種別}</option>
+                                                            )}
+                                                        </select>
                                                     </div>
                                                 </div>
                                                 <div>
@@ -1446,8 +1440,7 @@ export default function BatchReportPage() {
                                                         value={visit.デザイン名}
                                                         onChange={(e) => updateVisit(visit.id, 'デザイン名', e.target.value)}
                                                         placeholder="デザイン名を入力"
-                                                        readOnly={visit.designMode === 'existing'}
-                                                        className={`w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${visit.designMode === 'existing' ? 'bg-gray-100' : ''}`}
+                                                        className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
                                                     />
                                                 </div>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

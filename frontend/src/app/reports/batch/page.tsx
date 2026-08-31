@@ -227,18 +227,34 @@ export default function BatchReportPage() {
         loadViewerRequests();
     }, [loadViewerRequests]);
 
-    // 担当営業名が自分自身の「進行中」の依頼を抽出
+    // 担当営業名が自分自身の「進行中」の依頼を抽出し、同一デザインNo.は1件に集約
     const filteredViewerRequests = useMemo(() => {
         if (!Array.isArray(viewerRequests)) return [];
-        return viewerRequests.filter(req => {
-            if (!req) return false;
+        const uniqueMap = new Map<string, ViewerDesignRequest>();
+
+        viewerRequests.forEach(req => {
+            if (!req || !req.requestId) return;
             if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
-                return false;
+                return;
             }
-            if (!req.salesPerson || !selectedFile) return false;
+            if (!req.salesPerson || !selectedFile) return;
             
-            return isSalesPersonMatch(req.salesPerson, selectedFile);
+            if (!isSalesPersonMatch(req.salesPerson, selectedFile)) return;
+
+            const shortId = req.requestId.split('-')[0].trim();
+            if (uniqueMap.has(shortId)) {
+                const existing = uniqueMap.get(shortId)!;
+                const dateExisting = existing.deliveryDate || existing.requestedAt || '';
+                const dateCurrent = req.deliveryDate || req.requestedAt || '';
+                if (dateCurrent > dateExisting) {
+                    uniqueMap.set(shortId, req);
+                }
+            } else {
+                uniqueMap.set(shortId, req);
+            }
         });
+
+        return Array.from(uniqueMap.values());
     }, [viewerRequests, selectedFile]);
 
     // 訪問ごとのキーワード検索フィルタリング

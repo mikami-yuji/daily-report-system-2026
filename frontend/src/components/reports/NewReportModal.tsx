@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
@@ -133,27 +133,45 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
 
     const [viewerSearchTerm, setViewerSearchTerm] = useState('');
     
-    // 担当営業名が自分自身の「進行中」の依頼を抽出
-    const filteredViewerRequests = viewerRequests.filter(req => {
-        if (!req) return false;
-        if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
-            return false;
-        }
-        if (!req.salesPerson || !selectedFile) return false;
-        
-        if (!isSalesPersonMatch(req.salesPerson, selectedFile)) return false;
+    // 担当営業名が自分自身の「進行中」の依頼を抽出し、同一デザインNo.は1件に集約
+    const filteredViewerRequests = useMemo(() => {
+        const uniqueMap = new Map<string, ViewerDesignRequest>();
 
-        // キーワード検索によるさらなる絞り込み
-        if (viewerSearchTerm.trim()) {
-            const term = viewerSearchTerm.toLowerCase().trim();
-            const reqId = String(req.requestId || '').toLowerCase();
-            const content = String(req.designContent || '').toLowerCase();
-            const customer = String(req.customer || '').toLowerCase();
-            return reqId.includes(term) || content.includes(term) || customer.includes(term);
-        }
-        
-        return true;
-    });
+        viewerRequests.forEach(req => {
+            if (!req || !req.requestId) return;
+            if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
+                return;
+            }
+            if (!req.salesPerson || !selectedFile) return;
+            
+            if (!isSalesPersonMatch(req.salesPerson, selectedFile)) return;
+
+            // キーワード検索によるさらなる絞り込み
+            if (viewerSearchTerm.trim()) {
+                const term = viewerSearchTerm.toLowerCase().trim();
+                const reqId = String(req.requestId || '').toLowerCase();
+                const content = String(req.designContent || '').toLowerCase();
+                const customer = String(req.customer || '').toLowerCase();
+                if (!reqId.includes(term) && !content.includes(term) && !customer.includes(term)) {
+                    return;
+                }
+            }
+
+            const shortId = req.requestId.split('-')[0].trim();
+            if (uniqueMap.has(shortId)) {
+                const existing = uniqueMap.get(shortId)!;
+                const dateExisting = existing.deliveryDate || existing.requestedAt || '';
+                const dateCurrent = req.deliveryDate || req.requestedAt || '';
+                if (dateCurrent > dateExisting) {
+                    uniqueMap.set(shortId, req);
+                }
+            } else {
+                uniqueMap.set(shortId, req);
+            }
+        });
+
+        return Array.from(uniqueMap.values());
+    }, [viewerRequests, selectedFile, viewerSearchTerm]);
     const [startOutTime, setStartOutTime] = useState('');
     const [endOutTime, setEndOutTime] = useState('');
     // 得意先リストからエリア一覧を動的に取得

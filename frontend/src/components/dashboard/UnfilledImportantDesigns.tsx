@@ -36,11 +36,14 @@ export default function UnfilledImportantDesigns({
             }
         });
 
-        return viewerData.documents.filter((doc: ViewerDesignRequest): boolean => {
-            if (!doc.salesPerson) return false;
+        // shortId (デザイン依頼No.) ごとに1件にまとめるためのMap
+        const uniqueMap = new Map<string, ViewerDesignRequest>();
+
+        viewerData.documents.forEach((doc: ViewerDesignRequest): void => {
+            if (!doc.salesPerson || !doc.requestId) return;
 
             // 1. 担当営業の一致チェック (同姓の別人混在を完全に防止)
-            if (!isSalesPersonMatch(doc.salesPerson, selectedFile)) return false;
+            if (!isSalesPersonMatch(doc.salesPerson, selectedFile)) return;
 
             // 2. 重要種別のチェック (SPロール印刷は頭が「新版」のもののみ、フルオーダーはすべて)
             const type = doc.designType || '';
@@ -51,15 +54,29 @@ export default function UnfilledImportantDesigns({
                 // SP（ロール印刷）はタイトル（デザイン名）の頭が「新版」のもののみ対象
                 const content = (doc.designContent || '').trim();
                 const isNewEdition = /^(新版|[【\[（\(]新版)/.test(content);
-                if (!isNewEdition) return false;
+                if (!isNewEdition) return;
             } else if (!isFullOrder) {
-                return false;
+                return;
             }
 
             // 3. 日報に一度も登録されていないか
             const shortId = doc.requestId.split('-')[0].trim();
-            return !filledDesignNos.has(shortId);
+            if (filledDesignNos.has(shortId)) return;
+
+            // 同じデザイン依頼No.が複数ある場合は最新日付のものを1つに統合
+            if (uniqueMap.has(shortId)) {
+                const existing = uniqueMap.get(shortId)!;
+                const dateExisting = existing.deliveryDate || existing.requestedAt || '';
+                const dateCurrent = doc.deliveryDate || doc.requestedAt || '';
+                if (dateCurrent > dateExisting) {
+                    uniqueMap.set(shortId, doc);
+                }
+            } else {
+                uniqueMap.set(shortId, doc);
+            }
         });
+
+        return Array.from(uniqueMap.values());
     }, [reports, viewerData, selectedFile]);
 
     // 未入力案件がなければ何も表示しない

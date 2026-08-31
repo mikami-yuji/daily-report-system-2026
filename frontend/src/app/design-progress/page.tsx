@@ -6,6 +6,7 @@ import { Report } from '@/lib/api';
 import { Search, Calendar, FileText, TrendingUp, Package, Image as ImageIcon, ExternalLink, Key, Loader2 } from 'lucide-react';
 import PdfPreviewModal from '@/components/reports/PdfPreviewModal';
 import { ViewerDesignRequest } from '@/types/report';
+import { isSalesPersonMatch, extractSalesPersonName } from '@/lib/reportUtils';
 
 export default function DesignProgressPage() {
     // React Queryでファイル一覧取得
@@ -38,39 +39,24 @@ export default function DesignProgressPage() {
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [selectedDesignNo, setSelectedDesignNo] = useState<string>('');
 
-    // ファイル名から担当営業名（名字）を抽出するヘルパー
-    const extractSalesPersonName = (filename: string | null | undefined): string => {
-        if (!filename) return '';
-        const base = String(filename).replace(/\.xlsm$/, '');
-        const matchBrackets = base.match(/【(.*?)】/);
-        let name = matchBrackets ? matchBrackets[1] : base;
-        name = name.replace(/^日報_/, '');
-        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
-        name = name.replace(/[\(（].*?[\)）]/, '');
-        return name.trim();
-    };
-
     const activeSalesPerson = useMemo((): string => extractSalesPersonName(selectedFile), [selectedFile]);
 
     // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId)
     const viewerMap = useMemo((): Map<string, ViewerDesignRequest> => {
         const map = new Map<string, ViewerDesignRequest>();
-        if (!viewerData || !viewerData.documents || !activeSalesPerson) return map;
+        if (!viewerData || !viewerData.documents || !selectedFile) return map;
 
         viewerData.documents.forEach((doc: ViewerDesignRequest): void => {
             if (!doc.salesPerson) return;
-            const viewerRep = String(doc.salesPerson).toLowerCase().trim();
-            const activeRep = String(activeSalesPerson).toLowerCase().trim();
-            const isRepMatch = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
             
-            if (isRepMatch) {
+            if (isSalesPersonMatch(doc.salesPerson, selectedFile)) {
                 // requestIdは "123456-01" 等。ハイフン前を取り出す
                 const shortId = doc.requestId.split('-')[0].trim();
                 map.set(shortId, doc);
             }
         });
         return map;
-    }, [viewerData, activeSalesPerson]);
+    }, [viewerData, selectedFile]);
 
     // 選択されたデザインNo.に対応するビューワー側データ
     const currentViewerDesign = useMemo((): ViewerDesignRequest | null => {

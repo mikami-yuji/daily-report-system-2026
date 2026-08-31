@@ -101,3 +101,123 @@ export function generateUUID(): string {
         return v.toString(16);
     });
 }
+
+/**
+ * ファイル名から営業担当者情報（名字、区別用識別子、表示用名）を抽出します
+ */
+export interface SalesPersonInfo {
+    fullName: string;      // 例: "木村（寿）"
+    surname: string;       // 例: "木村"
+    distinguisher: string; // 例: "寿" (同姓がいる場合の識別文字)
+}
+
+export function extractSalesPersonInfo(filename: string | null | undefined): SalesPersonInfo {
+    if (!filename) return { fullName: '', surname: '', distinguisher: '' };
+    
+    const base = String(filename).replace(/\.xlsm$/i, '');
+    const matchBrackets = base.match(/【(.*?)】/);
+    let raw = matchBrackets ? matchBrackets[1] : base;
+    raw = raw.replace(/^日報_/, '');
+    raw = raw.replace(/(MGR|Mgr|マネージャー|マネ|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '').trim();
+
+    // カッコ内の区別文字（例: 木村（寿） -> "寿", 山下（尚） -> "尚", 山下和 -> "和"）
+    let distinguisher = '';
+    const parenMatch = raw.match(/[\(（](.*?)[\)）]/);
+    if (parenMatch) {
+        distinguisher = parenMatch[1].trim();
+    } else {
+        // カッコがない場合で、山下和次長のように「山下和」となっているケース
+        if (raw.startsWith('山下和')) {
+            distinguisher = '和';
+        }
+    }
+
+    // 名字（カッコや区別文字を除いた部分）
+    let surname = raw.replace(/[\(（].*?[\)）]/, '').trim();
+    if (surname === '山下和') {
+        surname = '山下';
+    }
+
+    // 表示用フルネーム（例: 木村（寿）、森田）
+    const fullName = distinguisher ? `${surname}（${distinguisher}）` : surname;
+
+    return {
+        fullName,
+        surname,
+        distinguisher
+    };
+}
+
+/**
+ * ファイル名から営業担当者表示名を抽出するヘルパー（後方互換性用）
+ */
+export function extractSalesPersonName(filename: string | null | undefined): string {
+    const info = extractSalesPersonInfo(filename);
+    return info.fullName;
+}
+
+/**
+ * 企画課ビューワ側の担当者名 (viewerRep) と、選択中ファイル側の担当者情報 (activeRep / filename) が
+ * 同姓の別人を含まずに正しく一致しているかを精密に判定します。
+ */
+export function isSalesPersonMatch(
+    viewerRep: string | null | undefined,
+    filenameOrActiveRep: string | null | undefined
+): boolean {
+    if (!viewerRep || !filenameOrActiveRep) return false;
+
+    // ファイル名または担当者名から情報を抽出
+    const activeInfo = extractSalesPersonInfo(filenameOrActiveRep);
+    if (!activeInfo.surname) return false;
+
+    // ビューワ側の担当者文字列をクリーンアップ
+    // 全角・半角カッコ、空白を整理
+    const vStr = String(viewerRep).toLowerCase().trim();
+    const vClean = vStr.replace(/[\s　]+/g, '');
+    const activeSurname = activeInfo.surname.toLowerCase();
+    const activeDist = activeInfo.distinguisher.toLowerCase();
+
+    // 1. 名字が含まれているか
+    if (!vClean.includes(activeSurname)) {
+        return false;
+    }
+
+    // 同姓が存在する代表的な苗字の区別文字リスト
+    const KNOWN_DISTINGUISHERS: Record<string, string[]> = {
+        '木村': ['寿', '拓'],
+        '山下': ['尚', '雄', '和'],
+    };
+
+    const knownDists = KNOWN_DISTINGUISHERS[activeInfo.surname];
+
+    if (activeDist) {
+        // 現在のファイルに区別文字（例: 「寿」）がある場合:
+        // ビューワ側にこの区別文字が含まれている必要がある
+        if (!vClean.includes(activeDist)) {
+            return false;
+        }
+
+        // さらに、他人の区別文字（例: 「拓」）が含まれている場合は除外
+        if (knownDists) {
+            for (const otherDist of knownDists) {
+                if (otherDist.toLowerCase() !== activeDist && vClean.includes(otherDist.toLowerCase())) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    } else {
+        // 現在のファイルに区別文字がない場合（森田、中野など）:
+        // もし同姓がある苗字（木村、山下等）なのに区別文字がファイル名にない場合は、
+        // ビューワ側が特定の他人の区別文字を持っているならマッチさせない
+        if (knownDists) {
+            for (const otherDist of knownDists) {
+                if (vClean.includes(otherDist.toLowerCase())) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
+

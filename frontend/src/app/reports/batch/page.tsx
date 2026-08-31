@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID } from '@/lib/reportUtils';
+import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID, isSalesPersonMatch } from '@/lib/reportUtils';
 
 // バリデーションエラーの型
 type ValidationErrors = {
@@ -227,8 +227,6 @@ export default function BatchReportPage() {
         loadViewerRequests();
     }, [loadViewerRequests]);
 
-    const activeSalesPerson = useMemo(() => extractSalesPersonName(selectedFile || ''), [selectedFile, extractSalesPersonName]);
-    
     // 担当営業名が自分自身の「進行中」の依頼を抽出
     const filteredViewerRequests = useMemo(() => {
         if (!Array.isArray(viewerRequests)) return [];
@@ -237,18 +235,11 @@ export default function BatchReportPage() {
             if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
                 return false;
             }
-            if (!req.salesPerson || !activeSalesPerson) return false;
+            if (!req.salesPerson || !selectedFile) return false;
             
-            try {
-                const viewerRep = String(req.salesPerson).toLowerCase().trim();
-                const activeRep = String(activeSalesPerson).toLowerCase().trim();
-                return viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
-            } catch (e) {
-                console.error('Error filtering viewer requests:', e);
-                return false;
-            }
+            return isSalesPersonMatch(req.salesPerson, selectedFile);
         });
-    }, [viewerRequests, activeSalesPerson]);
+    }, [viewerRequests, selectedFile]);
 
     // 訪問ごとのキーワード検索フィルタリング
     const getFilteredRequestsForVisit = useCallback((visitId: string) => {

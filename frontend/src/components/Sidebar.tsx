@@ -88,7 +88,7 @@ export default function Sidebar() {
                 }`}
         >
             {/* App Header in Sidebar */}
-            <div className="h-14 flex items-center justify-between px-4 border-b border-sf-border bg-sf-blue text-white">
+            <div className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-sf-border bg-sf-blue text-white">
                 {!collapsed && <span className="font-bold text-lg truncate">Sales Support</span>}
                 <button
                     onClick={() => setCollapsed(!collapsed)}
@@ -100,8 +100,8 @@ export default function Sidebar() {
                 </button>
             </div>
 
-            {/* Navigation */}
-            <nav className="flex-1 py-4 space-y-1">
+            {/* Navigation (Scrollable & Compact) */}
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar py-2 space-y-0.5">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
@@ -109,20 +109,21 @@ export default function Sidebar() {
                             key={item.href}
                             href={item.href}
                             prefetch={false}
-                            className={`flex items-center px-4 py-3 text-sm font-medium transition-colors border-l-4 ${isActive
-                                ? 'border-sf-light-blue text-sf-light-blue bg-blue-50'
+                            className={`flex items-center px-3.5 py-2 text-sm font-medium transition-colors border-l-4 ${isActive
+                                ? 'border-sf-light-blue text-sf-light-blue bg-blue-50 font-semibold'
                                 : 'border-transparent text-sf-text-weak hover:bg-gray-50 hover:text-sf-text'
                                 }`}
+                            title={collapsed ? item.name : undefined}
                         >
-                            <item.icon size={20} className={collapsed ? 'mx-auto' : 'mr-3'} />
-                            {!collapsed && <span>{item.name}</span>}
+                            <item.icon size={18} className={collapsed ? 'mx-auto' : 'mr-3 flex-shrink-0'} />
+                            {!collapsed && <span className="truncate">{item.name}</span>}
                         </Link>
                     );
                 })}
             </nav>
 
             {/* Footer / User Info (Simplified) */}
-            <div className="p-4 border-t border-sf-border">
+            <div className="p-3 border-t border-sf-border flex-shrink-0">
                 <SyncStatus collapsed={collapsed} />
             </div>
         </div>

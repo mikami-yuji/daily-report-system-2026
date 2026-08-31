@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { AlertTriangle, PenSquare, Calendar, User } from 'lucide-react';
 import { Report, ViewerDesignRequest } from '@/types/report';
 import { InitialDesignData } from '@/components/reports/NewReportModal';
+import { isSalesPersonMatch } from '@/lib/reportUtils';
 
 type UnfilledImportantDesignsProps = {
     reports: Report[];
@@ -22,23 +23,9 @@ export default function UnfilledImportantDesigns({
     selectedFile,
     onWriteReport,
 }: UnfilledImportantDesignsProps): React.JSX.Element | null {
-    // ファイル名から担当営業名（名字）を抽出するヘルパー
-    const extractSalesPersonName = (filename: string | null | undefined): string => {
-        if (!filename) return '';
-        const base = String(filename).replace(/\.xlsm$/, '');
-        const matchBrackets = base.match(/【(.*?)】/);
-        let name = matchBrackets ? matchBrackets[1] : base;
-        name = name.replace(/^日報_/, '');
-        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
-        name = name.replace(/[\(（].*?[\)）]/, '');
-        return name.trim();
-    };
-
-    const activeSalesPerson = useMemo((): string => extractSalesPersonName(selectedFile), [selectedFile]);
-
     // 未記入の重要デザインを抽出
     const unfilledDesigns = useMemo((): ViewerDesignRequest[] => {
-        if (!viewerData || !viewerData.documents || !activeSalesPerson) return [];
+        if (!viewerData || !viewerData.documents || !selectedFile) return [];
 
         // 既存の日報に登録されているデザイン依頼No.のSetを作成 (比較高速化のため)
         const filledDesignNos = new Set<string>();
@@ -52,23 +39,28 @@ export default function UnfilledImportantDesigns({
         return viewerData.documents.filter((doc: ViewerDesignRequest): boolean => {
             if (!doc.salesPerson) return false;
 
-            // 1. 担当営業の一致チェック (大文字小文字・名字チェック)
-            const viewerRep = String(doc.salesPerson).toLowerCase().trim();
-            const activeRep = String(activeSalesPerson).toLowerCase().trim();
-            const isRepMatch = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
-            if (!isRepMatch) return false;
+            // 1. 担当営業の一致チェック (同姓の別人混在を完全に防止)
+            if (!isSalesPersonMatch(doc.salesPerson, selectedFile)) return false;
 
-            // 2. 重要種別のチェック (SP（ロール印刷）, フルオーダー)
+            // 2. 重要種別のチェック (SPロール印刷は頭が「新版」のもののみ、フルオーダーはすべて)
             const type = doc.designType || '';
             const isSP = type.includes('ＳＰ（ロール印刷）') || type.includes('SP（ロール印刷）') || type.includes('ロール印刷');
             const isFullOrder = type.includes('フルオーダー') || type.includes('フルオータ');
-            if (!isSP && !isFullOrder) return false;
+
+            if (isSP) {
+                // SP（ロール印刷）はタイトル（デザイン名）の頭が「新版」のもののみ対象
+                const content = (doc.designContent || '').trim();
+                const isNewEdition = /^(新版|[【\[（\(]新版)/.test(content);
+                if (!isNewEdition) return false;
+            } else if (!isFullOrder) {
+                return false;
+            }
 
             // 3. 日報に一度も登録されていないか
             const shortId = doc.requestId.split('-')[0].trim();
             return !filledDesignNos.has(shortId);
         });
-    }, [reports, viewerData, activeSalesPerson]);
+    }, [reports, viewerData, selectedFile]);
 
     // 未入力案件がなければ何も表示しない
     if (unfilledDesigns.length === 0) return null;
@@ -81,7 +73,7 @@ export default function UnfilledImportantDesigns({
                     <span>未入力の重要デザイン依頼があります ({unfilledDesigns.length}件)</span>
                 </div>
                 <span className="text-[10px] text-gray-500">
-                    ※「ＳＰ（ロール印刷）」「フルオーダー」は日報への起票が必要です。
+                    ※「ＳＰ（ロール印刷・新版）」「フルオーダー」は日報への起票が必要です。
                 </span>
             </div>
 

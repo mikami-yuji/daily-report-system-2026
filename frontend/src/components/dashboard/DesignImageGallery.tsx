@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Image as ImageIcon, ChevronLeft, ChevronRight, Download, X, FileText } from 'lucide-react';
 import { getImageUrl, DesignImage, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useDesignImages } from '@/hooks/useQueryHooks';
+import { isSalesPersonMatch } from '@/lib/reportUtils';
 
 type ExtendedDesignImage = DesignImage & {
   url?: string;
@@ -25,18 +26,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
 
   useEffect(() => {
     // ファイル名から担当営業名（名字）を抽出するヘルパー
-    const extractName = (filename: string): string => {
-      const base = filename.replace(/\.xlsm$/, '');
-      const match = base.match(/【(.*?)】/);
-      let name = match ? match[1] : base;
-      name = name.replace(/^日報_/, '');
-      name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
-      name = name.replace(/[\(（].*?[\)）]/, '');
-      return name.trim();
-    };
-
-    const activeRep = extractName(selectedFile || '');
-    if (!activeRep) return;
+    if (!selectedFile) return;
 
     getLatestDesignRequests()
       .then(data => {
@@ -46,9 +36,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
             if (doc.status === 'completed' || doc.status === 'rejected') return false;
             if (!doc.compUrl || !doc.salesPerson) return false;
             
-            const viewerRep = doc.salesPerson.toLowerCase().trim();
-            const rep = activeRep.toLowerCase().trim();
-            return viewerRep.includes(rep) || rep.includes(viewerRep);
+            return isSalesPersonMatch(doc.salesPerson, selectedFile);
           }).map(doc => ({
             name: `[企画課最新カンプ] ${doc.requestId.split('-')[0]} - ${doc.designContent}`,
             path: doc.compUrl!,

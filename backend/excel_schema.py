@@ -43,9 +43,16 @@ class ColumnNames:
 
 
 def clean_column_names(df) -> Any:
-    """DataFrameのカラム名から改行や前後の余分な空白を除去します"""
+    """DataFrameのカラム名から改行や前後の余分な空白を除去します。また、営業日報シートで日付列名が誤入力されている場合の自動補正も行います。"""
     if df is not None and hasattr(df, 'columns'):
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
+        cols = list(df.columns)
+        # 管理番号があり、日付列が存在しない場合、2列目（B列）を「日付」として補正
+        if len(cols) > 1 and '日付' not in cols:
+            if '管理番号' in cols or cols[0] == '管理番号':
+                old_col = cols[1]
+                df.rename(columns={old_col: '日付'}, inplace=True)
+                df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
     return df
 
 # --- Column Indices for "営業日報" (1-indexed for openpyxl) ---

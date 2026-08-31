@@ -4,7 +4,7 @@ import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Truck, Loader2, Check, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
+import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, isSalesPersonMatch } from '@/lib/reportUtils';
 
 export type InitialDesignData = {
     得意先CD?: string;
@@ -132,7 +132,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     }, []);
 
     const [viewerSearchTerm, setViewerSearchTerm] = useState('');
-    const activeSalesPerson = extractSalesPersonName(selectedFile);
     
     // 担当営業名が自分自身の「進行中」の依頼を抽出
     const filteredViewerRequests = viewerRequests.filter(req => {
@@ -140,18 +139,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         if (req.status === 'completed' || req.status === 'rejected' || req.status === 'inSubmission') {
             return false;
         }
-        if (!req.salesPerson || !activeSalesPerson) return false;
+        if (!req.salesPerson || !selectedFile) return false;
         
-        let isRepMatch = false;
-        try {
-            const viewerRep = String(req.salesPerson).toLowerCase().trim();
-            const activeRep = String(activeSalesPerson).toLowerCase().trim();
-            isRepMatch = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
-        } catch (e) {
-            console.error('Error filtering viewer requests:', e);
-        }
-
-        if (!isRepMatch) return false;
+        if (!isSalesPersonMatch(req.salesPerson, selectedFile)) return false;
 
         // キーワード検索によるさらなる絞り込み
         if (viewerSearchTerm.trim()) {

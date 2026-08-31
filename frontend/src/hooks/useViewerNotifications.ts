@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { getLatestDesignRequests } from '@/lib/api';
 import { ViewerDesignRequest } from '@/types/report';
+import { isSalesPersonMatch } from '@/lib/reportUtils';
 
 type SnapshotData = {
     [requestId: string]: {
@@ -36,31 +37,17 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
         selectedFileRef.current = selectedFile;
     }, [selectedFile]);
 
-    // ファイル名から担当営業名（名字）を抽出するヘルパー
-    const extractSalesPersonName = (filename: string | null | undefined): string => {
-        if (!filename) return '';
-        const base = String(filename).replace(/\.xlsm$/, '');
-        const matchBrackets = base.match(/【(.*?)】/);
-        let name = matchBrackets ? matchBrackets[1] : base;
-        name = name.replace(/^日報_/, '');
-        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
-        name = name.replace(/[\(（].*?[\)）]/, '');
-        return name.trim();
-    };
-
     const checkViewerStatusChanges = async (): Promise<void> => {
         if (!enabledRef.current || !selectedFileRef.current) return;
 
-        const activeSalesPerson = extractSalesPersonName(selectedFileRef.current);
-        if (!activeSalesPerson) return;
-
+        const currentFile = selectedFileRef.current;
         const passcode = typeof window !== 'undefined' ? localStorage.getItem('viewer_passcode') || '' : '';
         // パスコードが未設定の場合はAPIリクエストを行わず負荷を軽減
         if (!passcode) return;
 
         const now = Date.now();
-        // 担当営業が変わっておらず、かつ前回のチェックから5分(300,000ms)経過していない場合はスキップ
-        if (activeSalesPerson === lastSalesPersonRef.current && now - lastCheckedRef.current < 5 * 60 * 1000) {
+        // 担当ファイルが変わっておらず、かつ前回のチェックから5分(300,000ms)経過していない場合はスキップ
+        if (currentFile === lastSalesPersonRef.current && now - lastCheckedRef.current < 5 * 60 * 1000) {
             return;
         }
 
@@ -102,11 +89,9 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
                     designContent: content,
                 };
 
-                // 現在のアクティブな営業担当者名と一致するか判定
+                // 現在のアクティブな営業担当者名と一致するか判定 (同姓混在防止)
                 if (!req.salesPerson) return;
-                const viewerRep = String(req.salesPerson).toLowerCase().trim();
-                const activeRep = String(activeSalesPerson).toLowerCase().trim();
-                const isMyRequest = viewerRep.includes(activeRep) || activeRep.includes(viewerRep);
+                const isMyRequest = isSalesPersonMatch(req.salesPerson, currentFile);
 
                 if (isMyRequest) {
                     // 前回データとの差分をチェック (前回が存在する場合のみ通知。初回はスナップショット構築のみ)
@@ -161,7 +146,7 @@ export function useViewerNotifications({ selectedFile, enabled = true }: UseView
             // スナップショットを更新保存
             localStorage.setItem('viewer_snapshot', JSON.stringify(newSnapshot));
             lastCheckedRef.current = Date.now();
-            lastSalesPersonRef.current = activeSalesPerson;
+            lastSalesPersonRef.current = currentFile;
         } catch (error) {
             console.error('Error checking viewer notifications:', error);
         } finally {

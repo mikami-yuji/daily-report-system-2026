@@ -38,6 +38,16 @@ def main():
         print("[ERROR] バージョンが指定されていません。")
         sys.exit(1)
 
+    # version.py の整合性チェック
+    version_py_path = os.path.join(PROJECT_ROOT, "backend", "version.py")
+    if os.path.exists(version_py_path):
+        with open(version_py_path, "r", encoding="utf-8") as vf:
+            v_content = vf.read()
+        if f'__version__ = "{version}"' not in v_content:
+            print(f"\n[WARNING] 警告: backend/version.py のバージョン定義が '{version}' と一致していません！")
+            print(f"          ビルドされたEXEが自身を古いバージョンと認識する恐れがあります。")
+            print(f"          リリース前には必ず version.py を更新して再ビルドしてください。\n")
+
     # リリースノート取得
     if len(sys.argv) > 2:
         notes_input = sys.argv[2]

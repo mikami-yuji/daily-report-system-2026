@@ -207,21 +207,27 @@ def apply_update() -> Dict[str, Any]:
 
         # 7. 新しいEXEを別プロセスとして起動し、自身を終了するタイマースレッド
         def restart_worker():
-            time.sleep(1.5)
+            # レスポンスがフロントエンドへ確実に届くよう1秒待機
+            time.sleep(1.0)
             try:
+                # ポート8001が解放されるのを待ってから新EXEを起動する外部コマンド
+                # timeout /t 2 により旧プロセス終了・ポート解放を確実に待機してから独立起動
+                restart_cmd = f'cmd.exe /c "timeout /t 2 /nobreak > nul & start \"\" \"{current_exe}\""'
                 DETACHED_PROCESS = 0x00000008
                 CREATE_NEW_PROCESS_GROUP = 0x00000200
                 subprocess.Popen(
-                    [current_exe],
+                    restart_cmd,
                     cwd=app_dir,
+                    shell=True,
                     creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                     close_fds=True
                 )
+                logger.info("Restart command dispatched. Exiting current process...")
             except Exception as ex:
-                logger.error(f"Failed to spawn new process: {ex}")
+                logger.error(f"Failed to spawn restart command: {ex}")
             finally:
-                time.sleep(0.5)
-                # 自プロセスを終了
+                time.sleep(0.2)
+                # 自プロセス（旧バージョン）を即座に終了してポート8001を完全解放
                 os._exit(0)
 
         threading.Thread(target=restart_worker, daemon=True).start()

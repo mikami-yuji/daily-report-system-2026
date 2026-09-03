@@ -17,10 +17,36 @@ export default function UpdateNotificationBanner() {
         setUpdateStatusText('最新EXEをダウンロード＆検証中...');
         const res = await applyUpdate();
         if (res.success) {
-            setUpdateStatusText('適用完了！サーバーを自動再起動しています（5秒後に画面をリロードします）...');
+            setUpdateStatusText('適用完了！サーバーを自動再起動しています...');
+            
+            // サーバーが確実に立ち上がるまでポーリング監視（接続拒否エラー画面を絶対に表示させない）
+            let attempts = 0;
+            const maxAttempts = 35; // 最大35秒待機
+            
+            // 旧サーバー終了・新サーバー起動の猶予として2秒待機後にポーリング開始
             setTimeout(() => {
-                window.location.reload();
-            }, 5500);
+                const timer = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const ping = await fetch('/api/version/current?t=' + Date.now(), { cache: 'no-store' });
+                        if (ping.ok) {
+                            clearInterval(timer);
+                            setUpdateStatusText('再起動完了！画面を更新しています...');
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 800);
+                            return;
+                        }
+                    } catch {
+                        // サーバー再起動中の接続エラーは無視してポーリング継続
+                    }
+
+                    if (attempts >= maxAttempts) {
+                        clearInterval(timer);
+                        setUpdateStatusText('サーバーの起動を確認中...手動で画面を再読み込みしてください。');
+                    }
+                }, 1000);
+            }, 2000);
         } else {
             setUpdateStatusText('');
         }

@@ -210,23 +210,26 @@ def apply_update() -> Dict[str, Any]:
             # レスポンスがフロントエンドへ確実に届くよう1秒待機
             time.sleep(1.0)
             try:
-                # ポート8001が解放されるのを待ってから新EXEを起動する外部コマンド
-                # timeout /t 2 により旧プロセス終了・ポート解放を確実に待機してから独立起動
-                restart_cmd = f'cmd.exe /c "timeout /t 2 /nobreak > nul & start \"\" \"{current_exe}\""'
-                DETACHED_PROCESS = 0x00000008
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                subprocess.Popen(
-                    restart_cmd,
-                    cwd=app_dir,
-                    shell=True,
-                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
-                    close_fds=True
+                # Windowsで最も信頼性の高いGUIバックグラウンド起動（黒画面なし、ポート解放待機、自己削除）
+                vbs_path = os.path.join(app_dir, "_restart_server.vbs")
+                vbs_content = (
+                    'WScript.Sleep 2000\r\n'
+                    'Set WshShell = CreateObject("WScript.Shell")\r\n'
+                    f'WshShell.CurrentDirectory = "{app_dir}"\r\n'
+                    f'WshShell.Run """{current_exe}""", 1, False\r\n'
+                    'Set fso = CreateObject("Scripting.FileSystemObject")\r\n'
+                    'On Error Resume Next\r\n'
+                    'fso.DeleteFile WScript.ScriptFullName\r\n'
                 )
-                logger.info("Restart command dispatched. Exiting current process...")
+                with open(vbs_path, "w", encoding="cp932") as f:
+                    f.write(vbs_content)
+
+                subprocess.Popen(["wscript.exe", vbs_path], cwd=app_dir)
+                logger.info("Restart VBScript spawned. Exiting current process...")
             except Exception as ex:
                 logger.error(f"Failed to spawn restart command: {ex}")
             finally:
-                time.sleep(0.2)
+                time.sleep(0.3)
                 # 自プロセス（旧バージョン）を即座に終了してポート8001を完全解放
                 os._exit(0)
 

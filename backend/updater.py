@@ -203,47 +203,11 @@ def apply_update() -> Dict[str, Any]:
         logger.info(f"Renaming temp EXE to {current_exe}...")
         os.rename(temp_exe, current_exe)
 
-        logger.info("Update applied successfully! Scheduling restart...")
-
-        # 7. 新しいEXEを別プロセスとして起動し、自身を終了するタイマースレッド
-        def restart_worker():
-            # レスポンスがフロントエンドへ確実に届くよう1秒待機
-            time.sleep(1.0)
-            try:
-                # Windows 11のVBScriptブロックの影響を受けない標準バッチ方式
-                # pingで2秒待機（ポート解放） -> startで新EXEを独立GUI起動 -> バッチ自らを削除
-                bat_path = os.path.join(app_dir, "_restart_server.bat")
-                bat_content = (
-                    "@echo off\r\n"
-                    "ping 127.0.0.1 -n 3 > nul\r\n"
-                    f'start "" "{current_exe}"\r\n'
-                    'del "%~f0"\r\n'
-                )
-                with open(bat_path, "w", encoding="cp932") as f:
-                    f.write(bat_content)
-
-                CREATE_NO_WINDOW = 0x08000000
-                DETACHED_PROCESS = 0x00000008
-                CREATE_NEW_PROCESS_GROUP = 0x00000200
-                subprocess.Popen(
-                    ["cmd.exe", "/c", bat_path],
-                    cwd=app_dir,
-                    creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
-                    close_fds=True
-                )
-                logger.info("Restart batch spawned. Exiting current process...")
-            except Exception as ex:
-                logger.error(f"Failed to spawn restart command: {ex}")
-            finally:
-                time.sleep(0.3)
-                # 自プロセス（旧バージョン）を即座に終了してポート8001を完全解放
-                os._exit(0)
-
-        threading.Thread(target=restart_worker, daemon=True).start()
+        logger.info("Update applied successfully! File replaced.")
 
         return {
             "success": True,
-            "message": "アップデートを適用しました。約5秒後に新しいバージョンで自動起動します。",
+            "message": f"最新バージョン（v{v_data.get('version')}）へのファイル更新が完了しました。",
             "latest_version": v_data.get("version")
         }
 
@@ -280,3 +244,12 @@ def rollback_update() -> Dict[str, Any]:
         return {"success": True, "message": "旧バージョンを復元しました。再起動してください。"}
     except Exception as e:
         return {"success": False, "message": f"ロールバックに失敗しました: {e}"}
+
+def shutdown_server() -> Dict[str, Any]:
+    """サーバープロセスを安全に終了（アップデート完了後の手動再起動用）"""
+    def exit_worker():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=exit_worker, daemon=True).start()
+    return {"success": True, "message": "サーバーを終了しています。"}
+

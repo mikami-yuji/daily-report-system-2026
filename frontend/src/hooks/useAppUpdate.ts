@@ -68,6 +68,14 @@ export function useAppUpdate() {
         }
     };
 
+    const shutdownApp = async (): Promise<void> => {
+        try {
+            await fetch('/api/version/shutdown', { method: 'POST' });
+        } catch {
+            // サーバー終了に伴う切断は正常
+        }
+    };
+
     const dismiss = () => {
         setIsDismissed(true);
     };
@@ -80,6 +88,7 @@ export function useAppUpdate() {
         hasUpdate: !!updateInfo?.update_available && !isDismissed,
         checkForUpdates,
         applyUpdate,
+        shutdownApp,
         dismiss
     };
 }

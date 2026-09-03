@@ -32,3 +32,9 @@ def rollback_update_endpoint():
     if not res.get("success"):
         raise HTTPException(status_code=500, detail=res.get("message", "ロールバックに失敗しました"))
     return res
+
+@router.post("/shutdown")
+def shutdown_endpoint():
+    """アプリ終了エンドポイント（アップデート適用後にユーザーの操作で終了）"""
+    return updater.shutdown_server()
+

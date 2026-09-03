@@ -27,6 +27,9 @@ a = Analysis(
         'routes_sales',
         'routes_stats',
         'routes_proxy',
+        'routes_updater',
+        'updater',
+        'version',
         'config'
     ],
     hookspath=[],

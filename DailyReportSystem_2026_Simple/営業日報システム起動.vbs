@@ -1,9 +1,22 @@
-' 営業日報システム2026 ワンクリック起動
+Option Explicit
+Dim WshShell, fso, scriptPath, exePath, oldPath, rc
+
 Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 scriptPath = fso.GetParentFolderName(WScript.ScriptFullName)
 WshShell.CurrentDirectory = scriptPath
-WshShell.Run "cmd /c start_app.bat", 0, False
-WScript.Sleep 5000
-WshShell.Run "http://localhost:3000", 1, False
-MsgBox "System started!", vbInformation, "Daily Report 2026"
+
+exePath = scriptPath & "\DailyReportServer.exe"
+oldPath = scriptPath & "\DailyReportServer.exe.old"
+
+' 1. 万一 DailyReportServer.exe が無く .old がある場合は復元
+If Not fso.FileExists(exePath) And fso.FileExists(oldPath) Then
+    fso.CopyFile oldPath, exePath, True
+End If
+
+' 2. サーバー起動
+If fso.FileExists(exePath) Then
+    rc = WshShell.Run("""" & exePath & """", 1, False)
+Else
+    MsgBox "DailyReportServer.exe が見つかりません。", vbCritical, "起動エラー"
+End If

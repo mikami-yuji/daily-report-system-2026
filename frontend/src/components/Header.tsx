@@ -4,6 +4,7 @@ import { FolderOpen, Upload } from 'lucide-react';
 import { useFile } from '@/context/FileContext';
 import { useState } from 'react';
 import { uploadFile } from '@/lib/api';
+import UpdateNotificationBanner from './common/UpdateNotificationBanner';
 
 export default function Header() {
     const { files, selectedFile, setSelectedFile, refreshFiles } = useFile();
@@ -29,7 +30,12 @@ export default function Header() {
     };
 
     return (
-        <header className="h-14 bg-white border-b border-sf-border flex items-center justify-end px-6 sticky top-0 z-10">
+        <header className="h-14 bg-white border-b border-sf-border flex items-center justify-between px-6 sticky top-0 z-10">
+            {/* 左側: アップデート通知 */}
+            <div className="flex items-center">
+                <UpdateNotificationBanner />
+            </div>
+
             {/* File Controls (Right Aligned) */}
             <div className="flex items-center gap-4">
                 {/* Read / Upload Button */}

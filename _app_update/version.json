@@ -1,0 +1,12 @@
+{
+  "version": "2.4.1",
+  "releaseDate": "2026-09-03",
+  "fileName": "DailyReportServer_v2.4.1.exe",
+  "fileSize": 49129452,
+  "sha256": "7dc99591a768f26e31050915cbf1b16d3ab935cce94fa20e5ca0f6e43a4e2494",
+  "forceUpdate": false,
+  "releaseNotes": [
+    "全PDF閲覧対応",
+    "自動アップデート対応"
+  ]
+}

@@ -210,29 +210,28 @@ def apply_update() -> Dict[str, Any]:
             # レスポンスがフロントエンドへ確実に届くよう1秒待機
             time.sleep(1.0)
             try:
-                # Windowsで最も信頼性の高いGUIバックグラウンド起動（黒画面なし、ポート解放待機、自己削除）
-                vbs_path = os.path.join(app_dir, "_restart_server.vbs")
-                vbs_content = (
-                    'WScript.Sleep 2000\r\n'
-                    'Set WshShell = CreateObject("WScript.Shell")\r\n'
-                    f'WshShell.CurrentDirectory = "{app_dir}"\r\n'
-                    f'WshShell.Run """{current_exe}""", 1, False\r\n'
-                    'Set fso = CreateObject("Scripting.FileSystemObject")\r\n'
-                    'On Error Resume Next\r\n'
-                    'fso.DeleteFile WScript.ScriptFullName\r\n'
+                # Windows 11のVBScriptブロックの影響を受けない標準バッチ方式
+                # pingで2秒待機（ポート解放） -> startで新EXEを独立GUI起動 -> バッチ自らを削除
+                bat_path = os.path.join(app_dir, "_restart_server.bat")
+                bat_content = (
+                    "@echo off\r\n"
+                    "ping 127.0.0.1 -n 3 > nul\r\n"
+                    f'start "" "{current_exe}"\r\n'
+                    'del "%~f0"\r\n'
                 )
-                with open(vbs_path, "w", encoding="cp932") as f:
-                    f.write(vbs_content)
+                with open(bat_path, "w", encoding="cp932") as f:
+                    f.write(bat_content)
 
+                CREATE_NO_WINDOW = 0x08000000
                 DETACHED_PROCESS = 0x00000008
                 CREATE_NEW_PROCESS_GROUP = 0x00000200
                 subprocess.Popen(
-                    ["wscript.exe", vbs_path],
+                    ["cmd.exe", "/c", bat_path],
                     cwd=app_dir,
-                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                    creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
                     close_fds=True
                 )
-                logger.info("Restart VBScript spawned. Exiting current process...")
+                logger.info("Restart batch spawned. Exiting current process...")
             except Exception as ex:
                 logger.error(f"Failed to spawn restart command: {ex}")
             finally:

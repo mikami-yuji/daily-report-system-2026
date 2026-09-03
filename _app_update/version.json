@@ -1,13 +1,12 @@
 {
-  "version": "2.4.1",
+  "version": "2.4.2",
   "releaseDate": "2026-09-03",
-  "fileName": "DailyReportServer_v2.4.1.exe",
-  "fileSize": 49164126,
-  "sha256": "5118dd1a106b154831c86b7498416bda2801a46104d0c4b9cb71fe5a876c8142",
+  "fileName": "DailyReportServer_v2.4.2.exe",
+  "fileSize": 49162217,
+  "sha256": "edb91ac6d13fb937776fe41e02e3b44fded8cba35b8e7d731bb536cd09e3edd1",
   "forceUpdate": false,
   "releaseNotes": [
-    "自動再起動の堅牢性向上",
-    "ポート解放待機対応",
-    "全PDF閲覧対応"
+    "Windows11完全対応自動再起動",
+    "ポート解放待機"
   ]
 }

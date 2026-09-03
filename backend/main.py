@@ -138,4 +138,13 @@ if __name__ == "__main__":
         local_ip = get_local_ip()
         logging.info(f"For access from other computers on the network, use: http://{local_ip}:8001")
     threading.Thread(target=ob, daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
+    for retry in range(10):
+        try:
+            uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
+            break
+        except OSError as e:
+            if retry < 9:
+                logging.warning(f"Port 8001 is in use ({e}). Retrying in 1.5s... ({retry + 1}/10)")
+                time.sleep(1.5)
+            else:
+                raise

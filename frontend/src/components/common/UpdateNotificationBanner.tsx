@@ -10,18 +10,19 @@ export default function UpdateNotificationBanner() {
     const { pendingSyncCount } = useOffline();
     const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
     const [updateStatusText, setUpdateStatusText] = useState<string>('');
+    const [showReloadBtn, setShowReloadBtn] = useState<boolean>(false);
 
     if (!hasUpdate || !updateInfo) return null;
 
     const handleApplyUpdate = async () => {
         setUpdateStatusText('最新EXEをダウンロード＆検証中...');
+        setShowReloadBtn(false);
         const res = await applyUpdate();
         if (res.success) {
             setUpdateStatusText('適用完了！サーバーを自動再起動しています...');
             
-            // サーバーが確実に立ち上がるまでポーリング監視（接続拒否エラー画面を絶対に表示させない）
             let attempts = 0;
-            const maxAttempts = 35; // 最大35秒待機
+            const maxAttempts = 35;
             
             // 旧サーバー終了・新サーバー起動の猶予として2秒待機後にポーリング開始
             setTimeout(() => {
@@ -43,7 +44,8 @@ export default function UpdateNotificationBanner() {
 
                     if (attempts >= maxAttempts) {
                         clearInterval(timer);
-                        setUpdateStatusText('サーバーの起動を確認中...手動で画面を再読み込みしてください。');
+                        setUpdateStatusText('サーバーの起動に時間がかかっています。');
+                        setShowReloadBtn(true);
                     }
                 }, 1000);
             }, 2000);
@@ -145,9 +147,19 @@ export default function UpdateNotificationBanner() {
                             {/* 更新中のステータス表示 */}
                             {isUpdating && (
                                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-center space-y-2">
-                                    <Loader2 size={24} className="animate-spin text-blue-600 mx-auto" />
+                                    {!showReloadBtn && <Loader2 size={24} className="animate-spin text-blue-600 mx-auto" />}
                                     <p className="font-bold text-blue-900">{updateStatusText}</p>
-                                    <p className="text-[10px] text-blue-700">ブラウザや画面は閉じずにお待ちください。</p>
+                                    {showReloadBtn ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => window.location.reload()}
+                                            className="mt-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5"
+                                        >
+                                            画面を再読み込みする
+                                        </button>
+                                    ) : (
+                                        <p className="text-[10px] text-blue-700">ブラウザや画面は閉じずにお待ちください。</p>
+                                    )}
                                 </div>
                             )}
                         </div>

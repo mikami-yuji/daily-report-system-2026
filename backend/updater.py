@@ -224,7 +224,14 @@ def apply_update() -> Dict[str, Any]:
                 with open(vbs_path, "w", encoding="cp932") as f:
                     f.write(vbs_content)
 
-                subprocess.Popen(["wscript.exe", vbs_path], cwd=app_dir)
+                DETACHED_PROCESS = 0x00000008
+                CREATE_NEW_PROCESS_GROUP = 0x00000200
+                subprocess.Popen(
+                    ["wscript.exe", vbs_path],
+                    cwd=app_dir,
+                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                    close_fds=True
+                )
                 logger.info("Restart VBScript spawned. Exiting current process...")
             except Exception as ex:
                 logger.error(f"Failed to spawn restart command: {ex}")

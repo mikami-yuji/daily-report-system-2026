@@ -613,32 +613,32 @@ export default function DailyReportPointsTablePage() {
                                 <p className="text-gray-400 text-xs">該当する営業担当者のデータが見つかりませんでした。</p>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto max-w-full">
-                                <table className="w-full text-left text-xs border-collapse table-fixed min-w-[1200px]">
+                            <div className="overflow-x-auto max-w-full pb-2">
+                                <table className="w-full text-left text-xs border-collapse table-auto whitespace-nowrap min-w-max">
                                     <thead>
                                         {/* Row 1: Groups */}
                                         <tr className="bg-gray-100 text-gray-700 font-bold text-center border-b border-gray-200">
-                                            <th rowSpan={2} className="sticky left-0 bg-gray-100 z-30 px-4 py-3 text-left font-black border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[100px] min-w-[100px]">営業名</th>
-                                            <th rowSpan={2} className="sticky left-[100px] bg-gray-100 z-30 px-3 py-3 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-[70px] min-w-[70px] text-xs">重点件数</th>
+                                            <th rowSpan={2} className="sticky left-0 bg-gray-100 z-30 px-3 py-3 text-left font-black border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[90px]">営業名</th>
+                                            <th rowSpan={2} className="sticky left-[90px] bg-gray-100 z-30 px-2 py-3 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[65px] text-xs">重点件数</th>
                                             
                                             {displayMonths.map(m => (
-                                                <th key={`grp-${m}`} colSpan={4} className="border-r border-gray-200 bg-blue-50/50 py-2 text-blue-900 border-b border-gray-300 font-black text-sm">
+                                                <th key={`grp-${m}`} colSpan={4} className="border-r border-gray-200 bg-blue-50/50 py-2 text-blue-900 border-b border-gray-300 font-black text-sm text-center min-w-[200px]">
                                                     {m}
                                                 </th>
                                             ))}
 
-                                            <th colSpan={6} className="border-r border-gray-200 bg-gray-200 py-2 text-gray-800 border-b border-gray-300 font-black text-sm">
+                                            <th colSpan={6} className="border-r border-gray-200 bg-gray-200 py-2 text-gray-800 border-b border-gray-300 font-black text-sm text-center min-w-[420px]">
                                                 計
                                             </th>
 
-                                            <th rowSpan={2} className="bg-amber-50 text-amber-950 font-black px-3 py-3 text-right border-r border-gray-200 w-[80px] min-w-[80px] text-xs shadow-inner">
+                                            <th rowSpan={2} className="bg-amber-50 text-amber-950 font-black px-3 py-3 text-right border-r border-gray-200 min-w-[85px] text-xs shadow-inner">
                                                 点数
                                             </th>
-                                            <th rowSpan={2} className="bg-blue-50 text-blue-950 font-black px-3 py-3 text-right border-r border-gray-200 w-[120px] min-w-[120px] text-xs">
+                                            <th rowSpan={2} className="bg-blue-50 text-blue-950 font-black px-3 py-3 text-right border-r border-gray-200 min-w-[130px] text-xs">
                                                 月200点×{targetMonths}<br />
                                                 <span className="text-[10px] font-medium opacity-80">({200 * targetMonths}点満点)</span>
                                             </th>
-                                            <th rowSpan={2} className="bg-emerald-50 text-emerald-950 font-black px-3 py-3 text-right w-[80px] min-w-[80px] text-xs">
+                                            <th rowSpan={2} className="bg-emerald-50 text-emerald-950 font-black px-3 py-3 text-right min-w-[75px] text-xs">
                                                 評価点
                                             </th>
                                         </tr>
@@ -647,29 +647,29 @@ export default function DailyReportPointsTablePage() {
                                         <tr className="bg-gray-50 text-gray-600 font-bold text-center border-b border-gray-200 text-[10px]">
                                             {displayMonths.map(m => (
                                                 <React.Fragment key={`sub-${m}`}>
-                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">重点電</th>
-                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">一般電</th>
-                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 w-[55px] min-w-[55px]">重点訪</th>
-                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-200 w-[55px] min-w-[55px]">一般訪</th>
+                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 min-w-[50px] text-center">重点電</th>
+                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 min-w-[50px] text-center">一般電</th>
+                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-100 min-w-[50px] text-center">重点訪</th>
+                                                    <th className="bg-blue-50/30 px-1 py-2 border-r border-gray-200 min-w-[50px] text-center">一般訪</th>
                                                 </React.Fragment>
                                             ))}
 
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">重点電話</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">一般電話</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">総電話</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">重点訪</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">一般訪問</th>
-                                            <th className="bg-gray-100 px-1 py-2 border-r border-gray-200 w-[60px] min-w-[60px]">総訪問</th>
+                                            <th className="bg-gray-100 px-2 py-2 border-r border-gray-200 min-w-[70px] text-center font-bold">重点電話</th>
+                                            <th className="bg-gray-100 px-2 py-2 border-r border-gray-200 min-w-[70px] text-center font-bold">一般電話</th>
+                                            <th className="bg-blue-100/50 text-blue-900 px-2 py-2 border-r border-gray-200 min-w-[70px] text-center font-black">総電話</th>
+                                            <th className="bg-gray-100 px-2 py-2 border-r border-gray-200 min-w-[70px] text-center font-bold">重点訪問</th>
+                                            <th className="bg-gray-100 px-2 py-2 border-r border-gray-200 min-w-[70px] text-center font-bold">一般訪問</th>
+                                            <th className="bg-emerald-100/50 text-emerald-900 px-2 py-2 border-r border-gray-200 min-w-[70px] text-center font-black">総訪問</th>
                                         </tr>
                                     </thead>
 
                                     <tbody className="divide-y divide-gray-100 text-gray-700">
                                         {filteredPointsRecords.map((r) => (
                                             <tr key={r.staff} className="hover:bg-blue-50/10 transition-colors">
-                                                <td className="sticky left-0 bg-white z-20 px-4 py-3 font-bold text-gray-900 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                                <td className="sticky left-0 bg-white z-20 px-3 py-3 font-bold text-gray-900 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] min-w-[90px]">
                                                     {r.staff}
                                                 </td>
-                                                <td className="sticky left-[100px] bg-white z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] font-semibold text-gray-600">
+                                                <td className="sticky left-[90px] bg-white z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] font-semibold text-gray-600 min-w-[65px]">
                                                     {r.priority_count || '-'}
                                                 </td>
 
@@ -677,41 +677,41 @@ export default function DailyReportPointsTablePage() {
                                                     const act = r.monthly_data[m] || { priority_calls: 0, general_calls: 0, priority_visits: 0, general_visits: 0 };
                                                     return (
                                                         <React.Fragment key={`cell-${r.staff}-${m}`}>
-                                                            <td className={`text-right px-2 py-2 border-r border-gray-100 ${act.priority_calls > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.priority_calls}</td>
-                                                            <td className={`text-right px-2 py-2 border-r border-gray-100 ${act.general_calls > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.general_calls}</td>
-                                                            <td className={`text-right px-2 py-2 border-r border-gray-100 ${act.priority_visits > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.priority_visits}</td>
-                                                            <td className={`text-right px-2 py-2 border-r border-gray-200 ${act.general_visits > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.general_visits}</td>
+                                                            <td className={`text-right px-1.5 py-2 border-r border-gray-100 font-mono min-w-[50px] ${act.priority_calls > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.priority_calls}</td>
+                                                            <td className={`text-right px-1.5 py-2 border-r border-gray-100 font-mono min-w-[50px] ${act.general_calls > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.general_calls}</td>
+                                                            <td className={`text-right px-1.5 py-2 border-r border-gray-100 font-mono min-w-[50px] ${act.priority_visits > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.priority_visits}</td>
+                                                            <td className={`text-right px-1.5 py-2 border-r border-gray-200 font-mono min-w-[50px] ${act.general_visits > 0 ? 'text-gray-900 font-semibold' : 'text-gray-300'}`}>{act.general_visits}</td>
                                                         </React.Fragment>
                                                     );
                                                 })}
 
                                                 {/* Totals */}
-                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.priority_calls}</td>
-                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.general_calls}</td>
-                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-black text-blue-700 bg-blue-50/20">{r.totals.total_calls}</td>
-                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.priority_visits}</td>
-                                                <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50">{r.totals.general_visits}</td>
-                                                <td className="text-right px-2 py-2 border-r border-gray-200 font-black text-emerald-700 bg-emerald-50/20">{r.totals.total_visits}</td>
+                                                <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50 min-w-[70px] font-mono">{r.totals.priority_calls}</td>
+                                                <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50 min-w-[70px] font-mono">{r.totals.general_calls}</td>
+                                                <td className="text-right px-2.5 py-2 border-r border-gray-150 font-black text-blue-700 bg-blue-50/20 min-w-[70px] font-mono">{r.totals.total_calls}</td>
+                                                <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50 min-w-[70px] font-mono">{r.totals.priority_visits}</td>
+                                                <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-800 bg-gray-50/50 min-w-[70px] font-mono">{r.totals.general_visits}</td>
+                                                <td className="text-right px-2.5 py-2 border-r border-gray-200 font-black text-emerald-700 bg-emerald-50/20 min-w-[70px] font-mono">{r.totals.total_visits}</td>
 
                                                 {/* Scores */}
-                                                <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-50/30 text-sm">{r.points}</td>
-                                                <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-50/30 text-sm">
-                                                    {r.achievement_rate}%
-                                                    <div className="w-full bg-gray-200 rounded-full h-1 mt-1 overflow-hidden">
+                                                <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-50/30 text-sm min-w-[85px] font-mono">{r.points}</td>
+                                                <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-50/30 text-sm min-w-[130px]">
+                                                    <span className="font-mono">{r.achievement_rate}%</span>
+                                                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1 overflow-hidden">
                                                         <div 
                                                             className={`h-full ${r.achievement_rate >= 100 ? 'bg-emerald-500' : r.achievement_rate >= 50 ? 'bg-blue-500' : 'bg-red-400'}`} 
                                                             style={{ width: `${Math.min(r.achievement_rate, 100)}%` }} 
                                                         />
                                                     </div>
                                                 </td>
-                                                <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-50/30 text-sm">{r.rating}</td>
+                                                <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-50/30 text-sm min-w-[75px] font-mono">{r.rating}</td>
                                             </tr>
                                         ))}
 
                                         {/* Totals Row */}
                                         <tr className="bg-gray-100 font-bold border-t-2 border-gray-300">
-                                            <td className="sticky left-0 bg-gray-100 z-20 px-4 py-3 font-black text-gray-900 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">計</td>
-                                            <td className="sticky left-[100px] bg-gray-100 z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] font-bold text-gray-800">
+                                            <td className="sticky left-0 bg-gray-100 z-20 px-3 py-3 font-black text-gray-900 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[90px]">計</td>
+                                            <td className="sticky left-[90px] bg-gray-100 z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] font-bold text-gray-800 min-w-[65px]">
                                                 {pointsSummaryData.total.priority_count}
                                             </td>
 
@@ -719,30 +719,30 @@ export default function DailyReportPointsTablePage() {
                                                 const t = pointsSummaryData.total.monthly[m];
                                                 return (
                                                     <React.Fragment key={`total-${m}`}>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-100 font-bold text-gray-900">{t.priority_calls}</td>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-100 font-bold text-gray-900">{t.general_calls}</td>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-100 font-bold text-gray-900">{t.priority_visits}</td>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-200 font-bold text-gray-900">{t.general_visits}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-100 font-bold text-gray-900 min-w-[50px] font-mono">{t.priority_calls}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-100 font-bold text-gray-900 min-w-[50px] font-mono">{t.general_calls}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-100 font-bold text-gray-900 min-w-[50px] font-mono">{t.priority_visits}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-200 font-bold text-gray-900 min-w-[50px] font-mono">{t.general_visits}</td>
                                                     </React.Fragment>
                                                 );
                                             })}
 
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{pointsSummaryData.total.totals.priority_calls}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{pointsSummaryData.total.totals.general_calls}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-black text-blue-700 bg-blue-100/10">{pointsSummaryData.total.totals.total_calls}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{pointsSummaryData.total.totals.priority_visits}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-bold text-gray-900">{pointsSummaryData.total.totals.general_visits}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-200 font-black text-emerald-700 bg-emerald-100/10">{pointsSummaryData.total.totals.total_visits}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-900 min-w-[70px] font-mono">{pointsSummaryData.total.totals.priority_calls}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-900 min-w-[70px] font-mono">{pointsSummaryData.total.totals.general_calls}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-black text-blue-700 bg-blue-100/10 min-w-[70px] font-mono">{pointsSummaryData.total.totals.total_calls}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-900 min-w-[70px] font-mono">{pointsSummaryData.total.totals.priority_visits}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-bold text-gray-900 min-w-[70px] font-mono">{pointsSummaryData.total.totals.general_visits}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-200 font-black text-emerald-700 bg-emerald-100/10 min-w-[70px] font-mono">{pointsSummaryData.total.totals.total_visits}</td>
 
-                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-100/20 text-sm">{pointsSummaryData.total.points.toFixed(1)}</td>
-                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-100/20 text-sm">{pointsSummaryData.total.achievement_rate.toFixed(1)}%</td>
-                                            <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-100/20 text-sm">{pointsSummaryData.total.rating.toFixed(1)}</td>
+                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-100/20 text-sm min-w-[85px] font-mono">{pointsSummaryData.total.points.toFixed(1)}</td>
+                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-100/20 text-sm min-w-[130px] font-mono">{pointsSummaryData.total.achievement_rate.toFixed(1)}%</td>
+                                            <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-100/20 text-sm min-w-[75px] font-mono">{pointsSummaryData.total.rating.toFixed(1)}</td>
                                         </tr>
 
                                         {/* Averages Row */}
                                         <tr className="bg-gray-50 font-bold border-t border-gray-200">
-                                            <td className="sticky left-0 bg-gray-50 z-20 px-4 py-3 font-black text-gray-700 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">平均点</td>
-                                            <td className="sticky left-[100px] bg-gray-50 z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] font-bold text-gray-600">
+                                            <td className="sticky left-0 bg-gray-50 z-20 px-3 py-3 font-black text-gray-700 border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[90px]">平均点</td>
+                                            <td className="sticky left-[90px] bg-gray-50 z-20 text-center border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] font-bold text-gray-600 min-w-[65px]">
                                                 {pointsSummaryData.avg.priority_count.toFixed(1)}
                                             </td>
 
@@ -750,24 +750,24 @@ export default function DailyReportPointsTablePage() {
                                                 const a = pointsSummaryData.avg.monthly[m];
                                                 return (
                                                     <React.Fragment key={`avg-${m}`}>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-100 font-semibold text-gray-600">{a.priority_calls.toFixed(1)}</td>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-100 font-semibold text-gray-600">{a.general_calls.toFixed(1)}</td>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-100 font-semibold text-gray-600">{a.priority_visits.toFixed(1)}</td>
-                                                        <td className="text-right px-2 py-2 border-r border-gray-200 font-semibold text-gray-600">{a.general_visits.toFixed(1)}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-100 font-semibold text-gray-600 min-w-[50px] font-mono">{a.priority_calls.toFixed(1)}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-100 font-semibold text-gray-600 min-w-[50px] font-mono">{a.general_calls.toFixed(1)}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-100 font-semibold text-gray-600 min-w-[50px] font-mono">{a.priority_visits.toFixed(1)}</td>
+                                                        <td className="text-right px-1.5 py-2 border-r border-gray-200 font-semibold text-gray-600 min-w-[50px] font-mono">{a.general_visits.toFixed(1)}</td>
                                                     </React.Fragment>
                                                 );
                                             })}
 
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{pointsSummaryData.avg.totals.priority_calls.toFixed(1)}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{pointsSummaryData.avg.totals.general_calls.toFixed(1)}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-black text-blue-600">{pointsSummaryData.avg.totals.total_calls.toFixed(1)}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{pointsSummaryData.avg.totals.priority_visits.toFixed(1)}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-150 font-semibold text-gray-600">{pointsSummaryData.avg.totals.general_visits.toFixed(1)}</td>
-                                            <td className="text-right px-2 py-2 border-r border-gray-200 font-black text-emerald-600">{pointsSummaryData.avg.totals.total_visits.toFixed(1)}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-semibold text-gray-600 min-w-[70px] font-mono">{pointsSummaryData.avg.totals.priority_calls.toFixed(1)}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-semibold text-gray-600 min-w-[70px] font-mono">{pointsSummaryData.avg.totals.general_calls.toFixed(1)}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-black text-blue-600 min-w-[70px] font-mono">{pointsSummaryData.avg.totals.total_calls.toFixed(1)}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-semibold text-gray-600 min-w-[70px] font-mono">{pointsSummaryData.avg.totals.priority_visits.toFixed(1)}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-150 font-semibold text-gray-600 min-w-[70px] font-mono">{pointsSummaryData.avg.totals.general_visits.toFixed(1)}</td>
+                                            <td className="text-right px-2.5 py-2 border-r border-gray-200 font-black text-emerald-600 min-w-[70px] font-mono">{pointsSummaryData.avg.totals.total_visits.toFixed(1)}</td>
 
-                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-100/10 text-sm">{pointsSummaryData.avg.points.toFixed(1)}</td>
-                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-100/10 text-sm">{pointsSummaryData.avg.achievement_rate.toFixed(1)}%</td>
-                                            <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-100/10 text-sm">{pointsSummaryData.avg.rating.toFixed(1)}</td>
+                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-amber-700 bg-amber-100/10 text-sm min-w-[85px] font-mono">{pointsSummaryData.avg.points.toFixed(1)}</td>
+                                            <td className="text-right px-3 py-2 border-r border-gray-200 font-black text-blue-700 bg-blue-100/10 text-sm min-w-[130px] font-mono">{pointsSummaryData.avg.achievement_rate.toFixed(1)}%</td>
+                                            <td className="text-right px-3 py-2 font-black text-emerald-700 bg-emerald-100/10 text-sm min-w-[75px] font-mono">{pointsSummaryData.avg.rating.toFixed(1)}</td>
                                         </tr>
                                     </tbody>
                                 </table>

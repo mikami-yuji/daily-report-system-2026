@@ -8,7 +8,7 @@ import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, 
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
-import PdfPreviewModal from '@/components/reports/PdfPreviewModal';
+import PdfPreviewModal, { PdfItem } from '@/components/reports/PdfPreviewModal';
 import { ViewerDesignRequest } from '@/types/report';
 import { isSalesPersonMatch } from '@/lib/reportUtils';
 
@@ -32,25 +32,41 @@ export default function DesignSearchPage() {
     // 企画課ビューワーからデザインデータ取得
     const { data: viewerData } = useViewerDesignRequests();
 
-    // PDFプレビュー用ステート
+    // PDFプレビュー用ステート (全版対応)
     const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
-    const [previewPdfUrl, setPreviewPdfUrl] = useState<string>('');
+    const [previewPdfItems, setPreviewPdfItems] = useState<PdfItem[]>([]);
     const [previewPdfTitle, setPreviewPdfTitle] = useState<string>('');
+    const [previewPdfInitialIndex, setPreviewPdfInitialIndex] = useState<number>(0);
 
-    // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId)
-    const viewerMap = useMemo((): Map<string, ViewerDesignRequest> => {
-        const map = new Map<string, ViewerDesignRequest>();
+    // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId, 値: 全件配列)
+    const viewerMap = useMemo((): Map<string, ViewerDesignRequest[]> => {
+        const map = new Map<string, ViewerDesignRequest[]>();
         if (!viewerData || !viewerData.documents || !selectedFile) return map;
 
         viewerData.documents.forEach((doc: ViewerDesignRequest): void => {
             if (!doc.salesPerson) return;
             
             if (isSalesPersonMatch(doc.salesPerson, selectedFile)) {
-                // requestIdは "123456-01" 等。ハイフン前を取り出す
+                // requestIdは "120451-01" 等。ハイフン前を取り出す
                 const shortId = doc.requestId.split('-')[0].trim();
-                map.set(shortId, doc);
+                if (!map.has(shortId)) {
+                    map.set(shortId, []);
+                }
+                map.get(shortId)!.push(doc);
             }
         });
+
+        // 各デザイン番号の依頼書を最新順（枝番の降順または日付の降順）にソート
+        map.forEach((docs) => {
+            docs.sort((a, b) => {
+                const dateA = a.requestDate || a.requestedAt || '';
+                const dateB = b.requestDate || b.requestedAt || '';
+                const dateCmp = dateB.localeCompare(dateA);
+                if (dateCmp !== 0) return dateCmp;
+                return b.requestId.localeCompare(a.requestId, undefined, { numeric: true });
+            });
+        });
+
         return map;
     }, [viewerData, selectedFile]);
 
@@ -581,20 +597,38 @@ export default function DesignSearchPage() {
                                                             <ImageIcon size={16} />
                                                         </button>
                                                         {(() => {
-                                                            const matchedViewer = viewerMap.get(req.designNo);
-                                                            if (!matchedViewer || !matchedViewer.pdfUrl) return null;
+                                                            const matchedDocs = viewerMap.get(req.designNo);
+                                                            if (!matchedDocs || matchedDocs.length === 0) return null;
+                                                            const docsWithPdf = matchedDocs.filter(d => !!d.pdfUrl);
+                                                            if (docsWithPdf.length === 0) return null;
+
+                                                            const items: PdfItem[] = docsWithPdf.map(doc => ({
+                                                                title: `仕様書: ${doc.requestId} - ${doc.designContent || req.designName}`,
+                                                                url: doc.pdfUrl!,
+                                                                requestId: doc.requestId,
+                                                                requestDate: doc.requestDate,
+                                                                designContent: doc.designContent,
+                                                                status: doc.status
+                                                            }));
+
                                                             return (
                                                                 <button
                                                                     onClick={(e: React.MouseEvent) => {
                                                                         e.stopPropagation();
-                                                                        setPreviewPdfUrl(matchedViewer.pdfUrl!);
-                                                                        setPreviewPdfTitle(`仕様書: ${matchedViewer.requestId} - ${matchedViewer.designContent}`);
+                                                                        setPreviewPdfItems(items);
+                                                                        setPreviewPdfTitle(`仕様書: ${req.designNo} - ${req.designName || ''}`);
+                                                                        setPreviewPdfInitialIndex(0);
                                                                         setIsPdfModalOpen(true);
                                                                     }}
-                                                                    className="p-1 rounded hover:bg-sf-light-blue/10 text-red-500 transition-colors"
-                                                                    title="PDF仕様書をプレビュー"
+                                                                    className="p-1 rounded hover:bg-red-50 text-red-500 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                                                    title={`PDF仕様書をプレビュー (${docsWithPdf.length}件の依頼書あり)`}
                                                                 >
                                                                     <FileText size={16} />
+                                                                    {docsWithPdf.length > 1 && (
+                                                                        <span className="text-[10px] font-black bg-red-100 text-red-700 px-1 py-0.2 rounded-full leading-tight">
+                                                                            {docsWithPdf.length}
+                                                                        </span>
+                                                                    )}
                                                                 </button>
                                                             );
                                                         })()}
@@ -647,6 +681,77 @@ export default function DesignSearchPage() {
                                                                     </div>
                                                                 </div>
                                                             </div>
+
+                                                            {/* 企画課デザイン依頼書（枝番別履歴） */}
+                                                            {(() => {
+                                                                const matchedDocs = viewerMap.get(req.designNo);
+                                                                if (!matchedDocs || matchedDocs.length === 0) return null;
+                                                                return (
+                                                                    <div className="mb-4 p-4 bg-amber-50/40 rounded-xl border border-amber-200/80 shadow-xs">
+                                                                        <h4 className="text-xs font-black text-amber-900 mb-2.5 flex items-center gap-1.5">
+                                                                            <FileText size={14} className="text-red-500" />
+                                                                            企画課デザイン依頼書・仕様書PDF ({matchedDocs.length}件の依頼書履歴)
+                                                                        </h4>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                                                            {matchedDocs.map((doc, docIdx) => (
+                                                                                <div 
+                                                                                    key={doc.requestId || docIdx}
+                                                                                    className="bg-white p-3 rounded-lg border border-amber-200/60 shadow-2xs flex flex-col justify-between"
+                                                                                >
+                                                                                    <div>
+                                                                                        <div className="flex items-center justify-between gap-1 mb-1">
+                                                                                            <span className="font-bold text-xs text-sf-text">
+                                                                                                {doc.requestId}
+                                                                                            </span>
+                                                                                            {doc.status && (
+                                                                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                                                                                                    {doc.status === 'completed' ? '完了' : doc.status === 'inProgress' ? '作成中' : doc.status}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        {doc.requestDate && (
+                                                                                            <p className="text-[10px] text-gray-500 flex items-center gap-1 mb-1">
+                                                                                                <Calendar size={10} /> 依頼日: {doc.requestDate}
+                                                                                            </p>
+                                                                                        )}
+                                                                                        {doc.designContent && (
+                                                                                            <p className="text-xs text-gray-700 line-clamp-2 leading-relaxed mb-2" title={doc.designContent}>
+                                                                                                {doc.designContent}
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    {doc.pdfUrl ? (
+                                                                                        <button
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                const allItems: PdfItem[] = matchedDocs.filter(d => !!d.pdfUrl).map(d => ({
+                                                                                                    title: `仕様書: ${d.requestId} - ${d.designContent || req.designName}`,
+                                                                                                    url: d.pdfUrl!,
+                                                                                                    requestId: d.requestId,
+                                                                                                    requestDate: d.requestDate,
+                                                                                                    designContent: d.designContent,
+                                                                                                    status: d.status
+                                                                                                }));
+                                                                                                const targetIdx = allItems.findIndex(item => item.requestId === doc.requestId);
+                                                                                                setPreviewPdfItems(allItems);
+                                                                                                setPreviewPdfTitle(`仕様書: ${doc.requestId} - ${doc.designContent || req.designName}`);
+                                                                                                setPreviewPdfInitialIndex(targetIdx >= 0 ? targetIdx : 0);
+                                                                                                setIsPdfModalOpen(true);
+                                                                                            }}
+                                                                                            className="w-full mt-1 px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                                                                        >
+                                                                                            <FileText size={12} />
+                                                                                            仕様書PDFをプレビュー
+                                                                                        </button>
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-gray-400 text-center py-1">PDF未生成</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
 
                                                             <div className="flex justify-between items-end mb-3">
                                                                 <h3 className="text-sm font-semibold text-sf-text flex items-center gap-2">
@@ -744,8 +849,9 @@ export default function DesignSearchPage() {
             <PdfPreviewModal
                 isOpen={isPdfModalOpen}
                 onClose={(): void => setIsPdfModalOpen(false)}
-                pdfUrl={previewPdfUrl}
+                items={previewPdfItems}
                 title={previewPdfTitle}
+                initialIndex={previewPdfInitialIndex}
             />
         </>
     );

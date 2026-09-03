@@ -3,8 +3,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useFiles, useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
 import { Report } from '@/lib/api';
-import { Search, Calendar, FileText, TrendingUp, Package, Image as ImageIcon, ExternalLink, Key, Loader2 } from 'lucide-react';
-import PdfPreviewModal from '@/components/reports/PdfPreviewModal';
+import { Search, Calendar, FileText, TrendingUp, Package, Image as ImageIcon, ExternalLink, Key, Loader2, Layers } from 'lucide-react';
+import PdfPreviewModal, { PdfItem } from '@/components/reports/PdfPreviewModal';
 import { ViewerDesignRequest } from '@/types/report';
 import { isSalesPersonMatch, extractSalesPersonName } from '@/lib/reportUtils';
 
@@ -31,38 +31,65 @@ export default function DesignProgressPage() {
     // 企画課ビューワーからデザインデータ取得
     const { data: viewerData, isLoading: isLoadingViewer } = useViewerDesignRequests();
 
-    // PDFプレビュー用ステート
+    // PDFプレビュー用ステート (全版対応)
     const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
-    const [previewPdfUrl, setPreviewPdfUrl] = useState<string>('');
+    const [previewPdfItems, setPreviewPdfItems] = useState<PdfItem[]>([]);
     const [previewPdfTitle, setPreviewPdfTitle] = useState<string>('');
+    const [previewPdfInitialIndex, setPreviewPdfInitialIndex] = useState<number>(0);
 
     const [selectedCustomer, setSelectedCustomer] = useState<string>('');
     const [selectedDesignNo, setSelectedDesignNo] = useState<string>('');
+    const [prevSelectedDesignNo, setPrevSelectedDesignNo] = useState<string>(selectedDesignNo);
+    const [selectedDocIndex, setSelectedDocIndex] = useState<number>(0);
+
+    // デザイン番号が変わったら版インデックスを0にリセット (React公式推奨パターン)
+    if (prevSelectedDesignNo !== selectedDesignNo) {
+        setPrevSelectedDesignNo(selectedDesignNo);
+        setSelectedDocIndex(0);
+    }
 
     const activeSalesPerson = useMemo((): string => extractSalesPersonName(selectedFile), [selectedFile]);
 
-    // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId)
-    const viewerMap = useMemo((): Map<string, ViewerDesignRequest> => {
-        const map = new Map<string, ViewerDesignRequest>();
+    // 自分の営業案件のビューワーデータマップを作成 (キー: 短縮されたrequestId, 値: 全件配列)
+    const viewerMap = useMemo((): Map<string, ViewerDesignRequest[]> => {
+        const map = new Map<string, ViewerDesignRequest[]>();
         if (!viewerData || !viewerData.documents || !selectedFile) return map;
 
         viewerData.documents.forEach((doc: ViewerDesignRequest): void => {
             if (!doc.salesPerson) return;
             
             if (isSalesPersonMatch(doc.salesPerson, selectedFile)) {
-                // requestIdは "123456-01" 等。ハイフン前を取り出す
+                // requestIdは "120451-01" 等。ハイフン前を取り出す
                 const shortId = doc.requestId.split('-')[0].trim();
-                map.set(shortId, doc);
+                if (!map.has(shortId)) {
+                    map.set(shortId, []);
+                }
+                map.get(shortId)!.push(doc);
             }
         });
+
+        // 最新順（枝番降順・日付降順）にソート
+        map.forEach((docs) => {
+            docs.sort((a, b) => {
+                const dateA = a.requestDate || a.requestedAt || '';
+                const dateB = b.requestDate || b.requestedAt || '';
+                const dateCmp = dateB.localeCompare(dateA);
+                if (dateCmp !== 0) return dateCmp;
+                return b.requestId.localeCompare(a.requestId, undefined, { numeric: true });
+            });
+        });
+
         return map;
     }, [viewerData, selectedFile]);
 
-    // 選択されたデザインNo.に対応するビューワー側データ
-    const currentViewerDesign = useMemo((): ViewerDesignRequest | null => {
-        if (!selectedDesignNo) return null;
-        return viewerMap.get(selectedDesignNo) || null;
+    // 選択されたデザインNo.に対応するビューワー側データ全件
+    const currentViewerDesigns = useMemo((): ViewerDesignRequest[] => {
+        if (!selectedDesignNo) return [];
+        return viewerMap.get(selectedDesignNo) || [];
     }, [selectedDesignNo, viewerMap]);
+
+    // 現在選択中の版データ（デフォルトは最新版）
+    const currentViewerDesign = currentViewerDesigns[selectedDocIndex] || currentViewerDesigns[0] || null;
     // デザイン依頼があるカスタマー一覧を抽出
     const customers = useMemo((): string[] => {
         const customerSet = new Set<string>();
@@ -290,69 +317,106 @@ export default function DesignProgressPage() {
                                     const statusInfo = statusLabelMap[currentViewerDesign.status] || { label: currentViewerDesign.status, color: 'bg-gray-50 text-gray-700 border-gray-200' };
 
                                     return (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-                                            {/* テキスト情報 */}
-                                            <div className="space-y-3 flex flex-col justify-between text-xs text-sf-text">
-                                                <div>
-                                                    <p className="text-xs text-sf-text-weak mb-0.5">企画課ステータス</p>
-                                                    <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-md border ${statusInfo.color}`}>
-                                                        {statusInfo.label}
+                                        <div className="flex flex-col flex-1 justify-between">
+                                            {/* 複数版が存在する場合の切り替えタブ */}
+                                            {currentViewerDesigns.length > 1 && (
+                                                <div className="flex items-center gap-1.5 mb-3 pb-2.5 border-b border-amber-200/50 overflow-x-auto text-[11px]">
+                                                    <span className="font-bold text-amber-900 whitespace-nowrap flex items-center gap-1">
+                                                        <Layers size={12} className="text-amber-600" /> 依頼履歴 ({currentViewerDesigns.length}件):
                                                     </span>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs text-sf-text-weak mb-0.5">担当デザイナー (プランナー)</p>
-                                                    <p className="font-bold">{currentViewerDesign.planner || '-'}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs text-sf-text-weak mb-0.5">納品予定日 (納期)</p>
-                                                    <p className="font-bold text-amber-700">{currentViewerDesign.deliveryDate || '-'}</p>
-                                                </div>
-                                                {currentViewerDesign.pdfUrl && (
-                                                    <div className="pt-1">
+                                                    {currentViewerDesigns.map((doc, idx) => (
                                                         <button
-                                                            onClick={(): void => {
-                                                                setPreviewPdfUrl(currentViewerDesign.pdfUrl!);
-                                                                setPreviewPdfTitle(`仕様書: ${currentViewerDesign.requestId} - ${currentViewerDesign.designContent}`);
-                                                                setIsPdfModalOpen(true);
-                                                            }}
-                                                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded font-semibold text-[11px] transition-colors cursor-pointer"
+                                                            key={doc.requestId || idx}
+                                                            onClick={() => setSelectedDocIndex(idx)}
+                                                            className={`px-2 py-1 rounded font-bold transition-all whitespace-nowrap cursor-pointer ${
+                                                                idx === selectedDocIndex
+                                                                    ? 'bg-amber-600 text-white shadow-xs'
+                                                                    : 'bg-white text-amber-900 hover:bg-amber-100 border border-amber-300/80'
+                                                            }`}
                                                         >
-                                                            <FileText size={12} />
-                                                            仕様書PDFをプレビュー
+                                                            {doc.requestId}
+                                                            {doc.requestDate && ` (${doc.requestDate})`}
                                                         </button>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    ))}
+                                                </div>
+                                            )}
 
-                                            {/* カンプ画像サムネイル */}
-                                            <div className="flex flex-col justify-center items-center bg-white border border-sf-border rounded-lg p-2 relative h-32 md:h-full min-h-[100px]">
-                                                {currentViewerDesign.compUrl ? (
-                                                    <>
-                                                        <a
-                                                            href={`http://192.168.1.5:8888${currentViewerDesign.compUrl}`}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="relative w-full h-full flex items-center justify-center group overflow-hidden"
-                                                            title="カンプ画像を別タブで開く"
-                                                        >
-                                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                            <img
-                                                                src={`http://192.168.1.5:8888${currentViewerDesign.compUrl}`}
-                                                                alt="最新カンプ画像"
-                                                                className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
-                                                            />
-                                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold gap-1 rounded">
-                                                                <ExternalLink size={12} /> 開く
-                                                            </div>
-                                                        </a>
-                                                        <p className="text-[9px] text-sf-text-weak mt-1">最新アップロード画像 (カンプ)</p>
-                                                    </>
-                                                ) : (
-                                                    <div className="flex flex-col items-center text-sf-text-weak text-[10px]">
-                                                        <ImageIcon size={24} className="opacity-30 mb-1" />
-                                                        <span>カンプ画像未登録</span>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+                                                {/* テキスト情報 */}
+                                                <div className="space-y-3 flex flex-col justify-between text-xs text-sf-text">
+                                                    <div>
+                                                        <p className="text-xs text-sf-text-weak mb-0.5">企画課ステータス</p>
+                                                        <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-md border ${statusInfo.color}`}>
+                                                            {statusInfo.label}
+                                                        </span>
                                                     </div>
-                                                )}
+                                                    <div>
+                                                        <p className="text-xs text-sf-text-weak mb-0.5">担当デザイナー (プランナー)</p>
+                                                        <p className="font-bold">{currentViewerDesign.planner || '-'}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-xs text-sf-text-weak mb-0.5">納品予定日 (納期)</p>
+                                                        <p className="font-bold text-amber-700">{currentViewerDesign.deliveryDate || '-'}</p>
+                                                    </div>
+                                                    {currentViewerDesign.pdfUrl && (
+                                                        <div className="pt-1">
+                                                            <button
+                                                                onClick={(): void => {
+                                                                    const allPdfItems: PdfItem[] = currentViewerDesigns.filter(d => !!d.pdfUrl).map(d => ({
+                                                                        title: `仕様書: ${d.requestId} - ${d.designContent || ''}`,
+                                                                        url: d.pdfUrl!,
+                                                                        requestId: d.requestId,
+                                                                        requestDate: d.requestDate,
+                                                                        designContent: d.designContent,
+                                                                        status: d.status
+                                                                    }));
+                                                                    const targetIdx = allPdfItems.findIndex(item => item.requestId === currentViewerDesign.requestId);
+                                                                    setPreviewPdfItems(allPdfItems);
+                                                                    setPreviewPdfTitle(`仕様書: ${currentViewerDesign.requestId} - ${currentViewerDesign.designContent || ''}`);
+                                                                    setPreviewPdfInitialIndex(targetIdx >= 0 ? targetIdx : 0);
+                                                                    setIsPdfModalOpen(true);
+                                                                }}
+                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-lg font-bold text-xs transition-colors cursor-pointer shadow-xs"
+                                                            >
+                                                                <FileText size={14} />
+                                                                仕様書PDFをプレビュー {currentViewerDesigns.filter(d => !!d.pdfUrl).length > 1 && `(全${currentViewerDesigns.filter(d => !!d.pdfUrl).length}件)`}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* カンプ画像サムネイル */}
+                                                <div className="flex flex-col justify-center items-center bg-white border border-sf-border rounded-lg p-2 relative h-32 md:h-full min-h-[100px]">
+                                                    {currentViewerDesign.compUrl ? (
+                                                        <>
+                                                            <a
+                                                                href={`http://192.168.1.5:8888${currentViewerDesign.compUrl}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="relative w-full h-full flex items-center justify-center group overflow-hidden"
+                                                                title="カンプ画像を別タブで開く"
+                                                            >
+                                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                <img
+                                                                    src={`http://192.168.1.5:8888${currentViewerDesign.compUrl}`}
+                                                                    alt="最新カンプ画像"
+                                                                    className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
+                                                                />
+                                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold gap-1 rounded">
+                                                                    <ExternalLink size={12} /> 開く
+                                                                </div>
+                                                            </a>
+                                                            <p className="text-[9px] text-sf-text-weak mt-1">
+                                                                カンプ画像 ({currentViewerDesign.requestId})
+                                                            </p>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center text-sf-text-weak text-[10px]">
+                                                            <ImageIcon size={24} className="opacity-30 mb-1" />
+                                                            <span>カンプ画像未登録</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -437,8 +501,9 @@ export default function DesignProgressPage() {
             <PdfPreviewModal
                 isOpen={isPdfModalOpen}
                 onClose={(): void => setIsPdfModalOpen(false)}
-                pdfUrl={previewPdfUrl}
+                items={previewPdfItems}
                 title={previewPdfTitle}
+                initialIndex={previewPdfInitialIndex}
             />
         </div>
     );

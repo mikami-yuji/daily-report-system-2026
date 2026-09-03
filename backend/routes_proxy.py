@@ -3,6 +3,8 @@ import requests
 import logging
 from typing import Dict, Any, Optional
 
+import config
+
 router = APIRouter()
 
 # サーバーサイドでビューアのCookieを一定期間キャッシュ
@@ -14,13 +16,13 @@ COOKIE_MAX_AGE = 30 * 24 * 60 * 60
 @router.get("/api/proxy/design-requests")
 def proxy_design_requests(request: Request, response: Response, passcode: Optional[str] = None) -> Dict[str, Any]:
     """
-    企画課デザインビューア (192.168.1.5:8888) の /api/documents から最新のデザイン依頼書データを取得します。
+    企画課デザインビューア の /api/documents から最新のデザイン依頼書データを取得します。
     Cookieが401エラー（セッション切れ）になり、かつパスコードが指定されている場合は、自動でビューアのログインAPIを叩いてセッションを回復します。
     また、Cookieには30日間の有効期限を設定し、再起動後も維持されるようにします。
     """
     global _cached_viewer_cookies
-    target_url = "http://192.168.1.5:8888/api/documents"
-    login_url = "http://192.168.1.5:8888/api/login"
+    target_url = f"{config.VIEWER_URL}/api/documents"
+    login_url = f"{config.VIEWER_URL}/api/login"
     
     # 1. クライアントからのCookieを取得、なければサーバーキャッシュを使用
     cookies = dict(request.cookies)

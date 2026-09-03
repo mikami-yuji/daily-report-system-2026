@@ -42,7 +42,7 @@ def get_design_images(filename: str) -> dict:
             logging.info(f"Returning cached design image list for {filename}")
             return {"images": cached_data['images'], "folder": cached_data['folder']}
 
-    DESIGN_DIR = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ"
+    DESIGN_DIR = config.DESIGN_DIR
     
     logging.info(f"--- get_design_images called with filename: {filename} ---")
     
@@ -222,7 +222,7 @@ def serve_design_image(path: str):
     Serve the image file content.
     path: Relative path from DESIGN_DIR (e.g., "大阪本社　09：沖本\image.jpg")
     """
-    DESIGN_DIR = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ"
+    DESIGN_DIR = config.DESIGN_DIR
     
     try:
         # Security check: Prevent directory traversal
@@ -258,7 +258,7 @@ def search_design_images(query: str, filename: Optional[str] = None):
     """
     if filename:
         filename = os.path.basename(filename)
-    DESIGN_DIR = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ"
+    DESIGN_DIR = config.DESIGN_DIR
     
     logging.info(f"--- search_design_images called. Query: {query}, Filename: {filename} ---")
 

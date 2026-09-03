@@ -73,3 +73,4 @@ class ApprovalInput(BaseModel):
 
 class ReplyInput(BaseModel):
     コメント返信欄: str
+    original_values: Optional[dict] = None

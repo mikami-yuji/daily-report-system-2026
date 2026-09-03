@@ -7,12 +7,16 @@ import logging
 import os
 import sys
 
+import asyncio
+from contextlib import asynccontextmanager
+
 import config
 import routes_reports
 import routes_images
 import routes_sales
 import routes_stats
 import routes_proxy
+import sync_queue
 
 # Setup logging
 logging.basicConfig(
@@ -25,7 +29,36 @@ logging.basicConfig(
 )
 logging.info("Server starting up...")
 
-app = FastAPI()
+async def sync_worker_loop():
+    """30秒ごとに未同期キューの処理を試みる自動再同期タスク"""
+    while True:
+        try:
+            await asyncio.sleep(30)
+            if sync_queue.get_pending_task_count() > 0:
+                # ファイルサーバー接続可能であれば同期実行
+                if sync_queue.check_file_server_connected():
+                    logging.info("Auto-sync: Pending sync tasks detected and server reachable. Processing...")
+                    res = await asyncio.to_thread(sync_queue.process_sync_queue)
+                    if res.get("processed", 0) > 0:
+                        logging.info(f"Auto-sync completed: {res}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logging.warning(f"Error in sync_worker_loop: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 起動時: バックグラウンド同期ワーカーを開始
+    worker_task = asyncio.create_task(sync_worker_loop())
+    yield
+    # 終了時: ワーカーを安全に停止
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+
+app = FastAPI(lifespan=lifespan)
 
 # CORS settings
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")

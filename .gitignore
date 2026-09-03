@@ -65,6 +65,10 @@ DailyReportSystem_2026_Simple/DailyReportServer.exe
 
 # Cache
 backend/.cache/
+*.db
+*.db-wal
+*.db-shm
+backend/data/*.db*
 
 # Temporary development files
 fix_*.py

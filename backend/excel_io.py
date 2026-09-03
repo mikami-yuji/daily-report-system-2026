@@ -1,15 +1,44 @@
-"""Excel file I/O operations with retry mechanism and atomic replacement."""
-
 import os
 import shutil
 import tempfile
 import time
 import logging
+import threading
+from collections import defaultdict
+from contextlib import contextmanager
 from typing import Optional
 import openpyxl
 from fastapi import HTTPException
 
 import cache
+
+# ファイルパスごとの再帰的排他ロック（スレッドセーフ）
+_file_locks = defaultdict(threading.RLock)
+_global_lock = threading.Lock()
+
+@contextmanager
+def get_file_write_lock(file_path: str, timeout: float = 30.0):
+    """
+    同一Excelファイルへの並行書き込みを直列化（キューイング）するコンテキストマネージャー。
+    指定タイムアウト内にロックが取得できない場合は 409 Conflict を送出します。
+    """
+    norm_path = os.path.abspath(file_path).lower()
+    with _global_lock:
+        lock = _file_locks[norm_path]
+    
+    acquired = lock.acquire(timeout=timeout)
+    if not acquired:
+        logging.warning(f"File write lock timeout ({timeout}s) on {file_path}")
+        raise HTTPException(
+            status_code=409,
+            detail="現在、別のユーザーまたは処理がこのExcelファイルを更新中です。数秒待ってから再試行してください。"
+        )
+    try:
+        logging.debug(f"Acquired write lock for {file_path}")
+        yield
+    finally:
+        lock.release()
+        logging.debug(f"Released write lock for {file_path}")
 
 def safe_save_workbook_with_retry(
     wb: openpyxl.Workbook,
@@ -19,7 +48,8 @@ def safe_save_workbook_with_retry(
     create_backup_task: bool = True
 ) -> None:
     """
-    一時ファイルに保存・整合性検証を行った後、対象ファイルをアトミックに置き換えます。
+    一時ファイルに保存・整合性検証を行った後、対象ファイルを安全に置き換えます。
+    同一ボリュームであれば os.replace によるアトミック置換を優先し、
     ファイルロック(PermissionError)や一時的I/Oエラーが発生した場合は指数バックオフでリトライします。
     """
     filename = os.path.basename(target_file_path)
@@ -55,10 +85,18 @@ def safe_save_workbook_with_retry(
     last_error: Optional[Exception] = None
     for attempt in range(max_retries):
         try:
-            shutil.copy2(temp_file, target_file_path)
-            logging.info(f"Successfully saved and replaced {target_file_path} (attempt {attempt + 1})")
-            last_error = None
-            break
+            try:
+                # 同一ボリューム等の場合は os.replace によるアトミック置換を試行
+                os.replace(temp_file, target_file_path)
+                logging.info(f"Successfully atomic-replaced {target_file_path} (attempt {attempt + 1})")
+                last_error = None
+                break
+            except OSError:
+                # 異なるドライブ等の場合は copy2 でフォールバック
+                shutil.copy2(temp_file, target_file_path)
+                logging.info(f"Successfully copied and replaced {target_file_path} (attempt {attempt + 1})")
+                last_error = None
+                break
         except (PermissionError, OSError) as e:
             last_error = e
             wait_time = base_delay * (2 ** attempt)

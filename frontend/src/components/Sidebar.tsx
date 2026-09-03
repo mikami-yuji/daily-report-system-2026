@@ -20,43 +20,89 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useOffline } from '@/context/OfflineContext';
-import { CloudOff, RefreshCw, CheckCircle } from 'lucide-react';
+import { CloudOff, RefreshCw } from 'lucide-react';
 
 function SyncStatus({ collapsed }: { collapsed: boolean }) {
-    const { isOnline, offlineReports, syncReports } = useOffline();
-    const pendingCount = offlineReports.filter(r => r.status === 'pending' || r.status === 'error').length;
-    const syncingCount = offlineReports.filter(r => r.status === 'syncing').length;
+    const { isOnline, fileServerConnected, pendingSyncCount, triggerServerSync, offlineReports, syncReports } = useOffline();
+    const browserPending = offlineReports.filter(r => r.status === 'pending' || r.status === 'error').length;
+    const browserSyncing = offlineReports.filter(r => r.status === 'syncing').length;
 
-    if (pendingCount === 0 && syncingCount === 0 && isOnline) return null;
+    const isServerOffline = !fileServerConnected;
+    const totalPending = pendingSyncCount + browserPending;
 
-    return (
-        <div className={`mb-2 p-2 rounded text-xs flex items-center gap-2 ${!isOnline ? 'bg-gray-100 text-gray-600' :
-            syncingCount > 0 ? 'bg-blue-50 text-blue-600' :
-                'bg-yellow-50 text-yellow-600'
-            }`}>
-            {syncingCount > 0 ? (
-                <RefreshCw size={16} className="animate-spin" />
-            ) : !isOnline ? (
-                <CloudOff size={16} />
-            ) : (
-                <CheckCircle size={16} />
-            )}
+    // 完全に正常な場合：安心の接続中インジケーター
+    if (isOnline && !isServerOffline && totalPending === 0 && browserSyncing === 0) {
+        if (collapsed) {
+            return (
+                <div className="flex justify-center" title="社内サーバー正常接続中">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-100"></span>
+                </div>
+            );
+        }
+        return (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50 text-emerald-700 text-xs border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="font-medium">社内サーバー: 接続中</span>
+            </div>
+        );
+    }
 
-            {!collapsed && (
-                <div className="flex-1">
-                    {!isOnline ? (
-                        <span>オフライン ({pendingCount}件未送信)</span>
-                    ) : syncingCount > 0 ? (
-                        <span>同期中... ({syncingCount}件)</span>
-                    ) : (
-                        <button onClick={() => syncReports()} className="hover:underline text-left">
-                            {pendingCount}件の未送信データ
-                            <br />
-                            <span className="text-[10px] opacity-75">クリックして同期</span>
-                        </button>
+    // ブラウザ同期中
+    if (browserSyncing > 0) {
+        return (
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-blue-50 text-blue-700 text-xs border border-blue-200">
+                <RefreshCw size={14} className="animate-spin text-blue-600" />
+                {!collapsed && <span>データ同期中...</span>}
+            </div>
+        );
+    }
+
+    // ファイルサーバー切断または一時退避キューが存在する場合
+    if (isServerOffline || totalPending > 0) {
+        return (
+            <div
+                onClick={() => {
+                    if (isOnline && fileServerConnected) {
+                        triggerServerSync();
+                        syncReports();
+                    }
+                }}
+                className={`p-2 rounded-md text-xs cursor-pointer transition-all border ${
+                    isServerOffline 
+                        ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' 
+                        : 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
+                }`}
+                title="クリックして最新状態をサーバーへ同期"
+            >
+                <div className="flex items-center gap-1.5 font-medium">
+                    <AlertTriangle size={14} className="text-amber-600 flex-shrink-0" />
+                    {!collapsed && (
+                        <div className="flex-1 truncate">
+                            {isServerOffline ? 'ファイルサーバー切断中' : '一時退避データあり'}
+                        </div>
                     )}
                 </div>
-            )}
+                {!collapsed && (
+                    <div className="mt-1 text-[11px] text-gray-600 pl-5">
+                        {totalPending > 0 ? (
+                            <>
+                                <span className="font-bold text-amber-700">{totalPending}件</span> 退避中（復旧時自動反映）
+                                <div className="text-[10px] text-blue-600 underline mt-0.5">今すぐ再同期を試す</div>
+                            </>
+                        ) : (
+                            <span>ローカルキャッシュで閲覧中</span>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    // PC自体がオフライン
+    return (
+        <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-gray-100 text-gray-700 text-xs border border-gray-300">
+            <CloudOff size={14} className="text-gray-500" />
+            {!collapsed && <span>オフラインモード</span>}
         </div>
     );
 }

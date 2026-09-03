@@ -21,23 +21,23 @@ BUNDLE_DIR = get_bundle_path()
 STATIC_DIR = os.path.join(BUNDLE_DIR, "static")
 
 # Load configuration
-def load_config() -> str:
+def get_raw_config() -> dict:
     config_path = os.path.join(BASE_DIR, 'config.json')
-    # 2026年度版のデフォルトパス
-    default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度'
-    
-    path = None
     if os.path.exists(config_path):
         try:
             with open(config_path, 'r', encoding='utf-8-sig') as f:
-                config_data = json.load(f)
-                path = config_data.get('excel_dir')
-                if path:
-                    logging.info(f"Loaded raw config path: {path}")
+                return json.load(f)
         except Exception as e:
             logging.warning(f"Failed to load config.json: {e}")
+    return {}
 
+_RAW_CONFIG = get_raw_config()
+
+def resolve_excel_dir() -> str:
+    default_path = r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度'
+    path = _RAW_CONFIG.get('excel_dir')
     if path:
+        logging.info(f"Loaded raw config path: {path}")
         if not os.path.isabs(path):
             path = os.path.abspath(os.path.join(BASE_DIR, path))
             logging.info(f"Resolved relative path to absolute: {path}")
@@ -64,11 +64,21 @@ def load_config() -> str:
     logging.info(f"No existing paths found. Fallback to default local data path: {local_data_path}")
     return local_data_path
 
-EXCEL_DIR = load_config()
+EXCEL_DIR = resolve_excel_dir()
+
+# デザインデータディレクトリ（config.json で上書き可能）
+DESIGN_DIR = _RAW_CONFIG.get(
+    'design_dir',
+    r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ'
+)
+
+# 企画課デザインビューアURL（config.json で上書き可能）
+VIEWER_URL = _RAW_CONFIG.get('viewer_url', 'http://192.168.1.5:8888').rstrip('/')
 
 # --- Global Sales Data Storage ---
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 SALES_CSV_PATH = os.path.join(DATA_DIR, 'sales_data.csv')
+SQLITE_CACHE_DB = _RAW_CONFIG.get('sqlite_cache_db', os.path.join(DATA_DIR, 'shadow_cache.db'))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # Global DataFrame to hold sales data

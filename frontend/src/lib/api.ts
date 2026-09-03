@@ -49,6 +49,7 @@ const apiLong = axios.create({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleResponseError = (error: any): Promise<never> => {
     const isProxy401 = error.config?.url?.includes('/proxy/') && error.response?.status === 401;
+    const isConflict409 = error.response?.status === 409;
     let message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
     console.error('API Error:', error);
     if (isProxy401) {
@@ -61,6 +62,17 @@ const handleResponseError = (error: any): Promise<never> => {
         toast.error(`通信エラー: ${message}`, {
             id: 'proxy-unauthorized',
             duration: 12000, // URLと案内を確認・コピーしやすくするため表示時間を長め(12秒)に設定
+        });
+    } else if (isConflict409) {
+        toast.error(`⚠️ ${message}`, {
+            id: 'concurrency-conflict',
+            duration: 8000,
+            style: {
+                border: '1px solid #f59e0b',
+                padding: '16px',
+                color: '#b45309',
+                background: '#fffbeb',
+            },
         });
     } else {
         toast.error(`通信エラー: ${message}`);
@@ -105,10 +117,16 @@ export const updateReport = async (managementNumber: number, report: Partial<Omi
     return response.data;
 };
 
-// シンプルな返信専用API（楽観的ロックなし）
-export const updateReportReply = async (managementNumber: number, reply: string, filename?: string): Promise<{ success: boolean }> => {
+// コメント返信専用API（排他制御対応）
+export const updateReportReply = async (
+    managementNumber: number,
+    reply: string,
+    filename?: string,
+    original_values?: Record<string, unknown>
+): Promise<{ success: boolean }> => {
     const params = filename ? { filename } : {};
-    const response = await api.patch(`${API_URL}/reports/${managementNumber}/reply`, { コメント返信欄: reply }, { params });
+    const payload = original_values ? { コメント返信欄: reply, original_values } : { コメント返信欄: reply };
+    const response = await api.patch(`${API_URL}/reports/${managementNumber}/reply`, payload, { params });
     return response.data;
 };
 
@@ -277,3 +295,32 @@ export const getLatestDesignRequests = async (passcode?: string): Promise<{ docu
     const response = await api.get(`${API_URL}/proxy/design-requests`, { params });
     return response.data;
 };
+
+export interface SyncStatus {
+    file_server_connected: boolean;
+    pending_sync_count: number;
+    pending_tasks?: Array<{
+        id: number;
+        task_type: string;
+        filename: string;
+        management_number?: number;
+        created_at: string;
+        retry_count: number;
+    }>;
+}
+
+export const getSyncStatus = async (): Promise<SyncStatus> => {
+    try {
+        const response = await api.get(`${API_URL}/sync/status`);
+        return response.data;
+    } catch (e) {
+        console.warn('Failed to fetch sync status:', e);
+        return { file_server_connected: false, pending_sync_count: 0 };
+    }
+};
+
+export const triggerSyncProcess = async (): Promise<{ processed: number; failed: number; remaining: number }> => {
+    const response = await api.post(`${API_URL}/sync/process`);
+    return response.data;
+};
+

@@ -20,12 +20,41 @@ import cache
 import models
 import excel_schema
 import excel_io
+import sync_queue
 
 router = APIRouter()
 
 @router.get("/api/health")
-def read_root() -> Dict[str, str]:
-    return {"message": "Daily Report API is running", "excel_dir": config.EXCEL_DIR}
+def read_root() -> Dict[str, Any]:
+    connected = sync_queue.check_file_server_connected()
+    pending = sync_queue.get_pending_task_count()
+    return {
+        "message": "Daily Report API is running",
+        "excel_dir": config.EXCEL_DIR,
+        "file_server_connected": connected,
+        "pending_sync_count": pending
+    }
+
+@router.get("/api/sync/status")
+def get_sync_status() -> Dict[str, Any]:
+    """ファイルサーバー接続状態と未同期タスク件数を取得"""
+    connected = sync_queue.check_file_server_connected()
+    pending = sync_queue.get_pending_task_count()
+    tasks = sync_queue.get_pending_tasks()
+    return {
+        "file_server_connected": connected,
+        "pending_sync_count": pending,
+        "pending_tasks": tasks
+    }
+
+@router.post("/api/sync/process")
+def trigger_sync_process() -> Dict[str, Any]:
+    """未同期タスクの手動即時同期を実行"""
+    result = sync_queue.process_sync_queue()
+    return {
+        "message": "Sync processing completed",
+        **result
+    }
 
 
 
@@ -407,7 +436,7 @@ def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any
             if attempt < max_retries:
                 time.sleep(1)
                 # キャッシュをクリアして再試行
-                cache.CACHE.pop((filename, '営業日報'), None)
+                cache.invalidate_cache(filename, '営業日報')
                 continue
             else:
                 logging.error(f"All retries exhausted for {filename}: {e}")
@@ -662,22 +691,28 @@ def suggest_area(customer_name: str, filename: str = config.DEFAULT_EXCEL_FILE) 
 
 
 
-@router.post("/api/reports")
-def add_report(
-    report: models.ReportInput, 
-    background_tasks: BackgroundTasks, 
-    filename: str = config.DEFAULT_EXCEL_FILE
-) -> Dict[str, Any]:
-    filename = os.path.basename(filename)
-    logging.info(f"DEBUG ADD_REPORT: Received payload: {report.model_dump()}")
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
-    wb = None
+def _find_report_row(ws, management_number: int) -> Optional[int]:
+    """営業日報シート内で指定された管理番号の行番号を取得"""
+    for row in range(2, ws.max_row + 1):
+        val = ws.cell(row=row, column=1).value
+        if val is not None:
+            try:
+                if int(float(str(val))) == int(management_number):
+                    return row
+            except (ValueError, TypeError):
+                if val == management_number:
+                    return row
+    return None
+
+def _apply_add_report_to_excel(excel_file: str, report_data: Any) -> int:
+    """日報追加をExcelファイルに適用"""
+    if isinstance(report_data, dict):
+        report = models.ReportInput(**report_data)
+    else:
+        report = report_data
+
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
     try:
-        # Load workbook with openpyxl to preserve formulas and macros
-        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
         ws = wb['営業日報']
         
         # 得意先_Listから現目標を取得
@@ -687,19 +722,14 @@ def add_report(
             customer_cd = str(report.得意先CD).strip()
             direct_delivery_cd = str(report.直送先CD).strip() if report.直送先CD else ""
             
-            # 得意先_Listの構造: A=得意先CD, B=直送先CD, ..., J=現目標
             for row in range(2, customer_ws.max_row + 1):
                 cell_customer_cd = customer_ws.cell(row=row, column=1).value
                 cell_dd_cd = customer_ws.cell(row=row, column=2).value
-                
                 if cell_customer_cd is not None:
-                    # 得意先CDを文字列に変換（floatの場合は整数に）
                     if isinstance(cell_customer_cd, float):
                         cell_customer_cd = str(int(cell_customer_cd))
                     else:
                         cell_customer_cd = str(cell_customer_cd).strip()
-                    
-                    # 直送先CDも同様に処理
                     if cell_dd_cd is not None:
                         if isinstance(cell_dd_cd, float):
                             cell_dd_cd = str(int(cell_dd_cd))
@@ -708,29 +738,23 @@ def add_report(
                     else:
                         cell_dd_cd = ""
                     
-                    # マッチング条件: 得意先CDが一致 AND (直送先CDが一致 OR 両方空)
                     if cell_customer_cd == customer_cd:
                         if direct_delivery_cd:
-                            # 直送先が指定されている場合は直送先CDも一致する必要がある
                             if cell_dd_cd == direct_delivery_cd:
-                                target_value = customer_ws.cell(row=row, column=10).value  # J列=現目標
+                                target_value = customer_ws.cell(row=row, column=10).value
                                 if target_value:
                                     current_target = str(target_value).strip()
                                 break
                         else:
-                            # 直送先が指定されていない場合は、直送先CDが空の行を探す
                             if not cell_dd_cd:
-                                target_value = customer_ws.cell(row=row, column=10).value  # J列=現目標
+                                target_value = customer_ws.cell(row=row, column=10).value
                                 if target_value:
                                     current_target = str(target_value).strip()
                                 break
-            
-            logging.debug(f"Found current_target for {customer_cd}: {current_target}")
-        
-        # Find the maximum management number and its row by scanning all rows
+
         max_mgmt_num = 0
-        max_mgmt_row = 1  # Default to header row if no data found
-        for row in range(2, ws.max_row + 1):  # Start from row 2 (skip header)
+        max_mgmt_row = 1
+        for row in range(2, ws.max_row + 1):
             mgmt_num = ws.cell(row=row, column=1).value
             try:
                 if mgmt_num is not None:
@@ -740,21 +764,9 @@ def add_report(
                         max_mgmt_row = row
             except (ValueError, TypeError):
                 continue
-        
-        logging.debug(f"Max Mgmt Num: {max_mgmt_num}, Max Mgmt Row: {max_mgmt_row}")
 
-        # Increment to get new management number
         new_mgmt_num = max_mgmt_num + 1
-        
-        # Insert at the row immediately after the last management number
         next_row = max_mgmt_row + 1
-        logging.debug(f"Writing to Row: {next_row}")
-        
-        # Prepare the data to write
-        # Adjust column indices based on actual Excel structure (251113_2026-_-_008.xlsm)
-        # Also copy styles from the previous row (max_mgmt_row) to the new row (next_row)
-        
-        from copy import copy
 
         def copy_style(source_cell, target_cell):
             if source_cell.has_style:
@@ -765,360 +777,49 @@ def add_report(
                 target_cell.protection = copy(source_cell.protection)
                 target_cell.alignment = copy(source_cell.alignment)
 
-        # Prepare data to write using excel_schema
         columns_to_write = excel_schema.get_new_report_column_data(report, new_mgmt_num, current_target)
 
         for col_idx, value in columns_to_write.items():
             target_cell = ws.cell(row=next_row, column=col_idx)
             target_cell.value = value
-            
-            # Copy style from the row above (max_mgmt_row)
             if max_mgmt_row >= 2:
                 source_cell = ws.cell(row=max_mgmt_row, column=col_idx)
                 copy_style(source_cell, target_cell)
 
-        # Save workbook safely with retry
         excel_io.safe_save_workbook_with_retry(wb, excel_file)
-        
-        # Clear cache
-        cache_key = (filename, '営業日報')
-        if cache_key in cache.CACHE:
-            del cache.CACHE[cache_key]
-        
-        return {
-            "message": "Report added successfully", 
-            "management_number": new_mgmt_num,
-            "file_path": os.path.abspath(excel_file)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error in add_report: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        return new_mgmt_num
     finally:
-        if wb:
-            try:
-                wb.close()
-            except Exception:
-                pass
+        wb.close()
 
-# コメント更新専用エンドポイント
-
-
-@router.patch("/api/reports/{management_number}/reply")
-def update_report_reply(management_number: int, reply: models.ReplyInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
-    """コメント返信欄のみを更新（安全な保存）"""
-    import tempfile
-    import shutil
-    
-    filename = os.path.basename(filename)
-    logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
-    wb = None
+def _apply_update_report_to_excel(excel_file: str, management_number: int, report_data: Any):
+    """日報更新をExcelファイルに適用（楽観的排他制御チェック付き）"""
+    if isinstance(report_data, dict):
+        report = models.ReportInput(**report_data)
+    else:
+        report = report_data
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
     try:
-        excel_file = os.path.join(config.EXCEL_DIR, filename)
-        logging.debug(f"excel_file: {excel_file}")
-        
-        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
-        logging.debug("workbook loaded")
-        if '営業日報' not in wb.sheetnames:
-            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
-        
         ws = wb['営業日報']
-        logging.debug(f"worksheet max_row: {ws.max_row}")
-        
-        # Find the row
-        target_row = None
-        for row in range(2, ws.max_row + 1):
-            val = ws.cell(row=row, column=1).value
-            if val is not None:
-                try:
-                    if int(float(str(val))) == int(management_number):
-                        target_row = row
-                        break
-                except (ValueError, TypeError):
-                    if val == management_number:
-                        target_row = row
-                        break
-        
-        logging.debug(f"target_row: {target_row}")
-        if not target_row:
-            wb.close()
-            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
-        
-        # Set reply column from excel_schema
-        ws.cell(row=target_row, column=excel_schema.DailyReportColumns.COMMENT_REPLY, value=reply.コメント返信欄)
-        
-        # 安全な保存（リトライ・バックアップ付き）
-        excel_io.safe_save_workbook_with_retry(wb, excel_file)
-        
-        # Clear cache
-        cache_key = (filename, '営業日報')
-        if cache_key in cache.CACHE:
-            del cache.CACHE[cache_key]
-        
-        return {"success": True, "management_number": management_number}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error in update_report_reply: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if wb:
-            try:
-                wb.close()
-            except Exception:
-                pass
-
-
-
-@router.patch("/api/reports/{management_number}/comment")
-def update_report_comment(management_number: int, comment: models.CommentInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
-    """上長コメントとコメント返信欄を個別に更新（安全な保存）"""
-    import tempfile
-    import shutil
-    
-    filename = os.path.basename(filename)
-    logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
-    wb = None
-    try:
-        excel_file = os.path.join(config.EXCEL_DIR, filename)
-        
-        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
-        if '営業日報' not in wb.sheetnames:
-            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
-        
-        ws = wb['営業日報']
-        
-        # Find the row
-        target_row = None
-        for row in range(2, ws.max_row + 1):
-            val = ws.cell(row=row, column=1).value
-            if val is not None:
-                try:
-                    if int(float(str(val))) == int(management_number):
-                        target_row = row
-                        break
-                except (ValueError, TypeError):
-                    if val == management_number:
-                        target_row = row
-                        break
-        
-        if not target_row:
-            wb.close()
-            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
-        
-        # --- Optimistic Locking Check ---
-        if comment.original_values:
-            logging.debug(f"Performing conflict check for Comment {management_number}")
-            check_fields = {
-                excel_schema.DailyReportColumns.BOSS_COMMENT: '上長コメント',
-                excel_schema.DailyReportColumns.COMMENT_REPLY: 'コメント返信欄'
-            }
-            conflicts = []
-            for col_idx, field_name in check_fields.items():
-                current_val = ws.cell(row=target_row, column=col_idx).value
-                current_str = str(current_val) if current_val is not None else ""
-                original_val = comment.original_values.get(field_name, "")
-                original_str = str(original_val) if original_val is not None else ""
-                
-                # Normalize newlines for comparison
-                current_str = current_str.replace('\r\n', '\n').replace('\r', '\n').strip()
-                original_str = original_str.replace('\r\n', '\n').replace('\r', '\n').strip()
-                
-                if current_str != original_str:
-                    logging.warning(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
-                    conflicts.append(field_name)
-            
-            if conflicts:
-                conflict_msg = ", ".join(conflicts)
-                raise HTTPException(
-                    status_code=409, 
-                    detail=f"他の方がコメントを編集しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
-                )
-        # --------------------------------
-        
-        # Update only provided fields using excel_schema
-        if comment.上長コメント is not None:
-            ws.cell(row=target_row, column=excel_schema.COMMENT_COLUMN_MAPPING['上長コメント'], value=comment.上長コメント)
-        if comment.コメント返信欄 is not None:
-            ws.cell(row=target_row, column=excel_schema.COMMENT_COLUMN_MAPPING['コメント返信欄'], value=comment.コメント返信欄)
-        
-        # 安全な保存（リトライ・バックアップ付き）
-        excel_io.safe_save_workbook_with_retry(wb, excel_file)
-        
-        # Clear cache
-        cache_key = (filename, '営業日報')
-        if cache_key in cache.CACHE:
-            del cache.CACHE[cache_key]
-        
-        return {"success": True, "management_number": management_number}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error in update_report_comment: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if wb:
-            try:
-                wb.close()
-            except Exception:
-                pass
-
-
-
-@router.patch("/api/reports/{management_number}/approval")
-def update_report_approval(management_number: int, approval: models.ApprovalInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
-    """承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）を個別に更新"""
-    import tempfile
-    import shutil
-    
-    filename = os.path.basename(filename)
-    logging.debug(f"update_report_approval: management_number={management_number}")
-    wb = None
-    try:
-        excel_file = os.path.join(config.EXCEL_DIR, filename)
-        
-        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
-        if '営業日報' not in wb.sheetnames:
-            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
-        
-        ws = wb['営業日報']
-        
-        # Find the row
-        target_row = None
-        for row in range(2, ws.max_row + 1):
-            val = ws.cell(row=row, column=1).value
-            if val is not None:
-                try:
-                    if int(float(str(val))) == int(management_number):
-                        target_row = row
-                        break
-                except (ValueError, TypeError):
-                    if val == management_number:
-                        target_row = row
-                        break
-        
+        target_row = _find_report_row(ws, management_number)
         if not target_row:
             raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
-        
-        # --- Optimistic Locking Check ---
-        if approval.original_values:
-            logging.debug(f"Performing conflict check for Approval {management_number}")
-            conflicts = []
-            for field_name, col_idx in excel_schema.APPROVAL_COLUMN_MAPPING.items():
-                if getattr(approval, field_name) is not None:
-                    current_val = ws.cell(row=target_row, column=col_idx).value
-                    current_str = str(current_val) if current_val is not None else ""
-                    original_val = approval.original_values.get(field_name, "")
-                    original_str = str(original_val) if original_val is not None else ""
-                    
-                    def norm_val(v):
-                        v_str = str(v).strip()
-                        if v_str in ['ü', '✓', '済']:
-                            return '✓'
-                        return ''
-                    
-                    if norm_val(current_str) != norm_val(original_str):
-                        logging.warning(f"CONFLICT: Approval Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
-                        conflicts.append(field_name)
-            
-            if conflicts:
-                conflict_msg = ", ".join(conflicts)
-                raise HTTPException(
-                    status_code=409, 
-                    detail=f"他の方が承認ステータスを更新しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
-                )
-        # --------------------------------
-        
-        # Update only provided fields using excel_schema
-        for field_name, col_idx in excel_schema.APPROVAL_COLUMN_MAPPING.items():
-            val = getattr(approval, field_name, None)
-            if val is not None:
-                ws.cell(row=target_row, column=col_idx, value=val)
-        
-        # 安全な保存（リトライ・バックアップ付き）
-        excel_io.safe_save_workbook_with_retry(wb, excel_file)
-        
-        # Clear cache
-        cache_key = (filename, '営業日報')
-        if cache_key in cache.CACHE:
-            del cache.CACHE[cache_key]
-        
-        return {"success": True, "management_number": management_number}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error in update_report_approval: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if wb:
-            try:
-                wb.close()
-            except Exception:
-                pass
-
-
-
-@router.post("/api/reports/{management_number}")
-def update_report(management_number: int, report: models.ReportInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
-    """既存の日報を更新（全項目対応）"""
-    filename = os.path.basename(filename)
-    logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
-    wb = None
-    try:
-        excel_file = os.path.join(config.EXCEL_DIR, filename)
-        
-        # Load the workbook
-        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
-        if '営業日報' not in wb.sheetnames:
-            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
-             
-        ws = wb['営業日報']
-        
-        # Find the row with the matching management number
-        target_row = None
-        for row in range(2, ws.max_row + 1):
-            val = ws.cell(row=row, column=1).value
-            if val is not None:
-                try:
-                    if int(float(str(val))) == int(management_number):
-                        target_row = row
-                        break
-                except (ValueError, TypeError):
-                    if val == management_number:
-                        target_row = row
-                        break
-        
-        if not target_row:
-            raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
 
         # --- Optimistic Locking Check ---
         if report.original_values:
-            logging.debug(f"Performing conflict check for Report {management_number}")
-            
-            # Fields to check for conflicts (critical text fields)
             check_fields = {
                 excel_schema.DailyReportColumns.BOSS_COMMENT: '上長コメント',
                 excel_schema.DailyReportColumns.COMMENT_REPLY: 'コメント返信欄',
                 excel_schema.DailyReportColumns.BUSINESS_CONTENT: '商談内容'
             }
-            
             conflicts = []
             for col_idx, field_name in check_fields.items():
                 current_val = ws.cell(row=target_row, column=col_idx).value
-                current_str = str(current_val) if current_val is not None else ""
-                
+                current_str = (str(current_val) if current_val is not None else "").replace('\r\n', '\n').replace('\r', '\n').strip()
                 original_val = report.original_values.get(field_name, "")
-                original_str = str(original_val) if original_val is not None else ""
-                
-                # Normalize newlines for comparison
-                current_str = current_str.replace('\r\n', '\n').replace('\r', '\n').strip()
-                original_str = original_str.replace('\r\n', '\n').replace('\r', '\n').strip()
-                
+                original_str = (str(original_val) if original_val is not None else "").replace('\r\n', '\n').replace('\r', '\n').strip()
                 if current_str != original_str:
                     logging.warning(f"CONFLICT: Field '{field_name}' changed. Current: '{current_str}' vs Original: '{original_str}'")
                     conflicts.append(field_name)
-            
             if conflicts:
                 conflict_msg = ", ".join(conflicts)
                 raise HTTPException(
@@ -1126,91 +827,465 @@ def update_report(management_number: int, report: models.ReportInput, background
                     detail=f"他の方が編集しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
                 )
         # --------------------------------
-        
-        # Update all fields using excel_schema
-        columns_to_write = excel_schema.get_update_report_column_data(report)
 
+        columns_to_write = excel_schema.get_update_report_column_data(report)
         for col_idx, value in columns_to_write.items():
             ws.cell(row=target_row, column=col_idx, value=value)
-        
-        # Save workbook safely with retry
         excel_io.safe_save_workbook_with_retry(wb, excel_file)
-        
-        # Clear cache for this file
-        cache_key = (filename, '営業日報')
-        if cache_key in cache.CACHE:
-            del cache.CACHE[cache_key]
-        
-        return {"message": "Report updated successfully", "management_number": management_number}
+    finally:
+        wb.close()
+
+def _apply_reply_to_excel(excel_file: str, management_number: int, reply_data: Any):
+    """コメント返信更新をExcelファイルに適用（楽観的排他制御チェック付き）"""
+    reply_text = reply_data.get("コメント返信欄", "") if isinstance(reply_data, dict) else reply_data.コメント返信欄
+    orig_vals = reply_data.get("original_values") if isinstance(reply_data, dict) else getattr(reply_data, "original_values", None)
+
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+    try:
+        ws = wb['営業日報']
+        target_row = _find_report_row(ws, management_number)
+        if not target_row:
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+
+        # --- Optimistic Locking Check ---
+        if orig_vals:
+            current_val = ws.cell(row=target_row, column=excel_schema.DailyReportColumns.COMMENT_REPLY).value
+            current_str = (str(current_val) if current_val is not None else "").replace('\r\n', '\n').replace('\r', '\n').strip()
+            orig_val = orig_vals.get('コメント返信欄', "")
+            orig_str = (str(orig_val) if orig_val is not None else "").replace('\r\n', '\n').replace('\r', '\n').strip()
+            if current_str != orig_str:
+                logging.warning(f"CONFLICT: Field 'コメント返信欄' changed. Current: '{current_str}' vs Original: '{orig_str}'")
+                raise HTTPException(
+                    status_code=409,
+                    detail="他の方が返信コメントを編集しました。最新の情報を読み込んでからやり直してください。"
+                )
+        # --------------------------------
+
+        ws.cell(row=target_row, column=excel_schema.DailyReportColumns.COMMENT_REPLY, value=reply_text)
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+    finally:
+        wb.close()
+
+def _apply_comment_to_excel(excel_file: str, management_number: int, comment_data: Any):
+    """上長コメント更新をExcelファイルに適用（楽観的排他制御チェック付き）"""
+    if isinstance(comment_data, dict):
+        comment = models.CommentInput(**comment_data)
+    else:
+        comment = comment_data
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+    try:
+        ws = wb['営業日報']
+        target_row = _find_report_row(ws, management_number)
+        if not target_row:
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+
+        # --- Optimistic Locking Check ---
+        if comment.original_values:
+            check_fields = {
+                excel_schema.DailyReportColumns.BOSS_COMMENT: '上長コメント',
+                excel_schema.DailyReportColumns.COMMENT_REPLY: 'コメント返信欄'
+            }
+            conflicts = []
+            for col_idx, field_name in check_fields.items():
+                current_val = ws.cell(row=target_row, column=col_idx).value
+                current_str = (str(current_val) if current_val is not None else "").replace('\r\n', '\n').replace('\r', '\n').strip()
+                original_val = comment.original_values.get(field_name, "")
+                original_str = (str(original_val) if original_val is not None else "").replace('\r\n', '\n').replace('\r', '\n').strip()
+                if current_str != original_str:
+                    conflicts.append(field_name)
+            if conflicts:
+                conflict_msg = ", ".join(conflicts)
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"他の方がコメントを編集しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
+                )
+        # --------------------------------
+
+        if comment.上長コメント is not None:
+            ws.cell(row=target_row, column=excel_schema.COMMENT_COLUMN_MAPPING['上長コメント'], value=comment.上長コメント)
+        if comment.コメント返信欄 is not None:
+            ws.cell(row=target_row, column=excel_schema.COMMENT_COLUMN_MAPPING['コメント返信欄'], value=comment.コメント返信欄)
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+    finally:
+        wb.close()
+
+def _apply_approval_to_excel(excel_file: str, management_number: int, approval_data: Any):
+    """承認更新をExcelファイルに適用（楽観的排他制御チェック付き）"""
+    if isinstance(approval_data, dict):
+        approval = models.ApprovalInput(**approval_data)
+    else:
+        approval = approval_data
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+    try:
+        ws = wb['営業日報']
+        target_row = _find_report_row(ws, management_number)
+        if not target_row:
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+
+        # --- Optimistic Locking Check ---
+        if approval.original_values:
+            conflicts = []
+            for field_name, col_idx in excel_schema.APPROVAL_COLUMN_MAPPING.items():
+                if getattr(approval, field_name) is not None:
+                    current_val = ws.cell(row=target_row, column=col_idx).value
+                    current_str = str(current_val) if current_val is not None else ""
+                    original_val = approval.original_values.get(field_name, "")
+                    original_str = str(original_val) if original_val is not None else ""
+                    def norm_val(v):
+                        v_str = str(v).strip()
+                        if v_str in ['ü', '✓', '済']:
+                            return '✓'
+                        return ''
+                    if norm_val(current_str) != norm_val(original_str):
+                        conflicts.append(field_name)
+            if conflicts:
+                conflict_msg = ", ".join(conflicts)
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"他の方が承認ステータスを更新しました（{conflict_msg}）。最新の情報を読み込んでからやり直してください。"
+                )
+        # --------------------------------
+
+        for field_name, col_idx in excel_schema.APPROVAL_COLUMN_MAPPING.items():
+            val = getattr(approval, field_name, None)
+            if val is not None:
+                ws.cell(row=target_row, column=col_idx, value=val)
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+    finally:
+        wb.close()
+
+def _apply_delete_to_excel(excel_file: str, management_number: int):
+    """日報削除をExcelファイルに適用"""
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+    try:
+        ws = wb['営業日報']
+        target_row = _find_report_row(ws, management_number)
+        if not target_row:
+            raise HTTPException(status_code=404, detail=f"Report {management_number} not found")
+        ws.delete_rows(target_row, 1)
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+    finally:
+        wb.close()
+
+
+@router.post("/api/reports")
+def add_report(
+    report: models.ReportInput, 
+    background_tasks: BackgroundTasks, 
+    filename: str = config.DEFAULT_EXCEL_FILE
+) -> Dict[str, Any]:
+    filename = os.path.basename(filename)
+    logging.info(f"DEBUG ADD_REPORT: Received payload: {report.model_dump()}")
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    # 1. ファイルサーバー接続チェック（オフライン・瞬断時は安全キューに退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing sync task.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="create",
+            filename=filename,
+            payload=report.model_dump()
+        )
+        return {
+            "message": "社内ファイルサーバーが一時的にオフラインのため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True
+        }
+
+    # 2. オンライン書き込み
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            new_mgmt_num = _apply_add_report_to_excel(excel_file, report)
+            cache.invalidate_cache(filename, '営業日報')
+            return {
+                "message": "Report added successfully", 
+                "management_number": new_mgmt_num,
+                "file_path": os.path.abspath(excel_file)
+            }
     except HTTPException:
         raise
+    except (PermissionError, OSError) as e:
+        # 書き込み中にUNC瞬断が発生した場合も安全に退避
+        logging.warning(f"Network error during write to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="create",
+            filename=filename,
+            payload=report.model_dump()
+        )
+        return {
+            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True
+        }
+    except Exception as e:
+        logging.error(f"Error in add_report: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# コメント更新専用エンドポイント
+
+
+@router.patch("/api/reports/{management_number}/reply")
+def update_report_reply(management_number: int, reply: models.ReplyInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
+    """コメント返信欄のみを更新（安全な保存・排他制御・オフライン退避付き）"""
+    filename = os.path.basename(filename)
+    logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing sync task.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="reply",
+            filename=filename,
+            payload=reply.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーが一時的にオフラインのため、返信コメントをローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "success": True,
+            "management_number": management_number
+        }
+
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            _apply_reply_to_excel(excel_file, management_number, reply)
+            cache.invalidate_cache(filename, '営業日報')
+            return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except (PermissionError, OSError) as e:
+        logging.warning(f"Network error during reply to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="reply",
+            filename=filename,
+            payload=reply.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "success": True,
+            "management_number": management_number
+        }
+    except Exception as e:
+        logging.error(f"Error in update_report_reply: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.patch("/api/reports/{management_number}/comment")
+def update_report_comment(management_number: int, comment: models.CommentInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
+    """上長コメントとコメント返信欄を個別に更新（安全な保存・排他制御・オフライン退避付き）"""
+    filename = os.path.basename(filename)
+    logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing sync task.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="comment",
+            filename=filename,
+            payload=comment.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーが一時的にオフラインのため、コメントをローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "success": True,
+            "management_number": management_number
+        }
+
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            _apply_comment_to_excel(excel_file, management_number, comment)
+            cache.invalidate_cache(filename, '営業日報')
+            return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except (PermissionError, OSError) as e:
+        logging.warning(f"Network error during comment to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="comment",
+            filename=filename,
+            payload=comment.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "success": True,
+            "management_number": management_number
+        }
+    except Exception as e:
+        logging.error(f"Error in update_report_comment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+
+@router.patch("/api/reports/{management_number}/approval")
+def update_report_approval(management_number: int, approval: models.ApprovalInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
+    """承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）を個別に更新（排他制御・オフライン退避付き）"""
+    filename = os.path.basename(filename)
+    logging.debug(f"update_report_approval: management_number={management_number}")
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing sync task.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="approval",
+            filename=filename,
+            payload=approval.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーが一時的にオフラインのため、承認ステータスをローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "success": True,
+            "management_number": management_number
+        }
+
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            _apply_approval_to_excel(excel_file, management_number, approval)
+            cache.invalidate_cache(filename, '営業日報')
+            return {"success": True, "management_number": management_number}
+    except HTTPException:
+        raise
+    except (PermissionError, OSError) as e:
+        logging.warning(f"Network error during approval to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="approval",
+            filename=filename,
+            payload=approval.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "success": True,
+            "management_number": management_number
+        }
+    except Exception as e:
+        logging.error(f"Error in update_report_approval: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+
+@router.post("/api/reports/{management_number}")
+def update_report(management_number: int, report: models.ReportInput, background_tasks: BackgroundTasks, filename: str = config.DEFAULT_EXCEL_FILE):
+    """既存の日報を更新（全項目対応・排他制御・オフライン退避付き）"""
+    filename = os.path.basename(filename)
+    logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing sync task.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="update",
+            filename=filename,
+            payload=report.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーが一時的にオフラインのため、日報更新データをローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "management_number": management_number
+        }
+
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            _apply_update_report_to_excel(excel_file, management_number, report)
+            cache.invalidate_cache(filename, '営業日報')
+            return {"message": "Report updated successfully", "management_number": management_number}
+    except HTTPException:
+        raise
+    except (PermissionError, OSError) as e:
+        logging.warning(f"Network error during update_report to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="update",
+            filename=filename,
+            payload=report.model_dump(),
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "management_number": management_number
+        }
     except Exception as e:
         logging.error(f"Error in update_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if wb:
-            try:
-                wb.close()
-            except Exception:
-                pass
 
 
 
 @router.delete("/api/reports/{management_number}")
 def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_FILE):
-    """指定された管理番号の日報を削除"""
+    """指定された管理番号の日報を削除（排他制御・オフライン退避付き）"""
     filename = os.path.basename(filename)
-    wb = None
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing sync task.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="delete",
+            filename=filename,
+            payload={},
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーが一時的にオフラインのため、日報削除リクエストをローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "management_number": management_number
+        }
+
     try:
-        excel_file = os.path.join(config.EXCEL_DIR, filename)
-        
-        # Load the workbook
-        wb = openpyxl.load_workbook(excel_file, keep_vba=True)
-        if '営業日報' not in wb.sheetnames:
-            raise HTTPException(status_code=404, detail="Sheet '営業日報' not found")
-             
-        ws = wb['営業日報']
-        
-        # Find the row with the matching management number
-        target_row = None
-        for row in range(2, ws.max_row + 1):
-            val = ws.cell(row=row, column=1).value
-            if val is not None:
-                try:
-                    if int(float(str(val))) == int(management_number):
-                        target_row = row
-                        break
-                except (ValueError, TypeError):
-                    if val == management_number:
-                        target_row = row
-                        break
-        
-        if not target_row:
-            raise HTTPException(status_code=404, detail=f"Report with management number {management_number} not found")
-        
-        # Delete the row
-        ws.delete_rows(target_row, 1)
-        
-        # Save workbook safely with retry
-        excel_io.safe_save_workbook_with_retry(wb, excel_file)
-        
-        # Clear cache for this file
-        cache_key = (filename, '営業日報')
-        if cache_key in cache.CACHE:
-            del cache.CACHE[cache_key]
-        
-        return {"message": "Report deleted successfully", "management_number": management_number}
+        with excel_io.get_file_write_lock(excel_file):
+            _apply_delete_to_excel(excel_file, management_number)
+            cache.invalidate_cache(filename, '営業日報')
+            return {"message": "Report deleted successfully", "management_number": management_number}
     except HTTPException:
         raise
+    except (PermissionError, OSError) as e:
+        logging.warning(f"Network error during delete_report to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_id = sync_queue.enqueue_sync_task(
+            task_type="delete",
+            filename=filename,
+            payload={},
+            management_number=management_number
+        )
+        return {
+            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "task_id": task_id,
+            "offline": True,
+            "management_number": management_number
+        }
     except Exception as e:
         logging.error(f"Error in delete_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        if wb:
-            try:
-                wb.close()
-            except Exception:
-                pass
 
 
 

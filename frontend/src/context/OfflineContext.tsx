@@ -1,8 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Report, Customer } from '@/lib/api';
+import { Report, Customer, getSyncStatus, triggerSyncProcess } from '@/lib/api';
 import { generateUUID } from '@/lib/reportUtils';
 
 type OfflineReport = {
@@ -17,9 +17,12 @@ type OfflineReport = {
 
 type OfflineContextType = {
     isOnline: boolean;
+    fileServerConnected: boolean;
+    pendingSyncCount: number;
     offlineReports: OfflineReport[];
     saveOfflineReport: (data: Omit<Report, '管理番号'> | Partial<Omit<Report, '管理番号'>>, filename: string, type?: 'create' | 'update', reportId?: number) => void;
     syncReports: () => Promise<void>;
+    triggerServerSync: () => Promise<void>;
     removeOfflineReport: (id: string) => void;
     cachedCustomers: Customer[];
     cacheCustomers: (customers: Customer[]) => void;
@@ -31,6 +34,8 @@ const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 
 export function OfflineProvider({ children }: { children: ReactNode }): React.JSX.Element {
     const [isOnline, setIsOnline] = useState(true);
+    const [fileServerConnected, setFileServerConnected] = useState(true);
+    const [pendingSyncCount, setPendingSyncCount] = useState(0);
     const [offlineReports, setOfflineReports] = useState<OfflineReport[]>([]);
     const [cachedCustomers, setCachedCustomers] = useState<Customer[]>([]);
 
@@ -39,6 +44,37 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
         offlineReportsRef.current = offlineReports;
     }, [offlineReports]);
     const [cachedReports, setCachedReports] = useState<Report[]>([]);
+
+    // サーバーの同期状態チェック
+    const checkServerSyncStatus = useCallback(async () => {
+        try {
+            const status = await getSyncStatus();
+            setFileServerConnected(status.file_server_connected);
+            setPendingSyncCount(status.pending_sync_count);
+        } catch (e) {
+            console.warn('Sync status check error:', e);
+            setFileServerConnected(false);
+        }
+    }, []);
+
+    // サーバー同期の手動実行
+    const triggerServerSync = useCallback(async () => {
+        try {
+            toast.loading('サーバー同期を実行中...', { id: 'manual-sync' });
+            const res = await triggerSyncProcess();
+            toast.success(`同期完了: ${res.processed}件反映しました (残${res.remaining}件)`, { id: 'manual-sync' });
+            await checkServerSyncStatus();
+        } catch (e) {
+            toast.error('サーバー同期に失敗しました', { id: 'manual-sync' });
+        }
+    }, [checkServerSyncStatus]);
+
+    // 15秒ごとのヘルス・同期状態ポーリング
+    useEffect(() => {
+        checkServerSyncStatus();
+        const interval = setInterval(checkServerSyncStatus, 15000);
+        return () => clearInterval(interval);
+    }, [checkServerSyncStatus]);
 
     // Initialize state from local storage and event listeners
     useEffect(() => {
@@ -211,7 +247,20 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
     };
 
     return (
-        <OfflineContext.Provider value={{ isOnline, offlineReports, saveOfflineReport, syncReports, removeOfflineReport, cachedCustomers, cacheCustomers, cachedReports, cacheReports }}>
+        <OfflineContext.Provider value={{
+            isOnline,
+            fileServerConnected,
+            pendingSyncCount,
+            offlineReports,
+            saveOfflineReport,
+            syncReports,
+            triggerServerSync,
+            removeOfflineReport,
+            cachedCustomers,
+            cacheCustomers,
+            cachedReports,
+            cacheReports
+        }}>
             {children}
         </OfflineContext.Provider>
     );

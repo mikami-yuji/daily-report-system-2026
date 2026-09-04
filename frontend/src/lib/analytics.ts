@@ -1,5 +1,6 @@
 import { Report } from '@/types/report';
-import { AnalyticsData, PriorityMatrixData } from '@/types/analytics';
+import { AnalyticsData, PriorityMatrixData, PersonalScoreData, NeglectedCustomerAlert } from '@/types/analytics';
+
 
 export function parseDate(dateStr: string | undefined): Date | null {
     if (!dateStr) return null;
@@ -647,3 +648,246 @@ export function aggregatePriorityMatrix(
         customers
     };
 }
+
+/**
+ * 個人の月次目標ペースメーカー（月200点基準）を集計
+ */
+export function calculatePersonalMonthlyScore(
+    reports: Report[],
+    targetDate: Date = new Date(),
+    targetPoints: number = 200
+): PersonalScoreData {
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth() + 1;
+    const yearShort = String(year).slice(-2);
+    const monthStr = String(month).padStart(2, '0');
+    const currentMonthCode = `${yearShort}/${monthStr}`; // 例: "26/09"
+    const monthLabel = `${year}年${month}月`;
+
+    // 月の日数と経過日数
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const currentDay = Math.min(targetDate.getDate(), daysInMonth);
+    const remainingDays = Math.max(0, daysInMonth - currentDay);
+
+    let priorityVisits = 0;
+    let generalVisits = 0;
+    let priorityCalls = 0;
+    let generalCalls = 0;
+
+    reports.forEach(report => {
+        if (!report.日付) return;
+        const pDate = parseDate(report.日付);
+        if (!pDate) return;
+
+        // 対象月判定 (年と月が一致)
+        if (pDate.getFullYear() !== year || pDate.getMonth() + 1 !== month) {
+            return;
+        }
+
+        const action = String(report.行動内容 || '');
+        const isVisit = action.includes('訪問');
+        const isCall = action.includes('電話');
+        if (!isVisit && !isCall) return;
+
+        // 重点顧客判定
+        const pVal = report.重点顧客;
+        const isPriority = pVal !== null && pVal !== undefined && String(pVal).trim() !== '' && String(pVal).trim() !== '-';
+
+        if (isVisit) {
+            if (isPriority) priorityVisits++;
+            else generalVisits++;
+        }
+        if (isCall) {
+            if (isPriority) priorityCalls++;
+            else generalCalls++;
+        }
+    });
+
+    // 点数計算: 重点訪問*10 + 一般訪問*3 + 重点電話*1 + 一般電話*0.5
+    const pvPoints = priorityVisits * 10;
+    const gvPoints = generalVisits * 3;
+    const pcPoints = priorityCalls * 1;
+    const gcPoints = generalCalls * 0.5;
+    const totalPoints = pvPoints + gvPoints + pcPoints + gcPoints;
+
+    const achievementRate = targetPoints > 0 ? (totalPoints / targetPoints) * 100 : 0;
+
+    // ペース・着地予測計算
+    const progressPace = (targetPoints / daysInMonth) * currentDay;
+    const paceDiff = totalPoints - progressPace;
+    const projectedPoints = currentDay > 0 ? (totalPoints / currentDay) * daysInMonth : totalPoints;
+
+    const remainingToTarget = Math.max(0, targetPoints - totalPoints);
+
+    return {
+        monthLabel,
+        currentMonthCode,
+        points: Math.round(totalPoints * 10) / 10,
+        targetPoints,
+        achievementRate: Math.round(achievementRate * 10) / 10,
+        counts: {
+            priorityVisits,
+            generalVisits,
+            priorityCalls,
+            generalCalls,
+            totalVisits: priorityVisits + generalVisits,
+            totalCalls: priorityCalls + generalCalls,
+        },
+        pointsBreakdown: {
+            priorityVisits: pvPoints,
+            generalVisits: gvPoints,
+            priorityCalls: pcPoints,
+            generalCalls: gcPoints,
+        },
+        daysInfo: {
+            daysInMonth,
+            currentDay,
+            remainingDays,
+            progressPace: Math.round(progressPace * 10) / 10,
+            paceDiff: Math.round(paceDiff * 10) / 10,
+            projectedPoints: Math.round(projectedPoints * 10) / 10,
+        },
+        remainingToTarget: Math.round(remainingToTarget * 10) / 10,
+        neededVisits: {
+            priorityOnly: Math.ceil(remainingToTarget / 10),
+            generalOnly: Math.ceil(remainingToTarget / 3),
+        },
+    };
+}
+
+/**
+ * 重点顧客の中から要フォロー（ご無沙汰・当月未接触）顧客を抽出
+ */
+export function extractNeglectedPriorityCustomers(
+    matrixData: PriorityMatrixData,
+    reports: Report[],
+    targetDate: Date = new Date()
+): NeglectedCustomerAlert[] {
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth() + 1;
+    const prevMonthDate = new Date(year, month - 2, 1);
+    const prevYear = prevMonthDate.getFullYear();
+    const prevMonth = prevMonthDate.getMonth() + 1;
+
+    // 顧客コードごとに直近の日報情報を逆引きできるマップを作成
+    const recentReportMap = new Map<string, {
+        lastReportDate: Date | null;
+        lastReportDateStr: string;
+        businessContent: string;
+        nextPlan: string;
+        action: string;
+        area: string;
+        currentMonthCount: number;
+        prevMonthCount: number;
+    }>();
+
+    reports.forEach(report => {
+        const code = String(report.得意先CD || '').trim();
+        if (!code) return;
+        const directDeliveryCode = report.直送先CD ? String(report.直送先CD).replace(/\.0$/, '').trim() : '';
+
+        const keys = [code];
+        if (directDeliveryCode && directDeliveryCode !== 'nan') {
+            keys.push(`${code}-${directDeliveryCode}`);
+        }
+
+        const pDate = parseDate(report.日付);
+        const action = String(report.行動内容 || '');
+        const isVisit = action.includes('訪問');
+        const isCall = action.includes('電話');
+
+        keys.forEach(key => {
+            if (!recentReportMap.has(key)) {
+                recentReportMap.set(key, {
+                    lastReportDate: null,
+                    lastReportDateStr: '',
+                    businessContent: '',
+                    nextPlan: '',
+                    action: '',
+                    area: '',
+                    currentMonthCount: 0,
+                    prevMonthCount: 0,
+                });
+            }
+            const info = recentReportMap.get(key)!;
+
+            if (pDate && (isVisit || isCall)) {
+                // 当月・前月のカウント
+                if (pDate.getFullYear() === year && pDate.getMonth() + 1 === month) {
+                    info.currentMonthCount++;
+                } else if (pDate.getFullYear() === prevYear && pDate.getMonth() + 1 === prevMonth) {
+                    info.prevMonthCount++;
+                }
+
+                // 最新の活動情報を更新
+                if (!info.lastReportDate || pDate.getTime() > info.lastReportDate.getTime()) {
+                    info.lastReportDate = pDate;
+                    info.lastReportDateStr = String(report.日付 || '');
+                    info.businessContent = String(report.商談内容 || '');
+                    info.nextPlan = String(report.次回プラン || '');
+                    info.action = action;
+                    info.area = String(report.エリア || '');
+                }
+            }
+        });
+    });
+
+    const alerts: NeglectedCustomerAlert[] = [];
+
+    matrixData.customers.forEach(customer => {
+        const info = recentReportMap.get(customer.code) || recentReportMap.get(customer.code.split('-')[0]);
+
+        const lastActivityStr = customer.lastActivity || info?.lastReportDateStr || null;
+        let daysSince = 999;
+
+        if (lastActivityStr) {
+            const lastDate = parseDate(lastActivityStr);
+            if (lastDate) {
+                const diffTime = targetDate.getTime() - lastDate.getTime();
+                daysSince = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+            }
+        }
+
+        const currentMonthCount = info ? info.currentMonthCount : 0;
+        const previousMonthCount = info ? info.prevMonthCount : 0;
+
+        let alertLevel: 'danger' | 'warning' | 'normal' = 'normal';
+        if (daysSince >= 30) {
+            alertLevel = 'danger'; // 30日以上未接触（赤）
+        } else if (currentMonthCount === 0) {
+            alertLevel = 'warning'; // 今月未接触（黄）
+        }
+
+        alerts.push({
+            code: customer.code,
+            name: customer.name,
+            area: info?.area || '',
+            lastActivityDate: lastActivityStr,
+            daysSinceLastActivity: daysSince,
+            alertLevel,
+            currentMonthCount,
+            previousMonthCount,
+            lastBusinessContent: info?.businessContent || '',
+            lastNextPlan: info?.nextPlan || '',
+            lastAction: info?.action || '',
+        });
+    });
+
+    // ソート: danger（放置日数の長い順） -> warning（前月訪問回数の多い順） -> normal
+    alerts.sort((a, b) => {
+        const levelWeight = { danger: 3, warning: 2, normal: 1 };
+        if (levelWeight[a.alertLevel] !== levelWeight[b.alertLevel]) {
+            return levelWeight[b.alertLevel] - levelWeight[a.alertLevel];
+        }
+        if (a.alertLevel === 'danger') {
+            return b.daysSinceLastActivity - a.daysSinceLastActivity;
+        }
+        if (a.alertLevel === 'warning') {
+            return b.previousMonthCount - a.previousMonthCount;
+        }
+        return b.daysSinceLastActivity - a.daysSinceLastActivity;
+    });
+
+    return alerts;
+}
+

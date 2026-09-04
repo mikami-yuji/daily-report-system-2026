@@ -117,3 +117,55 @@ export type PriorityMatrixData = {
         lastActivity: string | null;
     }[];
 };
+
+// 個人用月次目標ペースメーカーデータ
+export type PersonalScoreData = {
+    monthLabel: string;             // 例: "2026年9月"
+    currentMonthCode: string;       // 例: "26/09"
+    points: number;                 // 現在の総得点 (重点訪問*10 + 一般訪問*3 + 重点電話*1 + 一般電話*0.5)
+    targetPoints: number;           // 目標点数 (通常200)
+    achievementRate: number;        // 達成率 (%)
+    counts: {
+        priorityVisits: number;     // 重点訪問件数
+        generalVisits: number;      // 一般訪問件数
+        priorityCalls: number;      // 重点電話件数
+        generalCalls: number;       // 一般電話件数
+        totalVisits: number;        // 総訪問件数
+        totalCalls: number;         // 総電話件数
+    };
+    pointsBreakdown: {
+        priorityVisits: number;     // 重点訪問得点
+        generalVisits: number;      // 一般訪問得点
+        priorityCalls: number;      // 重点電話得点
+        generalCalls: number;       // 一般電話得点
+    };
+    daysInfo: {
+        daysInMonth: number;        // 月の日数
+        currentDay: number;         // 経過日数
+        remainingDays: number;      // 残り日数
+        progressPace: number;       // 期待ペース点数
+        paceDiff: number;           // 計画比ペース差分 (+/-)
+        projectedPoints: number;    // 着地予測点数
+    };
+    remainingToTarget: number;      // 達成まであと何点か (max(0, target - points))
+    neededVisits: {
+        priorityOnly: number;       // 重点訪問だけで達成する場合の必要件数 (ceil(rem / 10))
+        generalOnly: number;        // 一般訪問だけで達成する場合の必要件数 (ceil(rem / 3))
+    };
+};
+
+// 要フォロー重点顧客アラートデータ
+export type NeglectedCustomerAlert = {
+    code: string;                   // 得意先コード (または コード-直送先コード)
+    name: string;                   // 得意先名
+    area: string;                   // エリア
+    lastActivityDate: string | null;// 最終活動日 (YYYY/MM/DD or YY/MM/DD)
+    daysSinceLastActivity: number;  // 最終活動日からの経過日数
+    alertLevel: 'danger' | 'warning' | 'normal'; // danger: 30日超, warning: 当月未接触, normal: 接触あり
+    currentMonthCount: number;      // 当月の接触回数 (訪問+電話)
+    previousMonthCount: number;     // 前月の接触回数
+    lastBusinessContent: string;    // 直近の商談内容
+    lastNextPlan: string;           // 直近の次回プラン
+    lastAction: string;             // 直近の行動内容 (訪問, 電話等)
+};
+

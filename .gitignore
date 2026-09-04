@@ -58,6 +58,7 @@ DailyReportSystem_Standalone/
 DailyReportSystem_Standalone.zip
 
 # Large EXE files
+_app_update/*.exe
 release_pkg/backend/DailyReportServer.exe
 backend/dist/
 DailyReportSystem_2026.zip

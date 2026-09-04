@@ -1,12 +1,11 @@
 {
-  "version": "2.4.1",
-  "releaseDate": "2026-09-03",
-  "fileName": "DailyReportServer_v2.4.1.exe",
-  "fileSize": 49194596,
-  "sha256": "5a551b6ece949fb48ce1b2bc3c620053e67328ee9a92896892031d16df854a28",
+  "version": "2.4.2",
+  "releaseDate": "2026-09-04",
+  "fileName": "DailyReportServer_v2.4.2.exe",
+  "fileSize": 49127266,
+  "sha256": "c9532344d3244aa99db54a67b7f412cc7c783f0a8c26133e8331d2889402edd3",
   "forceUpdate": false,
   "releaseNotes": [
-    "全PDF閲覧対応",
-    "安全アップデート対応"
+    "分析・レポート画面実用化リニューアル（200点目標ペースメーカーと重点顧客フォローアラート新設）"
   ]
 }

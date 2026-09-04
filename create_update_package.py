@@ -15,6 +15,7 @@ import time
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = BASE_DIR
 DIST_EXE = os.path.join(BASE_DIR, "dist", "DailyReportServer.exe")
 
 def calculate_sha256(file_path: str) -> str:

@@ -830,6 +830,7 @@ export default function DesignSearchPage() {
                 isOpen={showImageModal}
                 onClose={(): void => setShowImageModal(false)}
                 images={imageResults}
+                targetDesignNo={searchQueryDebug}
             />
 
             {/* 新規日報作成モーダル（デザイン情報引き継ぎ用） */}

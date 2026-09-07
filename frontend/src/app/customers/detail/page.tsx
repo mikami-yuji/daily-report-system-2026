@@ -922,6 +922,7 @@ function CustomerDetailContent() {
                 isOpen={showImageModal}
                 onClose={(): void => setShowImageModal(false)}
                 images={imageResults}
+                targetDesignNo={searchQueryDebug}
             />
         </div>
     );

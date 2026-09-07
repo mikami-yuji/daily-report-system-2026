@@ -1,11 +1,11 @@
 {
-  "version": "2.4.2",
-  "releaseDate": "2026-09-04",
-  "fileName": "DailyReportServer_v2.4.2.exe",
-  "fileSize": 49127266,
-  "sha256": "c9532344d3244aa99db54a67b7f412cc7c783f0a8c26133e8331d2889402edd3",
+  "version": "2.4.4",
+  "releaseDate": "2026-09-07",
+  "fileName": "DailyReportServer_v2.4.4.exe",
+  "fileSize": 49134196,
+  "sha256": "6585be8545ae4516c6c1cfbc4e9cd5411256d97f68250d54f8ad907e2616090b",
   "forceUpdate": false,
   "releaseNotes": [
-    "分析・レポート画面実用化リニューアル（200点目標ペースメーカーと重点顧客フォローアラート新設）"
+    "兄弟デザインタブのスライドバー廃止・全規格折り返し表示"
   ]
 }

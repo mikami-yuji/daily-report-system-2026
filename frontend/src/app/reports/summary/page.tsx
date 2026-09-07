@@ -34,12 +34,14 @@ export default function MonthlySummaryPage(): React.ReactElement {
     const [searchingImage, setSearchingImage] = useState(false);
     const [imageResults, setImageResults] = useState<DesignImage[]>([]);
     const [showImageModal, setShowImageModal] = useState(false);
+    const [currentSearchDesignNo, setCurrentSearchDesignNo] = useState<string>('');
 
     // 画像検索アクション
     const handleImageSearch = async (designNo: string, e: React.MouseEvent): Promise<void> => {
         e.stopPropagation(); // アコーディオンの他部分のクリックイベントを防止
         if (!designNo) return;
         const cleanDesignNo = String(designNo).replace('.0', '').trim();
+        setCurrentSearchDesignNo(cleanDesignNo);
         setSearchingImage(true);
         try {
             const result = await searchDesignImages(cleanDesignNo, selectedFile || undefined);
@@ -676,6 +678,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                 isOpen={showImageModal}
                 onClose={(): void => setShowImageModal(false)}
                 images={imageResults}
+                targetDesignNo={currentSearchDesignNo}
             />
         </div>
     );

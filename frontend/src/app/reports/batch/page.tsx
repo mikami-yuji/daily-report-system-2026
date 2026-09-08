@@ -6,7 +6,7 @@ import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport,
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check, ExternalLink, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID, isSalesPersonMatch } from '@/lib/reportUtils';
@@ -87,6 +87,7 @@ type BatchDraftData = {
     visits: VisitEntry[];
     searchTerms: { [key: string]: string };
     retailerSearchTerms: { [key: string]: string };
+    deliverySearchTerms?: { [key: string]: string };
 };
 
 export default function BatchReportPage() {
@@ -130,6 +131,11 @@ export default function BatchReportPage() {
     // 得意先リスト選択時にonBlurの自由記載を抑制するためのフラグ
     const justSelectedCustomerRef = useRef<boolean>(false);
 
+    // 直送先検索用state
+    const [deliverySearchTerms, setDeliverySearchTerms] = useState<{ [key: string]: string }>({});
+    const [showDeliverySuggestions, setShowDeliverySuggestions] = useState<{ [key: string]: boolean }>({});
+    const justSelectedDeliveryRef = useRef<boolean>(false);
+
     // 量販店調査入力用state
     const [retailerSearchTerms, setRetailerSearchTerms] = useState<{ [key: string]: string }>({});
     const [showRetailerSuggestions, setShowRetailerSuggestions] = useState<{ [key: string]: boolean }>({});
@@ -154,6 +160,9 @@ export default function BatchReportPage() {
                     if (draft.retailerSearchTerms) {
                         setRetailerSearchTerms(draft.retailerSearchTerms);
                     }
+                    if (draft.deliverySearchTerms) {
+                        setDeliverySearchTerms(draft.deliverySearchTerms);
+                    }
                     setIsDraftRestored(true);
                     toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'draft-restored' });
                 } else {
@@ -170,6 +179,7 @@ export default function BatchReportPage() {
         setVisits([createEmptyVisit()]);
         setSearchTerms({});
         setRetailerSearchTerms({});
+        setDeliverySearchTerms({});
         setIsDraftRestored(false);
         toast.success('一括登録の下書きを破棄しました');
     };
@@ -481,17 +491,15 @@ export default function BatchReportPage() {
 
     // 得意先選択
     const selectCustomer = (visitId: string, customer: Customer): void => {
-        // 表示名を作成（直送先があれば「得意先名　直送先名」形式）
-        const displayName = customer.直送先名
-            ? `${customer.得意先名}　${customer.直送先名}`
-            : customer.得意先名 || '';
+        // 得意先名のみを設定（直送先名を連結しない）
+        const customerName = customer.得意先名 || '';
 
         setVisits(prev => prev.map(v => {
             if (v.id === visitId) {
                 return {
                     ...v,
                     得意先CD: customer.得意先CD || '',
-                    訪問先名: displayName,
+                    訪問先名: customerName,
                     直送先CD: customer.直送先CD || '',
                     直送先名: customer.直送先名 || '',
                     エリア: customer.エリア || '',
@@ -506,10 +514,11 @@ export default function BatchReportPage() {
         justSelectedCustomerRef.current = true;
         setShowSuggestions({ ...showSuggestions, [visitId]: false });
         setSearchTerms({ ...searchTerms, [visitId]: '' });
+        setDeliverySearchTerms(prev => ({ ...prev, [visitId]: '' }));
+        setShowDeliverySuggestions(prev => ({ ...prev, [visitId]: false }));
 
         // デザイン案件を取得
         if (customer.得意先CD) {
-            // デザイン案件を取得
             getDesigns(customer.得意先CD, selectedFile, customer.直送先名 || undefined)
                 .then(designs => {
                     setVisits(prev => prev.map(v =>
@@ -530,6 +539,119 @@ export default function BatchReportPage() {
                 .catch(err => {
                     console.error('Failed to fetch interviewers:', err);
                 });
+        }
+    };
+
+    // 得意先クリア
+    const clearCustomer = (visitId: string): void => {
+        setVisits(prev => prev.map(v => v.id === visitId ? {
+            ...v,
+            得意先CD: '',
+            訪問先名: '',
+            直送先CD: '',
+            直送先名: '',
+            ランク: '',
+            重点顧客: '',
+            designs: [],
+            interviewers: [],
+        } : v));
+        setSearchTerms(prev => ({ ...prev, [visitId]: '' }));
+        setDeliverySearchTerms(prev => ({ ...prev, [visitId]: '' }));
+        setShowSuggestions(prev => ({ ...prev, [visitId]: false }));
+        setShowDeliverySuggestions(prev => ({ ...prev, [visitId]: false }));
+    };
+
+    // 直送先サジェスト検索
+    const filterDeliveries = (visitId: string, term: string): Customer[] => {
+        const currentVisit = visits.find(v => v.id === visitId);
+        const lowerTerm = term.toLowerCase().trim();
+
+        // 既に得意先が選択されている場合: その得意先CDに紐づく直送先レコードを抽出
+        if (currentVisit?.得意先CD) {
+            const related = customers.filter(c => 
+                c.得意先CD === currentVisit.得意先CD && c.直送先名
+            );
+            if (!lowerTerm) return related;
+            return related.filter(c =>
+                (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerTerm)) ||
+                (c.直送先名 && String(c.直送先名).toLowerCase().includes(lowerTerm))
+            );
+        }
+
+        // 得意先が未選択の場合: 直送先名が存在するレコードから検索
+        if (!lowerTerm) return [];
+        return customers.filter(c =>
+            c.直送先名 && (
+                (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerTerm)) ||
+                (c.直送先名 && String(c.直送先名).toLowerCase().includes(lowerTerm)) ||
+                (c.得意先名 && String(c.得意先名).toLowerCase().includes(lowerTerm))
+            )
+        ).slice(0, 10);
+    };
+
+    // 直送先選択
+    const selectDelivery = (visitId: string, item: Customer): void => {
+        const currentVisit = visits.find(v => v.id === visitId);
+        const willSetCustomer = !currentVisit?.得意先CD && !currentVisit?.訪問先名 && item.得意先CD;
+
+        setVisits(prev => prev.map(v => {
+            if (v.id !== visitId) return v;
+            return {
+                ...v,
+                直送先CD: item.直送先CD || '',
+                直送先名: item.直送先名 || '',
+                ...(willSetCustomer ? {
+                    得意先CD: item.得意先CD || '',
+                    訪問先名: item.得意先名 || '',
+                    エリア: item.エリア || v.エリア,
+                    ランク: item.ランク || v.ランク,
+                    重点顧客: item.重点顧客 || v.重点顧客,
+                } : {})
+            };
+        }));
+
+        justSelectedDeliveryRef.current = true;
+        setShowDeliverySuggestions(prev => ({ ...prev, [visitId]: false }));
+        setDeliverySearchTerms(prev => ({ ...prev, [visitId]: '' }));
+
+        const targetCustomerCd = currentVisit?.得意先CD || item.得意先CD;
+        const targetCustomerName = currentVisit?.訪問先名 || item.得意先名;
+
+        if (targetCustomerCd) {
+            getDesigns(targetCustomerCd, selectedFile, item.直送先名 || undefined)
+                .then(designs => {
+                    setVisits(prev => prev.map(v => v.id === visitId ? { ...v, designs } : v));
+                })
+                .catch(err => console.error('Failed to fetch designs on delivery select:', err));
+
+            getInterviewers(targetCustomerCd, selectedFile, targetCustomerName, item.直送先名)
+                .then(interviewers => {
+                    setVisits(prev => prev.map(v => v.id === visitId ? { ...v, interviewers } : v));
+                })
+                .catch(err => console.error('Failed to fetch interviewers on delivery select:', err));
+        }
+    };
+
+    // 直送先クリア
+    const clearDelivery = (visitId: string): void => {
+        setVisits(prev => prev.map(v => {
+            if (v.id !== visitId) return v;
+            return {
+                ...v,
+                直送先CD: '',
+                直送先名: '',
+            };
+        }));
+        setDeliverySearchTerms(prev => ({ ...prev, [visitId]: '' }));
+
+        const currentVisit = visits.find(v => v.id === visitId);
+        if (currentVisit?.得意先CD) {
+            getDesigns(currentVisit.得意先CD, selectedFile, undefined)
+                .then(designs => setVisits(prev => prev.map(v => v.id === visitId ? { ...v, designs } : v)))
+                .catch(console.error);
+            getInterviewers(currentVisit.得意先CD, selectedFile, currentVisit.訪問先名, undefined)
+                .then(interviewers => setVisits(prev => prev.map(v => v.id === visitId ? { ...v, interviewers } : v)))
+                .catch(console.error);
         }
     };
 
@@ -655,6 +777,11 @@ export default function BatchReportPage() {
                     }
                 }
 
+                let finalDeliveryName = visit.直送先名 || '';
+                if (!finalDeliveryName && deliverySearchTerms[visit.id]?.trim()) {
+                    finalDeliveryName = deliverySearchTerms[visit.id].trim();
+                }
+
                 // 商談内容の構築（外出時間の場合）
                 let finalCommercialContent = visit.商談内容 || '';
                 let finalRank = visit.ランク;
@@ -677,7 +804,7 @@ export default function BatchReportPage() {
                     得意先CD: visit.得意先CD,
                     訪問先名: finalVisitName,
                     直送先CD: visit.直送先CD,
-                    直送先名: visit.直送先名,
+                    直送先名: finalDeliveryName,
                     行動内容: visit.行動内容,
                     面談者: visit.面談者,
                     滞在時間: visit.滞在時間,
@@ -720,6 +847,7 @@ export default function BatchReportPage() {
                 setVisits([createEmptyVisit()]);
                 setSearchTerms({});
                 setRetailerSearchTerms({});
+                setDeliverySearchTerms({});
                 clearDraft();
             }
 
@@ -756,11 +884,11 @@ export default function BatchReportPage() {
         ) || date !== today;
 
         if (hasData) {
-            saveDraft({ date, visits, searchTerms, retailerSearchTerms });
+            saveDraft({ date, visits, searchTerms, retailerSearchTerms, deliverySearchTerms });
         } else {
             clearDraft();
         }
-    }, [date, visits, searchTerms, retailerSearchTerms, isLoaded, saveDraft, clearDraft]);
+    }, [date, visits, searchTerms, retailerSearchTerms, deliverySearchTerms, isLoaded, saveDraft, clearDraft]);
 
     // 有効な訪問数
     // 何かしらデータが入力されている訪問数をカウント
@@ -872,26 +1000,24 @@ export default function BatchReportPage() {
                         {/* 訪問詳細フォーム */}
                         {visit.isExpanded && (
                             <div className="p-4 space-y-4">
-                                {/* 得意先検索・自由記載（社内業務・外出時間・量販店調査以外のみ表示） */}
+                                {/* 得意先検索・直送先検索・自由記載（社内業務・外出時間・量販店調査以外のみ表示） */}
                                 {!['社内（半日）', '社内（１日）', '外出時間', '量販店調査'].includes(visit.行動内容) && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* 1. 得意先枠 */}
                                         <div className="relative">
                                             <label className="block text-xs font-medium text-sf-text-weak mb-1">
-                                                得意先CD / 訪問先名
+                                                得意先CD / 得意先名
                                             </label>
                                             {visit.得意先CD ? (
                                                 <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-sf-border rounded">
-                                                    <Building2 size={16} className="text-gray-400" />
-                                                    <span className="font-mono text-sm">{visit.得意先CD}</span>
-                                                    <span className="text-sm text-sf-text">{visit.訪問先名}</span>
+                                                    <Building2 size={16} className="text-gray-400 flex-shrink-0" />
+                                                    <span className="font-mono text-sm flex-shrink-0">{visit.得意先CD}</span>
+                                                    <span className="text-sm text-sf-text truncate">{visit.訪問先名}</span>
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
-                                                            updateVisit(visit.id, '得意先CD', '');
-                                                            updateVisit(visit.id, '訪問先名', '');
-                                                            setSearchTerms({ ...searchTerms, [visit.id]: '' });
-                                                        }}
-                                                        className="ml-auto text-gray-400 hover:text-red-500"
+                                                        onClick={() => clearCustomer(visit.id)}
+                                                        className="ml-auto text-gray-400 hover:text-red-500 flex-shrink-0"
+                                                        title="得意先を解除"
                                                     >
                                                         ×
                                                     </button>
@@ -899,16 +1025,14 @@ export default function BatchReportPage() {
                                             ) : visit.訪問先名 && !searchTerms[visit.id] ? (
                                                 /* 自由記載で入力された訪問先名を表示 */
                                                 <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded">
-                                                    <Building2 size={16} className="text-amber-500" />
-                                                    <span className="text-sm text-sf-text">{visit.訪問先名}</span>
-                                                    <span className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">自由記載</span>
+                                                    <Building2 size={16} className="text-amber-500 flex-shrink-0" />
+                                                    <span className="text-sm text-sf-text truncate">{visit.訪問先名}</span>
+                                                    <span className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded flex-shrink-0">自由記載</span>
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
-                                                            updateVisit(visit.id, '訪問先名', '');
-                                                            setSearchTerms({ ...searchTerms, [visit.id]: '' });
-                                                        }}
-                                                        className="ml-auto text-gray-400 hover:text-red-500"
+                                                        onClick={() => clearCustomer(visit.id)}
+                                                        className="ml-auto text-gray-400 hover:text-red-500 flex-shrink-0"
+                                                        title="得意先を解除"
                                                     >
                                                         ×
                                                     </button>
@@ -942,8 +1066,6 @@ export default function BatchReportPage() {
                                                                                 ...v,
                                                                                 訪問先名: term,
                                                                                 得意先CD: '',
-                                                                                直送先名: '',
-                                                                                直送先CD: '',
                                                                                 重点顧客: '',
                                                                                 ランク: ''
                                                                             } : v
@@ -966,8 +1088,6 @@ export default function BatchReportPage() {
                                                                                 ...v,
                                                                                 訪問先名: term,
                                                                                 得意先CD: '',
-                                                                                直送先名: '',
-                                                                                直送先CD: '',
                                                                                 重点顧客: '',
                                                                                 ランク: ''
                                                                             } : v
@@ -980,7 +1100,7 @@ export default function BatchReportPage() {
                                                                 }
                                                             }}
                                                             placeholder="得意先を検索 or 自由記載してEnter..."
-                                                            className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                                            className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent text-sm"
                                                         />
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-1">
@@ -993,11 +1113,19 @@ export default function BatchReportPage() {
                                                     {filterCustomers(searchTerms[visit.id]).map(c => (
                                                         <div
                                                             key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
-                                                            className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex items-center justify-between border-b border-gray-100 last:border-b-0"
                                                             onMouseDown={() => selectCustomer(visit.id, c)}
                                                         >
-                                                            <span className="font-mono text-xs text-gray-500 mr-2">{c.得意先CD}</span>
-                                                            {c.直送先名 ? `${c.得意先名}　${c.直送先名}` : c.得意先名}
+                                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                                <span className="font-mono text-xs text-gray-500 flex-shrink-0">{c.得意先CD}</span>
+                                                                <span className="text-sf-text font-medium truncate">{c.得意先名}</span>
+                                                            </div>
+                                                            {c.直送先名 && (
+                                                                <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 flex-shrink-0 ml-2">
+                                                                    <MapPin size={12} />
+                                                                    <span className="truncate max-w-[150px]">直送: {c.直送先名}</span>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ))}
                                                     {filterCustomers(searchTerms[visit.id]).length === 0 && (
@@ -1006,6 +1134,152 @@ export default function BatchReportPage() {
                                                         </div>
                                                     )}
                                                 </div>
+                                            )}
+                                        </div>
+
+                                        {/* 2. 直送先枠 */}
+                                        <div className="relative">
+                                            <label className="block text-xs font-medium text-sf-text-weak mb-1">
+                                                直送先CD / 直送先名 <span className="text-gray-400 font-normal">（任意）</span>
+                                            </label>
+                                            {visit.直送先CD ? (
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50/60 border border-blue-200 rounded">
+                                                    <MapPin size={16} className="text-blue-500 flex-shrink-0" />
+                                                    <span className="font-mono text-sm text-blue-700 flex-shrink-0">{visit.直送先CD}</span>
+                                                    <span className="text-sm text-sf-text truncate">{visit.直送先名}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => clearDelivery(visit.id)}
+                                                        className="ml-auto text-gray-400 hover:text-red-500 flex-shrink-0"
+                                                        title="直送先を解除"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ) : visit.直送先名 && !deliverySearchTerms[visit.id] ? (
+                                                /* 自由記載で入力された直送先名を表示 */
+                                                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded">
+                                                    <MapPin size={16} className="text-amber-500 flex-shrink-0" />
+                                                    <span className="text-sm text-sf-text truncate">{visit.直送先名}</span>
+                                                    <span className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded flex-shrink-0">自由記載</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => clearDelivery(visit.id)}
+                                                        className="ml-auto text-gray-400 hover:text-red-500 flex-shrink-0"
+                                                        title="直送先を解除"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="relative">
+                                                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                                        <input
+                                                            type="text"
+                                                            value={deliverySearchTerms[visit.id] || ''}
+                                                            onChange={(e) => {
+                                                                setDeliverySearchTerms({ ...deliverySearchTerms, [visit.id]: e.target.value });
+                                                                setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: true });
+                                                            }}
+                                                            onFocus={() => setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: true })}
+                                                            onBlur={() => {
+                                                                setTimeout(() => {
+                                                                    if (justSelectedDeliveryRef.current) {
+                                                                        justSelectedDeliveryRef.current = false;
+                                                                        setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: false });
+                                                                        return;
+                                                                    }
+                                                                    const term = deliverySearchTerms[visit.id]?.trim();
+                                                                    if (term) {
+                                                                        setVisits(prev => prev.map(v => 
+                                                                            v.id === visit.id ? { ...v, 直送先名: term, 直送先CD: '' } : v
+                                                                        ));
+                                                                        setDeliverySearchTerms({ ...deliverySearchTerms, [visit.id]: '' });
+                                                                    }
+                                                                    setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: false });
+                                                                }, 250);
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    const term = deliverySearchTerms[visit.id]?.trim();
+                                                                    if (term) {
+                                                                        setVisits(prev => prev.map(v => 
+                                                                            v.id === visit.id ? { ...v, 直送先名: term, 直送先CD: '' } : v
+                                                                        ));
+                                                                        setDeliverySearchTerms({ ...deliverySearchTerms, [visit.id]: '' });
+                                                                        setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: false });
+                                                                    }
+                                                                }
+                                                            }}
+                                                            placeholder={visit.得意先CD ? "直送先を選択 or 自由記載してEnter..." : "直送先を検索 or 自由記載してEnter..."}
+                                                            className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent text-sm"
+                                                        />
+                                                    </div>
+                                                    <p className="text-xs text-gray-400 mt-1">
+                                                        {visit.得意先CD ? "この得意先の直送先から選択、または自由記載" : "直送先リストから検索、または自由記載"}
+                                                    </p>
+                                                </>
+                                            )}
+
+                                            {/* 直送先サジェストドロップダウン */}
+                                            {showDeliverySuggestions[visit.id] && (
+                                                (() => {
+                                                    const deliveryOptions = filterDeliveries(visit.id, deliverySearchTerms[visit.id] || '');
+                                                    const hasSearchTerm = Boolean(deliverySearchTerms[visit.id]?.trim());
+
+                                                    if (deliveryOptions.length === 0 && !hasSearchTerm) {
+                                                        if (visit.得意先CD) {
+                                                            return (
+                                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg p-3 text-xs text-gray-400">
+                                                                    登録されている直送先はありません。自由記載してEnterで追加できます。
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    }
+
+                                                    return (
+                                                        <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                            {deliveryOptions.map(c => (
+                                                                <div
+                                                                    key={`${c.得意先CD}-${c.直送先CD}`}
+                                                                    className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex items-center justify-between border-b border-gray-100 last:border-b-0"
+                                                                    onMouseDown={() => selectDelivery(visit.id, c)}
+                                                                >
+                                                                    <div className="flex items-center gap-2">
+                                                                        <MapPin size={14} className="text-blue-500 flex-shrink-0" />
+                                                                        {c.直送先CD && <span className="font-mono text-xs text-gray-500 mr-1">{c.直送先CD}</span>}
+                                                                        <span className="font-medium text-sf-text">{c.直送先名}</span>
+                                                                    </div>
+                                                                    {!visit.得意先CD && c.得意先名 && (
+                                                                        <span className="text-xs text-gray-400 truncate max-w-[120px]">
+                                                                            {c.得意先名}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                            {hasSearchTerm && (
+                                                                <div
+                                                                    className="px-3 py-2 text-xs text-amber-600 bg-amber-50 cursor-pointer hover:bg-amber-100 border-t border-amber-200"
+                                                                    onMouseDown={() => {
+                                                                        const term = deliverySearchTerms[visit.id]?.trim();
+                                                                        if (term) {
+                                                                            setVisits(prev => prev.map(v => 
+                                                                                v.id === visit.id ? { ...v, 直送先名: term, 直送先CD: '' } : v
+                                                                            ));
+                                                                            setDeliverySearchTerms({ ...deliverySearchTerms, [visit.id]: '' });
+                                                                            setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: false });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    Enterで「{deliverySearchTerms[visit.id]}」を自由記載として設定
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()
                                             )}
                                         </div>
                                     </div>

@@ -1,11 +1,15 @@
 {
-  "version": "2.4.4",
-  "releaseDate": "2026-09-07",
-  "fileName": "DailyReportServer_v2.4.4.exe",
-  "fileSize": 49134196,
-  "sha256": "6585be8545ae4516c6c1cfbc4e9cd5411256d97f68250d54f8ad907e2616090b",
+  "version": "2.4.5",
+  "releaseDate": "2026-09-08",
+  "fileName": "DailyReportServer_v2.4.5.exe",
+  "fileSize": 49495023,
+  "sha256": "e700d3bcda4071ee9a8b3bd9f14450ce95348bbb366b2fabee3640dafd6c12bb",
   "forceUpdate": false,
   "releaseNotes": [
-    "兄弟デザインタブのスライドバー廃止・全規格折り返し表示"
+    "日報一括承認・クイック承認(役職選択対応)",
+    "過去商談履歴クイック表示",
+    "日報複製作成",
+    "画像ホバープレビュー(見切れ解消)",
+    "デザイン情報配色改善"
   ]
 }

@@ -152,6 +152,24 @@ export const updateReportApproval = async (
     return response.data;
 };
 
+// 一括承認API
+export const batchUpdateReportApproval = async (
+    managementNumbers: number[],
+    fieldName: '上長' | '山澄常務' | '岡本常務' | '中野次長' | '既読チェック' = '上長',
+    value: string = '✓',
+    filename?: string
+): Promise<{ success: boolean; updated_count: number; total_requested: number }> => {
+    const params = filename ? { filename } : {};
+    const payload = {
+        management_numbers: managementNumbers,
+        field_name: fieldName,
+        value: value,
+    };
+    const response = await apiLong.post(`${API_URL}/reports/batch-approval`, payload, { params });
+    return response.data;
+};
+
+
 export const deleteReport = async (managementNumber: number, filename?: string) => {
     const params = filename ? { filename } : {};
     const response = await api.delete(`${API_URL}/reports/${managementNumber}`, { params });

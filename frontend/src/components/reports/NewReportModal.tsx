@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
+import { Report, Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Truck, Loader2, Check, ExternalLink } from 'lucide-react';
@@ -21,9 +21,10 @@ type NewReportModalProps = {
     onSuccess: () => void;
     selectedFile: string;
     initialDesignData?: InitialDesignData;
+    initialReportData?: Partial<Report>;
 };
 
-export default function NewReportModal({ onClose, onSuccess, selectedFile, initialDesignData }: NewReportModalProps) {
+export default function NewReportModal({ onClose, onSuccess, selectedFile, initialDesignData, initialReportData }: NewReportModalProps) {
     const { isOnline, saveOfflineReport, cachedCustomers, cacheCustomers } = useOffline();
 
     // 下書き保存フック
@@ -58,6 +59,32 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     // 下書きがあれば復元、なければ初期値
     const initialDraft = getDraft();
     const [formData, setFormData] = useState(() => {
+        if (initialReportData) {
+            const hasPrevPlan = !!initialReportData.次回プラン && initialReportData.次回プラン.trim() !== '' && initialReportData.次回プラン !== 'なし';
+            return {
+                ...defaultFormData,
+                日付: new Date().toISOString().split('T')[0].replace(/-/g, '/').slice(2),
+                行動内容: initialReportData.行動内容 || '',
+                エリア: initialReportData.エリア || '',
+                得意先CD: initialReportData.得意先CD || '',
+                直送先CD: initialReportData.直送先CD || '',
+                訪問先名: initialReportData.訪問先名 || '',
+                直送先名: initialReportData.直送先名 || '',
+                面談者: initialReportData.面談者 || '',
+                滞在時間: initialReportData.滞在時間 || '',
+                商談内容: hasPrevPlan ? `【前回プラン引継ぎ】\n${initialReportData.次回プラン}\n\n` : '',
+                提案物: initialReportData.提案物 || '',
+                次回プラン: '',
+                競合他社情報: '',
+                重点顧客: initialReportData.重点顧客 || '',
+                ランク: initialReportData.ランク || '',
+                デザイン提案有無: initialReportData.デザイン提案有無 || (initialReportData['デザイン依頼No.'] ? 'あり' : ''),
+                デザイン種別: initialReportData.デザイン種別 || '',
+                デザイン名: initialReportData.デザイン名 || '',
+                デザイン進捗状況: initialReportData.デザイン進捗状況 || '',
+                'デザイン依頼No.': initialReportData['デザイン依頼No.'] || '',
+            };
+        }
         const base = initialDesignData ? defaultFormData : (initialDraft?.formData || defaultFormData);
         if (initialDesignData) {
             return {
@@ -80,7 +107,8 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [interviewers, setInterviewers] = useState<string[]>([]);
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(
-        initialDesignData?.designMode || (initialDesignData ? 'existing' : (initialDraft?.designMode || 'none'))
+        initialDesignData?.designMode || 
+        (initialReportData?.['デザイン依頼No.'] ? 'existing' : (initialDesignData ? 'existing' : (initialDraft?.designMode || 'none')))
     );
     const [designs, setDesigns] = useState<Design[]>([]);
     
@@ -702,8 +730,13 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
                     <div className="flex items-center gap-3">
-                        <h2 className="text-xl font-bold text-sf-text">
+                        <h2 className="text-xl font-bold text-sf-text flex items-center gap-2">
                             新規日報作成
+                            {initialReportData && (
+                                <span className="text-xs bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full font-medium">
+                                    前回の商談を引き継ぎ中
+                                </span>
+                            )}
                             {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
                         </h2>
                         {isDraftRestored && (

@@ -74,3 +74,8 @@ class ApprovalInput(BaseModel):
 class ReplyInput(BaseModel):
     コメント返信欄: str
     original_values: Optional[dict] = None
+
+class BatchApprovalInput(BaseModel):
+    management_numbers: list[int]
+    field_name: str = "上長"
+    value: str = "✓"

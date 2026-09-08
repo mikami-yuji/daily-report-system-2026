@@ -47,3 +47,15 @@ def test_dashboard_stats_endpoint():
     assert "summary" in response
     assert "monthly" in response
     assert "ranking" in response
+
+def test_batch_approval_model_validation():
+    """BatchApprovalInputモデルのバリデーションテスト"""
+    batch_input = models.BatchApprovalInput(
+        management_numbers=[101, 102, 103],
+        field_name="上長",
+        value="✓"
+    )
+    assert len(batch_input.management_numbers) == 3
+    assert batch_input.field_name == "上長"
+    assert batch_input.value == "✓"
+

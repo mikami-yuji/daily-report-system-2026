@@ -954,6 +954,25 @@ def _apply_approval_to_excel(excel_file: str, management_number: int, approval_d
     finally:
         wb.close()
 
+def _apply_batch_approval_to_excel(excel_file: str, management_numbers: list[int], field_name: str, value: str):
+    """複数件の承認更新をExcelファイルに一括適用（1回のファイルオープン・保存で高速実行）"""
+    if field_name not in excel_schema.APPROVAL_COLUMN_MAPPING:
+        raise HTTPException(status_code=400, detail=f"Invalid approval field: {field_name}")
+    col_idx = excel_schema.APPROVAL_COLUMN_MAPPING[field_name]
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+    try:
+        ws = wb['営業日報']
+        updated_count = 0
+        for mgmt_num in management_numbers:
+            row_idx = _find_report_row(ws, mgmt_num)
+            if row_idx:
+                ws.cell(row=row_idx, column=col_idx, value=value)
+                updated_count += 1
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+        return updated_count
+    finally:
+        wb.close()
+
 def _apply_delete_to_excel(excel_file: str, management_number: int):
     """日報削除をExcelファイルに適用"""
     wb = openpyxl.load_workbook(excel_file, keep_vba=True)
@@ -1183,6 +1202,32 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
     except Exception as e:
         logging.error(f"Error in update_report_approval: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/api/reports/batch-approval")
+def batch_update_report_approval(batch_input: models.BatchApprovalInput, filename: str = config.DEFAULT_EXCEL_FILE):
+    """複数件の日報をまとめて一括承認（排他制御・高速適用対応）"""
+    filename = os.path.basename(filename)
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+
+    if not os.path.exists(excel_file):
+        raise HTTPException(status_code=503, detail="Excel file is not accessible")
+
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            count = _apply_batch_approval_to_excel(
+                excel_file,
+                batch_input.management_numbers,
+                batch_input.field_name,
+                batch_input.value
+            )
+            cache.invalidate_cache(filename, '営業日報')
+            return {"success": True, "updated_count": count, "total_requested": len(batch_input.management_numbers)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error in batch_update_report_approval: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update approvals: {str(e)}")
+
 
 
 

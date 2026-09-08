@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval, searchDesignImages, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { sanitizeReport, cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, Image as ImageIcon, ExternalLink, Lightbulb, MessageSquare, Copy, History, FileText } from 'lucide-react';
 import DesignImagePreviewModal from './DesignImagePreviewModal';
+import DesignImageHoverButton from './DesignImageHoverButton';
 import toast from 'react-hot-toast';
 
 // ローカルストレージからコメント下書きデータを取得する関数
@@ -40,6 +41,16 @@ type ReportDetailModalProps = {
     hasPrev: boolean;
     onEdit: () => void;
     onUpdate?: () => void;
+    onDuplicate?: (report: Report) => void;
+    allReports?: Report[];
+};
+
+const hasContent = (val: unknown): boolean => {
+    if (val === null || val === undefined) return false;
+    const cleaned = cleanText(String(val)).trim();
+    if (!cleaned) return false;
+    if (['なし', '無し', '特になし', '特に無し', '-', 'ー'].includes(cleaned)) return false;
+    return true;
 };
 
 function InfoRow({ label, value }: { label: string; value: unknown }) {
@@ -53,19 +64,35 @@ function InfoRow({ label, value }: { label: string; value: unknown }) {
     );
 }
 
-// LongTextRow was defined in page.tsx but seemingly unused in ReportDetailModal? 
-// Checking usage in ReportDetailModal... 
-// It uses <div className="text-base text-sf-text whitespace-pre-wrap ..."> which is similar logic but inline.
-// I'll keep InfoRow as it IS used.
-
 // Excelの「済」または「ü」をUIでは「✓」として表示
 const convertToDisplay = (value: string | undefined): string => {
     if (value === '済' || value === 'ü') return '✓';
     return value || '';
 };
 
-export default function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, onEdit, onUpdate }: ReportDetailModalProps) {
+export default function ReportDetailModal({ report, onClose, onNext, onPrev, hasNext, hasPrev, onEdit, onUpdate, onDuplicate, allReports }: ReportDetailModalProps) {
     const { selectedFile } = useFile();
+    const [activeTab, setActiveTab] = useState<'detail' | 'history'>('detail');
+
+    // 同一得意先の直近3件の商談履歴を抽出
+    const customerHistory = useMemo(() => {
+        if (!allReports || allReports.length === 0 || !report) return [];
+        const currentMgmtNo = Number(report.管理番号);
+        const currentCustomerCode = String(report.得意先CD || '').trim();
+        const currentCustomerName = String(report.訪問先名 || '').trim();
+
+        return allReports
+            .filter(r => {
+                if (Number(r.管理番号) === currentMgmtNo) return false;
+                const rCode = String(r.得意先CD || '').trim();
+                const rName = String(r.訪問先名 || '').trim();
+                if (currentCustomerCode && rCode && rCode === currentCustomerCode) return true;
+                if (currentCustomerName && rName && rName === currentCustomerName) return true;
+                return false;
+            })
+            .slice(0, 3);
+    }, [allReports, report]);
+
     const [approvals, setApprovals] = useState({
         上長: convertToDisplay(report?.上長),
         山澄常務: convertToDisplay(report?.山澄常務),
@@ -320,346 +347,572 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     );
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 animate-fadeIn" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden border border-sf-border" onClick={e => e.stopPropagation()}>
                 {/* ヘッダー */}
-                <div className="p-6 border-b border-sf-border flex justify-between items-start bg-gray-50 rounded-t-lg">
-                    <div className="flex-1">
-                        <h2 className="text-2xl font-bold text-sf-text mb-2">
-                            {report.訪問先名}
-                            {report.直送先名 && <span className="text-base font-normal text-sf-text-weak ml-3">(直送先: {report.直送先名})</span>}
-                        </h2>
-                        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-sf-text-weak">
-                            <span className="flex items-center gap-1">
-                                <Calendar size={16} />
+                <div className="p-5 border-b border-sf-border flex justify-between items-start bg-slate-50/80">
+                    <div className="flex-1 pr-4">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-xs px-2 py-0.5 rounded font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                                {report.行動内容 || '訪問'}
+                            </span>
+                            <h2 className="text-xl sm:text-2xl font-bold text-sf-text">
+                                {report.訪問先名}
+                            </h2>
+                            {report.直送先名 && (
+                                <span className="text-xs font-normal text-sf-text-weak bg-white px-2 py-0.5 rounded border border-gray-200">
+                                    直送: {report.直送先名}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-sf-text-weak mt-2">
+                            <span className="flex items-center gap-1 font-medium text-sf-text">
+                                <Calendar size={14} className="text-sf-light-blue" />
                                 {report.日付}
                             </span>
-                            <span className="flex items-center gap-1">
-                                <Hash size={16} />
+                            <span className="flex items-center gap-1 font-mono">
+                                <Hash size={14} className="text-gray-400" />
                                 No. {report.管理番号}
                             </span>
-                            <span className="flex items-center gap-1">
-                                <Briefcase size={16} />
-                                {report.行動内容}
-                            </span>
-                            <span className="flex items-center gap-1">
-                                <User size={16} />
-                                {report.面談者}
-                            </span>
-                            <span className="flex items-center gap-1">
-                                <MapPin size={16} />
-                                {report.エリア}
-                            </span>
+                            {report.面談者 && (
+                                <span className="flex items-center gap-1">
+                                    <User size={14} className="text-gray-400" />
+                                    面談: <strong className="text-sf-text font-medium">{report.面談者}</strong>
+                                </span>
+                            )}
+                            {report.エリア && (
+                                <span className="flex items-center gap-1">
+                                    <MapPin size={14} className="text-gray-400" />
+                                    {report.エリア}
+                                </span>
+                            )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    {/* アクションボタン（前後の日報ナビ、編集、閉じる） */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {/* 前後の日報ナビ（ヘッダー部） */}
+                        <div className="flex items-center bg-white border border-gray-200 rounded-lg p-0.5 mr-1 shadow-2xs">
+                            <button
+                                onClick={onNext}
+                                disabled={!hasNext}
+                                className="p-1.5 rounded text-gray-600 hover:text-sf-light-blue hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                                title="前の日報"
+                            >
+                                <ChevronLeft size={18} />
+                            </button>
+                            <span className="text-xs text-gray-300">|</span>
+                            <button
+                                onClick={onPrev}
+                                disabled={!hasPrev}
+                                className="p-1.5 rounded text-gray-600 hover:text-sf-light-blue hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
+                                title="次の日報"
+                            >
+                                <ChevronRight size={18} />
+                            </button>
+                        </div>
+
+                        {onDuplicate && (
+                            <button
+                                onClick={() => onDuplicate(report)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-200 shadow-2xs cursor-pointer"
+                                title="この日報の内容を引き継いで新規作成"
+                            >
+                                <Copy size={15} />
+                                <span className="hidden sm:inline">複製作成</span>
+                            </button>
+                        )}
+
                         <button
                             onClick={onEdit}
-                            className="p-2 text-sf-text-weak hover:text-sf-light-blue hover:bg-white rounded-full transition-colors border border-transparent hover:border-sf-border"
-                            title="編集"
+                            className="p-2 text-sf-text-weak hover:text-sf-light-blue hover:bg-white rounded-lg transition-colors border border-transparent hover:border-sf-border shadow-2xs cursor-pointer"
+                            title="日報を編集"
                         >
-                            <Edit size={20} />
+                            <Edit size={18} />
                         </button>
                         <button
                             onClick={onClose}
-                            className="p-2 text-sf-text-weak hover:text-sf-text hover:bg-white rounded-full transition-colors border border-transparent hover:border-sf-border"
+                            className="p-2 text-sf-text-weak hover:text-sf-text hover:bg-white rounded-lg transition-colors border border-transparent hover:border-sf-border shadow-2xs cursor-pointer"
+                            title="閉じる"
                         >
-                            <X size={24} />
+                            <X size={20} />
                         </button>
                     </div>
                 </div>
 
-                {/* コンテンツ */}
-                <div className="flex-1 overflow-y-auto p-6 relative">
-                    {/* ナビゲーションボタン（オーバーレイ） */}
-                    {hasNext && (
-                        <button
-                            onClick={onNext}
-                            className="fixed left-8 top-1/2 -translate-y-1/2 p-3 bg-white/80 hover:bg-white shadow-lg rounded-full text-sf-text-weak hover:text-sf-light-blue transition-all z-10 border border-sf-border backdrop-blur-sm"
-                            title="前の日報 (新しい)"
-                        >
-                            <ChevronLeft size={32} />
-                        </button>
-                    )}
-                    {hasPrev && (
-                        <button
-                            onClick={onPrev}
-                            className="fixed right-8 top-1/2 -translate-y-1/2 p-3 bg-white/80 hover:bg-white shadow-lg rounded-full text-sf-text-weak hover:text-sf-light-blue transition-all z-10 border border-sf-border backdrop-blur-sm"
-                            title="次の日報 (古い)"
-                        >
-                            <ChevronRight size={32} />
-                        </button>
-                    )}
+                {/* タブ切り替えバー */}
+                <div className="bg-slate-100/90 px-5 pt-2 border-b border-sf-border flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab('detail')}
+                        className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                            activeTab === 'detail'
+                                ? 'border-sf-light-blue text-sf-light-blue'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <FileText size={15} />
+                        今回の商談詳細
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('history')}
+                        className={`pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer flex items-center gap-1.5 ${
+                            activeTab === 'history'
+                                ? 'border-sf-light-blue text-sf-light-blue'
+                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <History size={15} />
+                        過去の商談履歴
+                        {customerHistory.length > 0 && (
+                            <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                                {customerHistory.length}
+                            </span>
+                        )}
+                    </button>
+                </div>
 
-                    <div className="space-y-8">
-                        {/* デザイン情報（条件付き表示） */}
-                        {hasDesign && (
-                            <div className="bg-blue-50 p-5 rounded-lg border border-blue-100">
-                                <h3 className="font-bold text-blue-800 mb-4 flex items-center gap-2 text-lg">
-                                    <Palette size={20} /> デザイン案件
+                {/* コンテンツ */}
+                <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+                    {activeTab === 'history' ? (
+                        /* 過去の商談履歴タブ表示 */
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                                <h3 className="font-bold text-sm sm:text-base text-sf-text flex items-center gap-2">
+                                    <span className="w-1.5 h-4 bg-purple-600 rounded-full"></span>
+                                    直近の商談履歴（過去{customerHistory.length}回）
                                 </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    <InfoRow label="種別" value={report.デザイン種別} />
-                                    <InfoRow label="案件名" value={report.デザイン名} />
-                                    <InfoRow label="進捗" value={report.デザイン進捗状況} />
-                                    <div className="flex justify-between items-start gap-2">
-                                        <span className="text-xs text-sf-text-weak whitespace-nowrap">依頼No.:</span>
-                                        <span className="text-sm text-sf-text text-right flex-1 flex items-center justify-end gap-1.5 font-semibold text-sf-light-blue">
-                                            {cleanText(report['デザイン依頼No.']) || '-'}
-                                            {report['デザイン依頼No.'] && (
-                                                <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-500">
+                                    得意先: <strong className="text-sf-text">{report.訪問先名}</strong>
+                                </span>
+                            </div>
+
+                            {customerHistory.length === 0 ? (
+                                <div className="bg-gray-50 border border-gray-200 rounded-xl p-10 text-center text-gray-500 space-y-2">
+                                    <History size={36} className="mx-auto text-gray-400" />
+                                    <p className="font-bold text-sm text-gray-700">この得意先の過去の商談履歴は見つかりませんでした</p>
+                                    <p className="text-xs text-gray-400">現在表示している日報が最新または初回訪問のデータです。</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {customerHistory.map((hist, idx) => (
+                                        <div key={hist.管理番号 || idx} className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 shadow-2xs space-y-3 hover:border-blue-200 transition-colors">
+                                            <div className="flex items-center justify-between border-b border-gray-100 pb-2.5 flex-wrap gap-2">
+                                                <div className="flex items-center gap-2.5 text-xs flex-wrap">
+                                                    <span className="font-bold text-sf-text text-sm flex items-center gap-1">
+                                                        <Calendar size={14} className="text-sf-light-blue" />
+                                                        {hist.日付}
+                                                    </span>
+                                                    {hist.行動内容 && (
+                                                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+                                                            {hist.行動内容}
+                                                        </span>
+                                                    )}
+                                                    {hist.面談者 && (
+                                                        <span className="text-gray-600">
+                                                            面談: <strong className="text-sf-text font-medium">{hist.面談者}</strong>
+                                                        </span>
+                                                    )}
+                                                    {hist.直送先名 && (
+                                                        <span className="text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                                                            直送: {hist.直送先名}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {onDuplicate && (
                                                     <button
-                                                        onClick={(e) => handleImageSearch(String(report['デザイン依頼No.']), e)}
-                                                        disabled={searchingImage}
-                                                        className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors cursor-pointer"
-                                                        title="関連画像を検索"
+                                                        type="button"
+                                                        onClick={() => onDuplicate(hist)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition cursor-pointer"
+                                                        title="この過去日報の内容を引き継いで新規作成"
                                                     >
-                                                        {searchingImage ? (
-                                                            <Loader2 size={14} className="animate-spin" />
-                                                        ) : (
-                                                            <ImageIcon size={14} />
-                                                        )}
+                                                        <Copy size={13} />
+                                                        <span>この履歴から複製作成</span>
                                                     </button>
-                                                    <a
-                                                        href="http://192.168.1.5:8888/viewer.html"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="p-1 hover:bg-blue-100 rounded text-blue-600 transition-colors flex items-center justify-center cursor-pointer"
-                                                        title="企画課ビューアを開く"
-                                                    >
-                                                        <ExternalLink size={14} />
-                                                    </a>
+                                                )}
+                                            </div>
+
+                                            {/* 商談内容 */}
+                                            <div className="space-y-1">
+                                                <div className="text-xs font-semibold text-gray-500">商談内容</div>
+                                                <div className="text-xs sm:text-sm text-sf-text whitespace-pre-wrap break-words leading-relaxed pl-3 border-l-2 border-sf-light-blue/70">
+                                                    {cleanText(hist.商談内容) || <span className="text-gray-400 italic">（商談内容未記入）</span>}
+                                                </div>
+                                            </div>
+
+                                            {/* 次回プラン・提案物 */}
+                                            {(hasContent(hist.次回プラン) || hasContent(hist.提案物)) && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-xs">
+                                                    {hasContent(hist.次回プラン) && (
+                                                        <div className="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 space-y-0.5">
+                                                            <div className="font-bold text-amber-800 flex items-center gap-1">
+                                                                <Lightbulb size={12} className="text-amber-600" /> 次回プラン
+                                                            </div>
+                                                            <div className="text-amber-950 whitespace-pre-wrap">{cleanText(hist.次回プラン)}</div>
+                                                        </div>
+                                                    )}
+                                                    {hasContent(hist.提案物) && (
+                                                        <div className="bg-blue-50/70 border border-blue-200 rounded-lg p-2.5 space-y-0.5">
+                                                            <div className="font-bold text-blue-800 flex items-center gap-1">
+                                                                <Briefcase size={12} className="text-blue-600" /> 提案物
+                                                            </div>
+                                                            <div className="text-blue-950 whitespace-pre-wrap">{cleanText(hist.提案物)}</div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
-                                        </span>
-                                    </div>
-                                    <InfoRow label="確認No." value={report['システム確認用デザインNo.']} />
-                                </div>
-                            </div>
-                        )}
 
-                        {/* 商談・提案内容（メイン） */}
-                        <div>
-                            <h3 className="font-bold text-xl text-sf-text mb-4 border-b-2 border-sf-border pb-2">商談・提案内容</h3>
-                            <div className="space-y-6">
-                                <div className="bg-white">
-                                    <div className="text-sm font-semibold text-sf-text-weak mb-2">商談内容</div>
-                                    <div className="text-base text-sf-text whitespace-pre-wrap leading-relaxed p-4 bg-gray-50 rounded border border-gray-100 min-h-[100px]">
-                                        {cleanText(report.商談内容) || 'なし'}
-                                    </div>
+                                            {/* デザイン情報があれば表示 */}
+                                            {(hist['デザイン依頼No.'] || hist.デザイン名) && (
+                                                <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs flex items-center justify-between flex-wrap gap-2">
+                                                    <span className="text-slate-700 font-medium">
+                                                        🎨 デザイン: {hist.デザイン名 || ''} {hist.デザイン種別 ? `(${hist.デザイン種別})` : ''}
+                                                    </span>
+                                                    {hist['デザイン依頼No.'] && (
+                                                        <DesignImageHoverButton
+                                                            designNo={String(hist['デザイン依頼No.'])}
+                                                            selectedFile={selectedFile || undefined}
+                                                            onOpenModal={(imgs, dNo) => {
+                                                                setImageResults(imgs);
+                                                                setCurrentSearchDesignNo(dNo);
+                                                                setShowImageModal(true);
+                                                            }}
+                                                            size="sm"
+                                                        />
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-white">
-                                        <div className="text-sm font-semibold text-sf-text-weak mb-2">提案物</div>
-                                        <div className="text-base text-sf-text whitespace-pre-wrap p-3 bg-gray-50 rounded border border-gray-100">
-                                            {cleanText(report.提案物) || 'なし'}
+                            )}
+                        </div>
+                    ) : (
+                        /* 今回の商談詳細タブ表示 */
+                        <>
+                    {/* デザイン情報（条件付き表示） */}
+                    {hasDesign && (
+                        <div className="bg-slate-50/90 p-4 sm:p-5 rounded-xl border border-slate-200 shadow-2xs">
+                            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200/80 flex-wrap gap-2">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base">
+                                    <Palette size={18} className="text-slate-600" /> デザイン案件詳細
+                                </h3>
+                                {report.デザイン進捗状況 && (
+                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-200 text-slate-800 border border-slate-300">
+                                        {report.デザイン進捗状況}
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs sm:text-sm">
+                                {report.デザイン名 && (
+                                    <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                                        <span className="text-xs text-slate-500 font-semibold block mb-0.5">案件名称</span>
+                                        <span className="font-bold text-sf-text">{report.デザイン名}</span>
+                                    </div>
+                                )}
+                                {report.デザイン種別 && (
+                                    <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                                        <span className="text-xs text-slate-500 font-semibold block mb-0.5">種別</span>
+                                        <span className="text-sf-text font-medium">{report.デザイン種別}</span>
+                                    </div>
+                                )}
+                                {report.デザイン提案有無 && (
+                                    <div className="bg-white p-2.5 rounded-lg border border-slate-200/70">
+                                        <span className="text-xs text-slate-500 font-semibold block mb-0.5">提案有無</span>
+                                        <span className="text-sf-text font-medium">{report.デザイン提案有無}</span>
+                                    </div>
+                                )}
+                                
+                                {/* 依頼No & 画像検索ボタン（強調・ホバープレビュー対応） */}
+                                {(report['デザイン依頼No.'] || report['システム確認用デザインNo.']) && (
+                                    <div className="bg-white p-2.5 rounded-lg border border-slate-200 col-span-full sm:col-span-2 flex items-center justify-between gap-3 flex-wrap">
+                                        <div>
+                                            <span className="text-xs text-slate-500 font-semibold block">依頼No / システム確認No</span>
+                                            <span className="text-base font-mono font-bold text-slate-800">
+                                                No.{cleanText(report['デザイン依頼No.'] || report['システム確認用デザインNo.'])}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <DesignImageHoverButton
+                                                designNo={String(report['デザイン依頼No.'] || report['システム確認用デザインNo.'])}
+                                                selectedFile={selectedFile || undefined}
+                                                onOpenModal={(imgs, dNo) => {
+                                                    setImageResults(imgs);
+                                                    setCurrentSearchDesignNo(dNo);
+                                                    setShowImageModal(true);
+                                                }}
+                                                size="md"
+                                            />
+
+                                            <a
+                                                href="http://192.168.1.5:8888/viewer.html"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 transition-colors cursor-pointer"
+                                                title="企画課ビューアを別タブで開く"
+                                            >
+                                                <ExternalLink size={13} />
+                                                <span className="hidden sm:inline">企画課ビューア</span>
+                                            </a>
                                         </div>
                                     </div>
-                                    <div className="bg-white">
-                                        <div className="text-sm font-semibold text-sf-text-weak mb-2">次回プラン</div>
-                                        <div className="text-base text-sf-text whitespace-pre-wrap p-3 bg-gray-50 rounded border border-gray-100">
-                                            {cleanText(report.次回プラン) || 'なし'}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="bg-white">
-                                    <div className="text-sm font-semibold text-sf-text-weak mb-2">競合他社情報</div>
-                                    <div className="text-base text-sf-text whitespace-pre-wrap p-3 bg-gray-50 rounded border border-gray-100">
-                                        {cleanText(report.競合他社情報) || 'なし'}
-                                    </div>
-                                </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 商談・提案内容（メイン） */}
+                    <div className="space-y-4">
+                        <h3 className="font-bold text-base sm:text-lg text-sf-text flex items-center gap-2 border-b border-gray-200 pb-2">
+                            <span className="w-1.5 h-4 bg-sf-light-blue rounded-full"></span>
+                            商談・活動内容
+                        </h3>
+
+                        {/* 商談内容（本文） */}
+                        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-2xs space-y-1.5">
+                            <div className="text-xs font-semibold text-sf-text-weak">商談内容詳細</div>
+                            <div className="text-sm sm:text-base text-sf-text whitespace-pre-wrap break-words leading-relaxed pl-3 border-l-3 border-sf-light-blue/70 min-h-[70px]">
+                                {cleanText(report.商談内容) || <span className="text-gray-400 italic">（商談内容未記入）</span>}
                             </div>
                         </div>
 
-                        {/* 承認・コメント */}
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                            {/* 承認（左側） */}
-                            <div className="lg:col-span-1 bg-gray-50 p-5 rounded-lg h-fit">
-                                <h3 className="font-bold text-sf-text mb-4 border-b border-gray-200 pb-2">承認・確認</h3>
-                                <div className="space-y-3">
-                                    {(['上長', '山澄常務', '岡本常務', '中野次長'] as const).map(field => (
-                                        <div key={field} className="flex items-center gap-2">
-                                            {processingApproval === field ? (
-                                                <Loader2 size={16} className="animate-spin text-sf-light-blue" />
-                                            ) : (
-                                                <input
-                                                    type="checkbox"
-                                                    checked={approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü'}
-                                                    onChange={() => handleApprovalChange(field)}
-                                                    disabled={saving}
-                                                    className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer disabled:opacity-50"
-                                                />
-                                            )}
-                                            <span className={`text-sm ${processingApproval === field ? 'text-sf-light-blue' : 'text-sf-text'}`}>
-                                                {field}
-                                                {processingApproval === field && <span className="ml-1 text-xs">処理中...</span>}
-                                            </span>
+                        {/* 次回プラン・提案物・競合情報（データがあるもののみカード表示） */}
+                        {(hasContent(report.次回プラン) || hasContent(report.提案物) || hasContent(report.競合他社情報)) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                                {hasContent(report.次回プラン) && (
+                                    <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 space-y-1">
+                                        <div className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                                            <Lightbulb size={14} className="text-amber-600" /> 次回プラン
                                         </div>
-                                    ))}
-                                    <div className="pt-2 border-t border-gray-200">
+                                        <div className="text-sm text-amber-950 whitespace-pre-wrap break-words leading-relaxed">
+                                            {cleanText(report.次回プラン)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {hasContent(report.提案物) && (
+                                    <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 space-y-1">
+                                        <div className="text-xs font-bold text-blue-800 flex items-center gap-1.5">
+                                            <Briefcase size={14} className="text-blue-600" /> 提案物
+                                        </div>
+                                        <div className="text-sm text-blue-950 whitespace-pre-wrap break-words leading-relaxed">
+                                            {cleanText(report.提案物)}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {hasContent(report.競合他社情報) && (
+                                    <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-3.5 space-y-1 col-span-full">
+                                        <div className="text-xs font-bold text-rose-800 flex items-center gap-1.5">
+                                            <Info size={14} className="text-rose-600" /> 競合他社情報
+                                        </div>
+                                        <div className="text-sm text-rose-950 whitespace-pre-wrap break-words leading-relaxed">
+                                            {cleanText(report.競合他社情報)}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 承認・確認 ＆ コメント欄 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2 border-t border-gray-200">
+                        {/* 承認状況（左側: 4列） */}
+                        <div className="lg:col-span-4 bg-slate-50 p-4 rounded-xl border border-slate-200 h-fit space-y-3">
+                            <h3 className="font-bold text-xs sm:text-sm text-sf-text border-b border-slate-200 pb-2">
+                                承認・確認チェック
+                            </h3>
+                            <div className="space-y-2.5">
+                                {(['上長', '山澄常務', '岡本常務', '中野次長'] as const).map(field => {
+                                    const isApproved = approvals[field] === '✓' || approvals[field] === '済' || approvals[field] === 'ü';
+                                    return (
+                                        <label
+                                            key={field}
+                                            className={`flex items-center justify-between p-2 rounded-lg border transition-colors cursor-pointer ${isApproved ? 'bg-blue-50/80 border-blue-200 text-blue-900 font-semibold' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                {processingApproval === field ? (
+                                                    <Loader2 size={16} className="animate-spin text-sf-light-blue" />
+                                                ) : (
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isApproved}
+                                                        onChange={() => handleApprovalChange(field)}
+                                                        disabled={saving}
+                                                        className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer disabled:opacity-50"
+                                                    />
+                                                )}
+                                                <span className="text-xs sm:text-sm">{field}</span>
+                                            </div>
+                                            {isApproved && (
+                                                <span className="text-[11px] px-1.5 py-0.2 bg-blue-200 text-blue-800 rounded font-bold">
+                                                    済
+                                                </span>
+                                            )}
+                                        </label>
+                                    );
+                                })}
+
+                                <div className="pt-2 border-t border-slate-200">
+                                    <label
+                                        className={`flex items-center justify-between p-2 rounded-lg border transition-colors cursor-pointer ${approvals.既読チェック === '✓' || approvals.既読チェック === '済' || approvals.既読チェック === 'ü' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900 font-semibold' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                    >
                                         <div className="flex items-center gap-2">
                                             {processingApproval === '既読チェック' ? (
-                                                <Loader2 size={16} className="animate-spin text-sf-light-blue" />
+                                                <Loader2 size={16} className="animate-spin text-emerald-600" />
                                             ) : (
                                                 <input
                                                     type="checkbox"
                                                     checked={approvals.既読チェック === '✓' || approvals.既読チェック === '済' || approvals.既読チェック === 'ü'}
                                                     onChange={() => handleApprovalChange('既読チェック')}
                                                     disabled={saving}
-                                                    className="w-4 h-4 text-sf-light-blue border-gray-300 rounded focus:ring-sf-light-blue cursor-pointer disabled:opacity-50"
+                                                    className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-600 cursor-pointer disabled:opacity-50"
                                                 />
                                             )}
-                                            <span className={`text-sm ${processingApproval === '既読チェック' ? 'text-sf-light-blue' : 'text-sf-text'}`}>
-                                                既読
-                                                {processingApproval === '既読チェック' && <span className="ml-1 text-xs">処理中...</span>}
-                                            </span>
+                                            <span className="text-xs sm:text-sm">既読チェック</span>
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* コメント（右側・大きく） */}
-                            <div className="lg:col-span-3 space-y-6">
-                                <div>
-                                    <h3 className="font-bold text-lg text-sf-text mb-4 border-b border-sf-border pb-2">コメント</h3>
-                                    <div className="space-y-4">
-                                        <div className={`bg-yellow-50 p-5 rounded-lg border ${processingComment === '上長コメント' ? 'border-yellow-400' : 'border-yellow-100'}`}>
-                                            <div className="text-sm font-bold text-yellow-800 mb-2 flex items-center gap-2">
-                                                {processingComment === '上長コメント' ? (
-                                                    <Loader2 size={14} className="animate-spin text-yellow-600" />
-                                                ) : (
-                                                    <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
-                                                )}
-                                                上長コメント
-                                                {processingComment === '上長コメント' && (
-                                                    <span className="text-xs font-normal text-yellow-600 ml-2">保存中...</span>
-                                                )}
-                                                {hasDraftComment && (
-                                                    <div className="flex items-center gap-2 ml-auto">
-                                                        <span className="text-xs font-normal text-yellow-700 bg-yellow-100 border border-yellow-300 px-2 py-0.5 rounded animate-pulse">
-                                                            一時保存データを復元中
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDiscardDraft('上長コメント')}
-                                                            className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                                                            title="下書きを破棄して元のデータに戻します"
-                                                        >
-                                                            下書きを破棄
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            {/* 商談内容の参照表示 */}
-                                            {report.商談内容 && (
-                                                <div className="mb-3 p-3 bg-white/70 border border-yellow-200 rounded text-sm max-h-32 overflow-y-auto">
-                                                    <div className="text-xs font-bold text-yellow-700 mb-1">📝 商談内容（参照）:</div>
-                                                    <div className="text-gray-700 whitespace-pre-wrap text-xs leading-relaxed">{cleanText(report.商談内容)}</div>
-                                                </div>
-                                            )}
-                                            <textarea
-                                                value={comments.上長コメント}
-                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-                                                    const value = e.target.value;
-                                                    setComments(prev => ({ ...prev, 上長コメント: value }));
-                                                    const original = report?.上長コメント || report?.コメント || '';
-                                                    if (value === original || !value) {
-                                                        clearCommentDraftAndPending('上長コメント');
-                                                    } else {
-                                                        saveCommentDraftDebounced('上長コメント', value);
-                                                    }
-                                                }}
-                                                onBlur={(): Promise<void> => handleCommentBlur('上長コメント')}
-                                                disabled={saving}
-                                                className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-yellow-400 resize-y disabled:opacity-60 ${processingComment === '上長コメント' ? 'border-yellow-400' : 'border-yellow-200'}`}
-                                                placeholder="コメントを入力..."
-                                            />
-                                        </div>
-                                        <div className={`bg-green-50 p-5 rounded-lg border ${processingComment === 'コメント返信欄' ? 'border-green-400' : 'border-green-100'}`}>
-                                            <div className="text-sm font-bold text-green-800 mb-2 flex items-center gap-2">
-                                                {processingComment === 'コメント返信欄' ? (
-                                                    <Loader2 size={14} className="animate-spin text-green-600" />
-                                                ) : (
-                                                    <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                                                )}
-                                                コメント返信欄
-                                                {processingComment === 'コメント返信欄' && (
-                                                    <span className="text-xs font-normal text-green-600 ml-2">保存中...</span>
-                                                )}
-                                                {hasDraftReply && (
-                                                    <div className="flex items-center gap-2 ml-auto">
-                                                        <span className="text-xs font-normal text-green-700 bg-green-100 border border-green-300 px-2 py-0.5 rounded animate-pulse">
-                                                            一時保存データを復元中
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDiscardDraft('コメント返信欄')}
-                                                            className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
-                                                            title="下書きを破棄して元のデータに戻します"
-                                                        >
-                                                            下書きを破棄
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <textarea
-                                                value={comments.コメント返信欄}
-                                                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-                                                    const value = e.target.value;
-                                                    setComments(prev => ({ ...prev, コメント返信欄: value }));
-                                                    const original = report?.コメント返信欄 || '';
-                                                    if (value === original || !value) {
-                                                        clearCommentDraftAndPending('コメント返信欄');
-                                                    } else {
-                                                        saveCommentDraftDebounced('コメント返信欄', value);
-                                                    }
-                                                }}
-                                                onBlur={(): Promise<void> => handleCommentBlur('コメント返信欄')}
-                                                disabled={saving}
-                                                className={`w-full min-h-[100px] p-3 text-sf-text bg-white border rounded focus:outline-none focus:ring-2 focus:ring-green-400 resize-y disabled:opacity-60 ${processingComment === 'コメント返信欄' ? 'border-green-400' : 'border-green-200'}`}
-                                                placeholder="返信を入力..."
-                                            />
-                                        </div>
-                                    </div>
+                                    </label>
                                 </div>
                             </div>
                         </div>
 
-                        {/* その他の基本情報（下部にまとめる） */}
-                        <div className="border-t border-sf-border pt-6 mt-8">
-                            <button
-                                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 mb-2"
-                                onClick={(e) => {
-                                    const target = e.currentTarget.nextElementSibling;
-                                    if (target) {
-                                        target.classList.toggle('hidden');
-                                    }
-                                }}
-                            >
-                                <Info size={12} />
-                                詳細属性情報を表示
-                            </button>
-                            <div className="hidden grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-xs text-gray-500 bg-gray-50 p-4 rounded">
-                                <div><span className="block text-gray-400">得意先CD</span>{report.得意先CD}</div>
-                                <div><span className="block text-gray-400">直送先CD</span>{report.直送先CD}</div>
-                                <div><span className="block text-gray-400">直送先名</span>{report.直送先名}</div>
-                                <div><span className="block text-gray-400">重点顧客</span>{report.重点顧客}</div>
-                                <div><span className="block text-gray-400">ランク</span>{report.ランク}</div>
-                                <div><span className="block text-gray-400">目標</span>{report.得意先目標}</div>
-                                <div><span className="block text-gray-400">滞在時間</span>{report.滞在時間}</div>
+                        {/* コメント入力・表示（右側: 8列） */}
+                        <div className="lg:col-span-8 space-y-4">
+                            {/* 上長コメント */}
+                            <div className={`bg-blue-50/60 p-4 rounded-xl border ${processingComment === '上長コメント' ? 'border-blue-400' : 'border-blue-200/80'}`}>
+                                <div className="text-xs sm:text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+                                    {processingComment === '上長コメント' ? (
+                                        <Loader2 size={14} className="animate-spin text-blue-600" />
+                                    ) : (
+                                        <MessageSquare size={15} className="text-blue-600" />
+                                    )}
+                                    上長コメント
+                                    {processingComment === '上長コメント' && (
+                                        <span className="text-xs font-normal text-blue-600 ml-2">保存中...</span>
+                                    )}
+                                    {hasDraftComment && (
+                                        <div className="flex items-center gap-2 ml-auto">
+                                            <span className="text-xs font-normal text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded animate-pulse">
+                                                一時保存復元中
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDiscardDraft('上長コメント')}
+                                                className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                                title="下書きを破棄して元のデータに戻します"
+                                            >
+                                                破棄
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                <textarea
+                                    value={comments.上長コメント}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+                                        const value = e.target.value;
+                                        setComments(prev => ({ ...prev, 上長コメント: value }));
+                                        const original = report?.上長コメント || report?.コメント || '';
+                                        if (value === original || !value) {
+                                            clearCommentDraftAndPending('上長コメント');
+                                        } else {
+                                            saveCommentDraftDebounced('上長コメント', value);
+                                        }
+                                    }}
+                                    onBlur={(): Promise<void> => handleCommentBlur('上長コメント')}
+                                    disabled={saving}
+                                    rows={3}
+                                    className={`w-full p-3 text-xs sm:text-sm text-sf-text bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-sf-light-blue resize-y disabled:opacity-60 leading-relaxed ${processingComment === '上長コメント' ? 'border-blue-400' : 'border-blue-200'}`}
+                                    placeholder="上長コメントを入力...（枠外をクリックすると自動保存されます）"
+                                />
+                            </div>
+
+                            {/* コメント返信欄 */}
+                            <div className={`bg-emerald-50/60 p-4 rounded-xl border ${processingComment === 'コメント返信欄' ? 'border-emerald-400' : 'border-emerald-200/80'}`}>
+                                <div className="text-xs sm:text-sm font-bold text-emerald-900 mb-2 flex items-center gap-2">
+                                    {processingComment === 'コメント返信欄' ? (
+                                        <Loader2 size={14} className="animate-spin text-emerald-600" />
+                                    ) : (
+                                        <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>
+                                    )}
+                                    コメント返信欄
+                                    {processingComment === 'コメント返信欄' && (
+                                        <span className="text-xs font-normal text-emerald-600 ml-2">保存中...</span>
+                                    )}
+                                    {hasDraftReply && (
+                                        <div className="flex items-center gap-2 ml-auto">
+                                            <span className="text-xs font-normal text-amber-700 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded animate-pulse">
+                                                一時保存復元中
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDiscardDraft('コメント返信欄')}
+                                                className="text-xs font-normal text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                                                title="下書きを破棄して元のデータに戻します"
+                                            >
+                                                破棄
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                <textarea
+                                    value={comments.コメント返信欄}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+                                        const value = e.target.value;
+                                        setComments(prev => ({ ...prev, コメント返信欄: value }));
+                                        const original = report?.コメント返信欄 || '';
+                                        if (value === original || !value) {
+                                            clearCommentDraftAndPending('コメント返信欄');
+                                        } else {
+                                            saveCommentDraftDebounced('コメント返信欄', value);
+                                        }
+                                    }}
+                                    onBlur={(): Promise<void> => handleCommentBlur('コメント返信欄')}
+                                    disabled={saving}
+                                    rows={2}
+                                    className={`w-full p-3 text-xs sm:text-sm text-sf-text bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y disabled:opacity-60 leading-relaxed ${processingComment === 'コメント返信欄' ? 'border-emerald-400' : 'border-emerald-200'}`}
+                                    placeholder="返信を入力...（枠外をクリックすると自動保存されます）"
+                                />
                             </div>
                         </div>
                     </div>
+
+                    {/* 詳細属性情報（アコーディオン） */}
+                    <div className="border-t border-gray-200 pt-4">
+                        <button
+                            className="text-xs text-gray-500 hover:text-sf-light-blue flex items-center gap-1.5 py-1 px-2 rounded hover:bg-gray-100 transition-colors cursor-pointer"
+                            onClick={(e) => {
+                                const target = e.currentTarget.nextElementSibling;
+                                if (target) {
+                                    target.classList.toggle('hidden');
+                                }
+                            }}
+                        >
+                            <Info size={13} />
+                            <span>詳細属性情報を表示 / 非表示</span>
+                        </button>
+                        <div className="hidden grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 text-xs text-gray-600 bg-slate-50 p-3.5 rounded-lg border border-gray-200 mt-2">
+                            <div><span className="block text-gray-400 text-[11px]">得意先CD</span><span className="font-mono">{report.得意先CD || '-'}</span></div>
+                            <div><span className="block text-gray-400 text-[11px]">直送先CD</span><span className="font-mono">{report.直送先CD || '-'}</span></div>
+                            <div><span className="block text-gray-400 text-[11px]">直送先名</span>{report.直送先名 || '-'}</div>
+                            <div><span className="block text-gray-400 text-[11px]">重点顧客</span>{report.重点顧客 || '-'}</div>
+                            <div><span className="block text-gray-400 text-[11px]">ランク</span>{report.ランク || '-'}</div>
+                            <div><span className="block text-gray-400 text-[11px]">目標</span>{report.得意先目標 || '-'}</div>
+                            <div><span className="block text-gray-400 text-[11px]">滞在時間</span>{report.滞在時間 || '-'}</div>
+                        </div>
+                    </div>
+                        </>
+                    )}
                 </div>
 
                 {/* フッター */}
-                <div className="p-4 border-t border-sf-border bg-gray-50 flex justify-between items-center rounded-b-lg">
+                <div className="p-3.5 sm:p-4 border-t border-sf-border bg-slate-50 flex justify-between items-center rounded-b-xl">
                     <button
                         onClick={onNext}
                         disabled={!hasNext}
-                        className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${hasNext
-                            ? 'bg-white border border-sf-border hover:bg-sf-light-blue hover:text-white hover:border-transparent text-sf-text shadow-sm'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm rounded-lg transition-colors ${hasNext
+                            ? 'bg-white border border-sf-border hover:bg-sf-light-blue hover:text-white hover:border-transparent text-sf-text shadow-2xs cursor-pointer'
+                            : 'bg-gray-100 text-gray-300 cursor-not-allowed border border-transparent'
                             }`}
                     >
                         <ChevronLeft size={16} />
@@ -668,17 +921,17 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                     <button
                         onClick={handleDeleteClick}
                         disabled={saving}
-                        className="flex items-center gap-2 px-4 py-2 rounded transition-colors bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-transparent text-red-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm rounded-lg transition-colors bg-red-50 border border-red-200 hover:bg-red-600 hover:text-white hover:border-transparent text-red-600 shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                         削除
                     </button>
                     <button
                         onClick={onPrev}
                         disabled={!hasPrev}
-                        className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${hasPrev
-                            ? 'bg-white border border-sf-border hover:bg-sf-light-blue hover:text-white hover:border-transparent text-sf-text shadow-sm'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm rounded-lg transition-colors ${hasPrev
+                            ? 'bg-white border border-sf-border hover:bg-sf-light-blue hover:text-white hover:border-transparent text-sf-text shadow-2xs cursor-pointer'
+                            : 'bg-gray-100 text-gray-300 cursor-not-allowed border border-transparent'
                             }`}
                     >
                         次の日報

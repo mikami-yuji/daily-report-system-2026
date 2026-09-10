@@ -1,12 +1,11 @@
 {
-  "version": "2.4.6",
+  "version": "2.4.7",
   "releaseDate": "2026-09-10",
-  "fileName": "DailyReportServer_v2.4.6.exe",
-  "fileSize": 49153322,
-  "sha256": "98d91174d957586941f1aa3ad4259f68eda662f1e72f491a467e0d2831371bed",
+  "fileName": "DailyReportServer_v2.4.7.exe",
+  "fileSize": 49231987,
+  "sha256": "b973af850cec7f5bfda4c5567eb052acd9758ac2d5af44f6680e008d95c02800",
   "forceUpdate": false,
   "releaseNotes": [
-    "企画課Webデータベースとファイルサーバー画像のハイブリッド統合",
-    "枝番別重複排除機能の追加"
+    "日報編集画面への直送先枠の追加および顧客連携サジェスト強化"
   ]
 }

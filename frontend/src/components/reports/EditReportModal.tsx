@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Report, updateReport, getDesigns, Design, getSuggestedArea } from '@/lib/api';
+import { Report, updateReport, getDesigns, Design, getSuggestedArea, Customer, getCustomers, getInterviewers } from '@/lib/api';
 import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
-import { X, Loader2, Check } from 'lucide-react';
+import { X, Loader2, Check, MapPin, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
+import { useOffline } from '@/context/OfflineContext';
 
 // ローカルストレージからコメント下書きデータを取得する関数
 const getCommentDraft = (reportId: number | string | undefined, field: string): string | null => {
@@ -141,6 +142,43 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
         return 'none';
     });
     const [designs, setDesigns] = useState<Design[]>([]);
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
+    const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+    const [deliverySearchTerm, setDeliverySearchTerm] = useState('');
+    const [showDeliverySuggestions, setShowDeliverySuggestions] = useState(false);
+    const [interviewers, setInterviewers] = useState<string[]>([]);
+
+    const justSelectedCustomerRef = useRef(false);
+    const justSelectedDeliveryRef = useRef(false);
+
+    const { isOnline, cachedCustomers, cacheCustomers } = useOffline();
+
+    // 顧客マスタのロード
+    useEffect(() => {
+        if (selectedFile) {
+            getCustomers(selectedFile)
+                .then(data => {
+                    setCustomers(data);
+                    if (cacheCustomers) cacheCustomers(data);
+                })
+                .catch(err => {
+                    console.error('Failed to fetch customers in EditReportModal:', err);
+                    if (cachedCustomers && cachedCustomers.length > 0) {
+                        setCustomers(cachedCustomers);
+                    }
+                });
+        }
+    }, [selectedFile]);
+
+    // 初期の得意先CDがあれば面談者リストを取得
+    useEffect(() => {
+        if (formData.得意先CD) {
+            getInterviewers(formData.得意先CD, selectedFile, formData.訪問先名, formData.直送先名 || undefined)
+                .then(setInterviewers)
+                .catch(() => setInterviewers([]));
+        }
+    }, [formData.得意先CD, selectedFile]);
 
     const commentSaveTimersRef = useRef<{ [field: string]: NodeJS.Timeout }>({});
     const pendingCommentsRef = useRef<{ [field: string]: string }>({});
@@ -582,17 +620,153 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             }
         }
     };
-    const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
+    // 得意先名検索
+    const filterCustomers = (searchTerm: string) => {
+        if (!searchTerm.trim()) {
+            setFilteredCustomers([]);
+            setShowCustomerSuggestions(false);
+            return;
+        }
+
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        const katakanaSearchTerm = lowerSearchTerm.replace(/[\u3041-\u3096]/g, (match) => {
+            const chr = match.charCodeAt(0) + 0x60;
+            return String.fromCharCode(chr);
+        });
+
+        const filtered = customers.filter(c => {
+            if (c.得意先名 && c.得意先名.toLowerCase().includes(lowerSearchTerm)) return true;
+            if (c.得意先CD && String(c.得意先CD).toLowerCase().includes(lowerSearchTerm)) return true;
+            if (c.フリガナ && c.フリガナ.toLowerCase().includes(katakanaSearchTerm)) return true;
+            if (c.直送先名 && c.直送先名.toLowerCase().includes(lowerSearchTerm)) return true;
+            if (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerSearchTerm)) return true;
+            return false;
+        }).slice(0, 30);
+
+        setFilteredCustomers(filtered);
+        setShowCustomerSuggestions(filtered.length > 0);
+    };
+
+    // 得意先選択
+    const selectCustomer = (customer: Customer) => {
         setFormData(prev => ({
             ...prev,
-            訪問先名: value,
+            訪問先名: customer.得意先名 || '',
+            得意先CD: customer.得意先CD || '',
+            直送先名: customer.直送先名 || '',
+            直送先CD: customer.直送先CD || '',
+            エリア: customer.エリア || prev.エリア,
+            重点顧客: customer.重点顧客 || prev.重点顧客,
+            ランク: customer.ランク || prev.ランク
+        }));
+        justSelectedCustomerRef.current = true;
+        setShowCustomerSuggestions(false);
+        setDeliverySearchTerm('');
+        setShowDeliverySuggestions(false);
+
+        if (customer.得意先CD) {
+            getInterviewers(customer.得意先CD, selectedFile, customer.得意先名, customer.直送先名 || undefined)
+                .then(setInterviewers)
+                .catch(() => setInterviewers([]));
+            getDesigns(customer.得意先CD, selectedFile, customer.直送先名 || undefined)
+                .then(setDesigns)
+                .catch(() => setDesigns([]));
+        }
+    };
+
+    // 得意先クリア
+    const handleClearCustomer = () => {
+        setFormData(prev => ({
+            ...prev,
+            訪問先名: '',
             得意先CD: '',
             直送先名: '',
             直送先CD: '',
             重点顧客: '',
             ランク: ''
         }));
+        setShowCustomerSuggestions(false);
+        setDeliverySearchTerm('');
+        setShowDeliverySuggestions(false);
+        setInterviewers([]);
+        setDesigns([]);
+    };
+
+    // 直送先候補フィルタ
+    const filterDeliveries = (term: string): Customer[] => {
+        const lowerTerm = term.toLowerCase().trim();
+
+        // 得意先が選択されている場合: その得意先CDに紐づく直送先レコードを抽出
+        if (formData.得意先CD) {
+            const related = customers.filter(c => c.得意先CD === formData.得意先CD && c.直送先名);
+            if (!lowerTerm) return related;
+            return related.filter(c =>
+                (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerTerm)) ||
+                (c.直送先名 && String(c.直送先名).toLowerCase().includes(lowerTerm))
+            );
+        }
+
+        // 得意先が未選択の場合: 直送先名が存在するレコードから検索
+        if (!lowerTerm) return [];
+        return customers.filter(c =>
+            c.直送先名 && (
+                (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerTerm)) ||
+                (c.直送先名 && String(c.直送先名).toLowerCase().includes(lowerTerm)) ||
+                (c.得意先名 && String(c.得意先名).toLowerCase().includes(lowerTerm))
+            )
+        ).slice(0, 20);
+    };
+
+    // 直送先選択
+    const selectDelivery = (item: Customer) => {
+        const willSetCustomer = !formData.得意先CD && !formData.訪問先名 && item.得意先CD;
+        setFormData(prev => ({
+            ...prev,
+            直送先名: item.直送先名 || '',
+            直送先CD: item.直送先CD || '',
+            ...(willSetCustomer ? {
+                得意先CD: item.得意先CD || '',
+                訪問先名: item.得意先名 || '',
+                エリア: item.エリア || prev.エリア,
+                ランク: item.ランク || prev.ランク,
+                重点顧客: item.重点顧客 || prev.重点顧客
+            } : {})
+        }));
+
+        justSelectedDeliveryRef.current = true;
+        setShowDeliverySuggestions(false);
+        setDeliverySearchTerm('');
+
+        const targetCd = formData.得意先CD || item.得意先CD;
+        const targetName = formData.訪問先名 || item.得意先名;
+        if (targetCd) {
+            getDesigns(targetCd, selectedFile, item.直送先名 || undefined)
+                .then(setDesigns)
+                .catch(() => setDesigns([]));
+            getInterviewers(targetCd, selectedFile, targetName, item.直送先名)
+                .then(setInterviewers)
+                .catch(() => setInterviewers([]));
+        }
+    };
+
+    // 直送先クリア
+    const clearDelivery = () => {
+        setFormData(prev => ({
+            ...prev,
+            直送先名: '',
+            直送先CD: ''
+        }));
+        setDeliverySearchTerm('');
+        setShowDeliverySuggestions(false);
+
+        if (formData.得意先CD) {
+            getDesigns(formData.得意先CD, selectedFile, undefined)
+                .then(setDesigns)
+                .catch(() => setDesigns([]));
+            getInterviewers(formData.得意先CD, selectedFile, formData.訪問先名, undefined)
+                .then(setInterviewers)
+                .catch(() => setInterviewers([]));
+        }
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>): void => {
@@ -760,20 +934,220 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         )}
 
                         {!isMinimalUI && (
-                            <div className="md:col-span-2">
+                            <div className="relative">
                                 <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
-                                <input
-                                    type="text"
-                                    name="訪問先名"
-                                    value={formData.訪問先名}
-                                    onChange={handleCustomerNameChange}
-                                    onBlur={(): void => {
-                                        loadDesignsForTypedCustomer();
-                                        loadSuggestedAreaForTypedCustomer();
-                                    }}
-                                    required={!isMinimalUI}
-                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
-                                />
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        name="訪問先名"
+                                        value={formData.訪問先名}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                訪問先名: value
+                                            }));
+                                            filterCustomers(value);
+                                        }}
+                                        onFocus={() => {
+                                            if (formData.訪問先名) filterCustomers(formData.訪問先名);
+                                        }}
+                                        onBlur={() => {
+                                            setTimeout(() => {
+                                                if (justSelectedCustomerRef.current) {
+                                                    justSelectedCustomerRef.current = false;
+                                                    setShowCustomerSuggestions(false);
+                                                    return;
+                                                }
+                                                setShowCustomerSuggestions(false);
+                                                loadDesignsForTypedCustomer();
+                                                loadSuggestedAreaForTypedCustomer();
+                                            }, 200);
+                                        }}
+                                        required={!isMinimalUI}
+                                        autoComplete="off"
+                                        placeholder="得意先名またはコードを入力..."
+                                        className="w-full pl-3 pr-8 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue text-sm"
+                                    />
+                                    {formData.訪問先名 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleClearCustomer}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                                            title="クリア"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    )}
+                                </div>
+                                {showCustomerSuggestions && filteredCustomers.length > 0 && (
+                                    <ul className="absolute z-30 w-full bg-white border border-sf-border rounded-md mt-1 max-h-60 overflow-y-auto shadow-lg text-sm">
+                                        {filteredCustomers.map((customer, index) => (
+                                            <li
+                                                key={index}
+                                                className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                                onMouseDown={() => selectCustomer(customer)}
+                                            >
+                                                <div className="font-medium text-sf-text">
+                                                    {customer.得意先名}
+                                                    {customer.直送先名 && (
+                                                        <span className="text-xs font-normal ml-2 text-sf-light-blue">
+                                                            (直送先: {customer.直送先名})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-sf-text-weak flex items-center gap-2 mt-0.5">
+                                                    {customer.得意先CD && <span className="font-mono">{customer.得意先CD}</span>}
+                                                    {customer.エリア && <span>- {customer.エリア}</span>}
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        )}
+
+                        {!isMinimalUI && (
+                            <div className="relative">
+                                <label className="block text-sm font-medium text-sf-text mb-1 flex items-center justify-between">
+                                    <span>直送先CD / 直送先名 <span className="text-gray-400 font-normal">（任意）</span></span>
+                                    {formData.直送先CD && (
+                                        <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                            CD: {formData.直送先CD}
+                                        </span>
+                                    )}
+                                </label>
+                                {formData.直送先CD || formData.直送先名 ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50/70 border border-blue-200 rounded min-h-[38px]">
+                                        <MapPin size={16} className="text-blue-500 flex-shrink-0" />
+                                        {formData.直送先CD && (
+                                            <span className="font-mono text-xs text-blue-700 font-semibold flex-shrink-0">
+                                                {formData.直送先CD}
+                                            </span>
+                                        )}
+                                        <span className="text-sm text-sf-text font-medium truncate">
+                                            {formData.直送先名 || '（直送先名なし）'}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={clearDelivery}
+                                            className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded hover:bg-white/80 transition-colors flex-shrink-0"
+                                            title="直送先を解除"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                        <input
+                                            type="text"
+                                            value={deliverySearchTerm}
+                                            onChange={(e) => {
+                                                setDeliverySearchTerm(e.target.value);
+                                                setShowDeliverySuggestions(true);
+                                            }}
+                                            onFocus={() => setShowDeliverySuggestions(true)}
+                                            onBlur={() => {
+                                                setTimeout(() => {
+                                                    if (justSelectedDeliveryRef.current) {
+                                                        justSelectedDeliveryRef.current = false;
+                                                        setShowDeliverySuggestions(false);
+                                                        return;
+                                                    }
+                                                    const term = deliverySearchTerm.trim();
+                                                    if (term) {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            直送先名: term,
+                                                            直送先CD: ''
+                                                        }));
+                                                        setDeliverySearchTerm('');
+                                                    }
+                                                    setShowDeliverySuggestions(false);
+                                                }, 200);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const term = deliverySearchTerm.trim();
+                                                    if (term) {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            直送先名: term,
+                                                            直送先CD: ''
+                                                        }));
+                                                        setDeliverySearchTerm('');
+                                                        setShowDeliverySuggestions(false);
+                                                    }
+                                                }
+                                            }}
+                                            placeholder={formData.得意先CD ? "直送先を選択 or 自由記載してEnter..." : "直送先を検索 or 自由記載してEnter..."}
+                                            className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue text-sm"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* 直送先サジェストドロップダウン */}
+                                {showDeliverySuggestions && !formData.直送先CD && !formData.直送先名 && (
+                                    (() => {
+                                        const deliveryOptions = filterDeliveries(deliverySearchTerm);
+                                        const hasSearchTerm = Boolean(deliverySearchTerm.trim());
+
+                                        if (deliveryOptions.length === 0 && !hasSearchTerm) {
+                                            if (formData.得意先CD) {
+                                                return (
+                                                    <div className="absolute z-30 w-full mt-1 bg-white border border-sf-border rounded-md shadow-lg p-3 text-xs text-gray-400">
+                                                        登録されている直送先はありません。自由記載してEnterで追加できます。
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        }
+
+                                        return (
+                                            <div className="absolute z-30 w-full mt-1 bg-white border border-sf-border rounded-md shadow-lg max-h-48 overflow-y-auto text-sm">
+                                                {deliveryOptions.map((c, idx) => (
+                                                    <div
+                                                        key={`${c.得意先CD}-${c.直送先CD || idx}`}
+                                                        className="px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between border-b border-gray-100 last:border-b-0"
+                                                        onMouseDown={() => selectDelivery(c)}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <MapPin size={14} className="text-blue-500 flex-shrink-0" />
+                                                            {c.直送先CD && <span className="font-mono text-xs text-gray-500">{c.直送先CD}</span>}
+                                                            <span className="font-medium text-sf-text">{c.直送先名}</span>
+                                                        </div>
+                                                        {!formData.得意先CD && c.得意先名 && (
+                                                            <span className="text-xs text-gray-400 truncate max-w-[120px]">
+                                                                {c.得意先名}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {hasSearchTerm && (
+                                                    <div
+                                                        className="px-3 py-2 text-xs text-amber-600 bg-amber-50 cursor-pointer hover:bg-amber-100 border-t border-amber-200"
+                                                        onMouseDown={() => {
+                                                            const term = deliverySearchTerm.trim();
+                                                            if (term) {
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    直送先名: term,
+                                                                    直送先CD: ''
+                                                                }));
+                                                                setDeliverySearchTerm('');
+                                                                setShowDeliverySuggestions(false);
+                                                            }
+                                                        }}
+                                                    >
+                                                        Enterで「{deliverySearchTerm}」を自由記載として設定
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()
+                                )}
                             </div>
                         )}
 
@@ -785,8 +1159,14 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                                     name="面談者"
                                     value={formData.面談者}
                                     onChange={handleChange}
-                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
+                                    list="interviewer-edit-suggestions"
+                                    className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue text-sm"
                                 />
+                                <datalist id="interviewer-edit-suggestions">
+                                    {interviewers.map((interviewer, index) => (
+                                        <option key={index} value={interviewer} />
+                                    ))}
+                                </datalist>
                             </div>
                         )}
 

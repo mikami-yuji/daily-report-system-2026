@@ -8,6 +8,7 @@ import re
 import traceback
 import math
 import io
+import requests
 from datetime import datetime, timedelta
 import pandas as pd
 import openpyxl
@@ -249,12 +250,244 @@ def serve_design_image(path: str):
 
 
 
-@router.get("/api/images/search")
-def search_design_images(query: str, filename: Optional[str] = None):
+@router.get("/api/images/viewer-content")
+def serve_viewer_image(url: str, request: Request):
+    r"""
+    Serve image/file content from 企画課デザインビューア via backend proxy.
+    Attaches authenticated session cookies and streams content back to the client.
     """
-    Search for images matching the query (Design No) in the Design Data directory.
-    If filename is provided (e.g. '見上.xlsm'), it tries to find a matching user folder first (e.g. '08：見上').
-    Recursively searches subfolders.
+    import urllib.parse
+    target_path = urllib.parse.unquote(url)
+    if not target_path.startswith('/'):
+        target_path = '/' + target_path
+
+    full_url = f"{config.VIEWER_URL}{target_path}"
+
+    import routes_proxy
+    client_cookies = dict(request.cookies)
+    cookies = client_cookies if client_cookies else routes_proxy.get_viewer_session_cookies()
+
+    try:
+        r = requests.get(full_url, cookies=cookies, timeout=12.0, stream=True)
+        if r.status_code == 401:
+            # 認証切れの場合、自動再ログインして再試行
+            fresh_cookies = routes_proxy.get_viewer_session_cookies()
+            if fresh_cookies:
+                r = requests.get(full_url, cookies=fresh_cookies, timeout=12.0, stream=True)
+
+        if r.status_code == 200:
+            content_type = r.headers.get("Content-Type", "image/jpeg")
+            return StreamingResponse(
+                r.raw,
+                media_type=content_type,
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "Content-Disposition": r.headers.get("Content-Disposition", "inline")
+                }
+            )
+        else:
+            logging.warning(f"Viewer image fetch failed with status {r.status_code} for {full_url}")
+            raise HTTPException(status_code=r.status_code, detail=f"Viewer image fetch failed (status: {r.status_code})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error serving viewer image {url}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def extract_branch_no(filename: str) -> int:
+    """ファイル名から枝番を抽出 (例: 120427-2-851-5kg.jpg -> 2, 120427_3.jpg -> 3)"""
+    m = re.search(r'\d{4,}[-_](\d+)', filename)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            pass
+    return 0
+
+
+def extract_viewer_images_for_query(query: str, passcode: Optional[str] = None, client_cookies: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """
+    企画課ビューアの全ドキュメントから query (デザインNo) に合致するカンプ画像・別紙を抽出
+    """
+    import routes_proxy
+    import urllib.parse
+    
+    clean_query = query.strip().lower()
+    docs = routes_proxy.fetch_viewer_documents(passcode=passcode, client_cookies=client_cookies)
+    
+    viewer_images = []
+    
+    # 4桁以上の数字部分（例: 120427）
+    query_digits_match = re.search(r'\d{4,}', clean_query)
+    query_digits = query_digits_match.group(0) if query_digits_match else clean_query
+
+    for doc in docs:
+        req_id = str(doc.get("requestId") or "").strip()
+        sub_id = str(doc.get("subId") or "").strip()
+        full_id = f"{req_id}-{sub_id}" if sub_id and sub_id != '0' else req_id
+        submission_id = str(doc.get("submissionId") or "").strip()
+        
+        # 照合: requestId または full_id または submissionId に query が含まれるか
+        is_match = False
+        if clean_query in req_id.lower() or clean_query in full_id.lower():
+            is_match = True
+        elif query_digits and (query_digits in req_id or query_digits in submission_id):
+            is_match = True
+            
+        if not is_match:
+            continue
+            
+        # ドキュメントの日時（completedAt, requestedAt, deliveryDate等）
+        mtime = 0.0
+        date_str = doc.get("completedAt") or doc.get("requestedAt") or doc.get("deliveryDate") or doc.get("requestDate")
+        if date_str:
+            try:
+                # ISO日時パース
+                dt_str = str(date_str).replace('Z', '+00:00')
+                if 'T' in dt_str:
+                    dt = datetime.fromisoformat(dt_str)
+                    mtime = dt.timestamp()
+                else:
+                    clean_d = re.sub(r'[^\d]', '', dt_str)[:8]
+                    if len(clean_d) == 8:
+                        dt = datetime.strptime(clean_d, "%Y%m%d")
+                        mtime = dt.timestamp()
+            except Exception:
+                mtime = 0.0
+
+        # 枝番を数値化（ソート用）
+        branch_no = 0
+        try:
+            branch_no = int(sub_id) if sub_id else 0
+        except ValueError:
+            branch_no = 0
+            
+        planner_name = doc.get("planner") or "企画課"
+        folder_label = f"企画課Web ({planner_name})"
+        
+        # 1. カンプ画像 (compImages)
+        comp_images = doc.get("compImages") or []
+        for idx, c_img in enumerate(comp_images):
+            img_url = c_img.get("url")
+            if not img_url:
+                continue
+            encoded_url = urllib.parse.quote(img_url)
+            proxy_path = f"/api/images/viewer-content?url={encoded_url}"
+            file_name = c_img.get("fileName") or f"{full_id} カンプ{f'({idx+1})' if len(comp_images) > 1 else ''}.jpg"
+            
+            viewer_images.append({
+                "name": file_name,
+                "path": proxy_path,
+                "folder": folder_label,
+                "mtime": mtime,
+                "source": "viewer",
+                "branch_no": branch_no,
+                "requestId": req_id,
+                "subId": sub_id,
+                "docId": doc.get("id"),
+                "status": doc.get("status"),
+                "isViewerImage": True
+            })
+            
+        # 2. 別紙 (attachments: 画像のみ)
+        attachments = doc.get("attachments") or []
+        for att in attachments:
+            file_type = att.get("fileType")
+            att_url = att.get("url")
+            att_name = att.get("fileName") or ""
+            is_img = file_type == "image" or any(att_name.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))
+            if is_img and att_url:
+                encoded_url = urllib.parse.quote(att_url)
+                proxy_path = f"/api/images/viewer-content?url={encoded_url}"
+                viewer_images.append({
+                    "name": f"[別紙] {att_name}",
+                    "path": proxy_path,
+                    "folder": folder_label,
+                    "mtime": mtime,
+                    "source": "viewer",
+                    "branch_no": branch_no,
+                    "requestId": req_id,
+                    "subId": sub_id,
+                    "docId": doc.get("id"),
+                    "isAttachment": True,
+                    "isViewerImage": True
+                })
+
+    return viewer_images
+
+
+def safe_walk(directory: str, query_lower: str, extensions: tuple, max_depth: int = 3, current_depth: int = 0, parent_matches_query: bool = False, max_results: int = 50) -> List[Dict[str, Any]]:
+    """Recursively search for design images matching query in directory."""
+    results = []
+    DESIGN_DIR = config.DESIGN_DIR
+    try:
+        items = os.listdir(directory)
+    except Exception as e:
+        logging.warning(f"Failed to listdir {directory}: {e}")
+        return results
+
+    dirs_to_visit = []
+    for name in items:
+        full_path = os.path.join(directory, name)
+        name_lower = name.lower()
+        is_file_match = False
+        if parent_matches_query and name_lower.endswith(extensions):
+            is_file_match = True
+        elif query_lower in name_lower and name_lower.endswith(extensions):
+            is_file_match = True
+
+        if is_file_match:
+            try:
+                if os.path.isfile(full_path):
+                    rel_path = os.path.relpath(full_path, DESIGN_DIR)
+                    folder_name = os.path.basename(directory)
+                    try:
+                        mtime = os.path.getmtime(full_path)
+                    except:
+                        mtime = 0
+                    results.append({
+                        "name": name,
+                        "path": rel_path,
+                        "folder": folder_name,
+                        "mtime": mtime
+                    })
+            except Exception:
+                pass
+
+        if current_depth < max_depth:
+            next_parent_matches = parent_matches_query
+            if not next_parent_matches and query_lower in name_lower:
+                next_parent_matches = True
+
+            if not next_parent_matches:
+                if re.search(r'\d{5,}', name) and query_lower not in name_lower:
+                    continue
+
+            if '.' in name and not name.startswith('.'):
+                continue
+
+            try:
+                if os.path.isdir(full_path):
+                    dirs_to_visit.append((full_path, next_parent_matches))
+            except Exception:
+                pass
+
+    for subdir_path, matches_status in dirs_to_visit:
+        sub_results = safe_walk(subdir_path, query_lower, extensions, max_depth, current_depth + 1, matches_status, max_results)
+        results.extend(sub_results)
+        if len(results) >= max_results:
+            break
+    return results
+
+
+@router.get("/api/images/search")
+def search_design_images(query: str, filename: Optional[str] = None, passcode: Optional[str] = None, request: Request = None):
+    """
+    Search for images matching the query (Design No) in both:
+    1. 企画課デザインビューア (Webデータベース) - 最新成果物
+    2. 営業部デザインデータディレクトリ (ファイルサーバー) - 過去の成果物
+    Merges both sets, prioritizing latest branch numbers and newest timestamps.
     """
     if filename:
         filename = os.path.basename(filename)
@@ -273,215 +506,119 @@ def search_design_images(query: str, filename: Optional[str] = None):
         return text.strip()
 
     try:
-        if not os.path.exists(DESIGN_DIR):
-             return {"message": "Design directory not found", "images": []}
+        # 1. 企画課Webデータベースから画像を抽出
+        viewer_images = []
+        try:
+            client_cookies = dict(request.cookies) if request else None
+            viewer_images = extract_viewer_images_for_query(query, passcode=passcode, client_cookies=client_cookies)
+            logging.info(f"Viewer images found for query '{query}': {len(viewer_images)}")
+        except Exception as ve:
+            logging.warning(f"Failed to fetch viewer images for query '{query}': {ve}")
 
-        search_roots = [DESIGN_DIR]
-        
-        # Optimize: Try to find specific user folder based on filename
-        found_folder = None
-        if filename:
-            try:
-                # Extract name part
-                # 1. Try to extract from 【】
-                import re
-                match = re.search(r'【(.*?)】', filename)
-                if match:
-                    name_part = match.group(1)
-                else:
-                    # 拡張子削除にフォールバック
-                    name_part = os.path.splitext(os.path.basename(filename))[0]
-                
-                # 名前部分を正規化
-                normalized_name = normalize_text(name_part)
-                # 接尾辞（サフィックス）を削除したバージョンも用意
-                stripped_name = re.sub(r'(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', normalized_name, flags=re.IGNORECASE)
-                
-                logging.info(f"Search optimization - Extracted: {name_part}, Norm: {normalized_name}, Stripped: {stripped_name}")
-
-                # Use scandir for better performance on network drive for top-level listing
-                with os.scandir(DESIGN_DIR) as it:
-                    for entry in it:
-                        if entry.is_dir():
-                            norm_entry_name = normalize_text(entry.name)
-                            # 抽出された名前（正規化済み）がフォルダ名（正規化済み）に含まれているか確認
-                            if normalized_name in norm_entry_name:
-                                found_folder = entry.path
-                                logging.info(f"Optimization - Found folder (Norm): {entry.name}")
-                                break
-                            # 見つからない場合、接尾辞なしの名前を試す
-                            if stripped_name != normalized_name and stripped_name in norm_entry_name:
-                                found_folder = entry.path
-                                logging.info(f"Optimization - Found folder (Stripped): {entry.name}")
-                                break
-
-                if found_folder:
-                    logging.debug(f"Search target set to: {found_folder}")
-                    search_roots = [found_folder]
-            except Exception as e:
-                logging.error(f"Failed to optimize search folder: {e}")
-                logging.warning(f"Failed to optimize search folder: {e}")
-                
-        
-        if found_folder:
-            search_roots = [found_folder]
-        else:
-            if filename:
-                 # print(f"WARN: Could not find user folder for {filename}. Aborting full scan to prevent timeout.")
-                 logging.info("User folder not found from filename")
-                 return {"message": "User folder not found from filename", "images": []}
-            
-            # If no filename provided, we search everything? That's dangerous too.
-            search_roots = [DESIGN_DIR]
-
+        # 2. ファイルサーバー (Asahipack02) の検索
         image_files = []
         valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf') 
-        
-        count = 0
         MAX_RESULTS = 50
-        
-        # Helper for safer walking on finicky network drives
-        def safe_walk(directory, query_lower, extensions, max_depth=3, current_depth=0, parent_matches_query=False):
-            results = []
+
+        if os.path.exists(DESIGN_DIR):
+            search_roots = [DESIGN_DIR]
+            found_folder = None
+            if filename:
+                try:
+                    match = re.search(r'【(.*?)】', filename)
+                    name_part = match.group(1) if match else os.path.splitext(os.path.basename(filename))[0]
+                    normalized_name = normalize_text(name_part)
+                    stripped_name = re.sub(r'(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', normalized_name, flags=re.IGNORECASE)
+
+                    with os.scandir(DESIGN_DIR) as it:
+                        for entry in it:
+                            if entry.is_dir():
+                                norm_entry_name = normalize_text(entry.name)
+                                if normalized_name in norm_entry_name:
+                                    found_folder = entry.path
+                                    break
+                                if stripped_name != normalized_name and stripped_name in norm_entry_name:
+                                    found_folder = entry.path
+                                    break
+                    if found_folder:
+                        search_roots = [found_folder]
+                except Exception as e:
+                    logging.warning(f"Failed to optimize search folder: {e}")
+
             try:
-                # Use listdir instead of scandir/walk to avoid hanging
-                items = os.listdir(directory)
+                for search_root in search_roots:
+                    found_images = safe_walk(search_root, query.lower(), valid_extensions)
+                    image_files.extend(found_images)
+                    if len(image_files) >= MAX_RESULTS:
+                        image_files = image_files[:MAX_RESULTS]
+                        break
             except Exception as e:
-                logging.warning(f"Failed to listdir {directory}: {e}")
-                return results
+                logging.error(f"Search loop failed: {e}")
 
-            dirs_to_visit = []
+        # 3. ファイルサーバー側の画像に枝番と属性を付与
+        for f_img in image_files:
+            f_img["branch_no"] = extract_branch_no(f_img.get("name", ""))
+            f_img["source"] = "file_server"
 
-            for name in items:
-                full_path = os.path.join(directory, name)
-                name_lower = name.lower()
-                
-                # Check file match
-                # IF parent folder matched, we take ALL images.
-                # IF not, we only take images matching query.
-                is_file_match = False
-                if parent_matches_query and name_lower.endswith(extensions):
-                    is_file_match = True
-                elif query_lower in name_lower and name_lower.endswith(extensions):
-                    is_file_match = True
-                
-                if is_file_match:
-                    try:
-                        if os.path.isfile(full_path):
-                            try:
-                                rel_path = os.path.relpath(full_path, DESIGN_DIR)
-                                folder_name = os.path.basename(directory)
-                                try:
-                                    mtime = os.path.getmtime(full_path)
-                                except:
-                                    mtime = 0
-                                results.append({
-                                    "name": name,
-                                    "path": rel_path,
-                                    "folder": folder_name,
-                                    "mtime": mtime
-                                })
-                            except ValueError:
-                                pass
-                    except Exception:
-                        pass
-                
-                # Identify directories for recursion
-                if current_depth < max_depth:
-                    next_parent_matches = parent_matches_query
-                    
-                    # Logic:
-                    # 1. If parent already matched, we continue down (inheriting True).
-                    # 2. If parent didn't match, verify if THIS folder matches.
-                    if not next_parent_matches:
-                        if query_lower in name_lower:
-                            next_parent_matches = True
-                    
-                    # Recursion Filter:
-                    # If we are NOT in a matching tree yet, we MUST skip unrelated folders 
-                    # to avoid massive scan (timeout).
-                    if not next_parent_matches:
-                         # Skip unrelated folders
-                         # BUT we must handle "Generic" folders like "Data", "Images", "Design", etc.
-                         # AND we must skip "Specific" folders that don't match (e.g. "12345-1").
-                         
-                         # Heuristic:
-                         # 1. If folder name looks like a Design ID (5+ digits, maybe hyphens), assume it's Specific.
-                         #    If query is NOT in it, SKIP.
-                         # 2. Otherwise, assume it's Generic (e.g. "Data", "2025", "01_Sales").
-                         #    ENTER.
-                         
-                         is_specific_id = False
-                         # Simple regex for design ID: typically 5-8 digits, optionally followed by hyphens/more digits
-                         # e.g. 117675, 117675-1, 101219-106074-3
-                         # But NOT "2025" (Year) or "01" (Section).
-                         # Let's say "Specific" if it has 5 or more consecutive digits.
-                         import re
-                         if re.search(r'\d{5,}', name):
-                             is_specific_id = True
-                         
-                         # Refinement: What if the query is SMALL? e.g. "555"?
-                         # The query is usually a Design No (5-6 digits).
-                         # If query is matches regex, it's specific.
-                         
-                         if is_specific_id and query_lower not in name_lower:
-                             # It looks like a DIFFERENT specific ID. Skip.
-                             continue
-                         
-                         # If it is generic (not super long digits) OR it matched query, we enter.
-                         pass
+        # 4. マージ & ソート (同一枝番・同名の重複排除)
+        all_merged = list(viewer_images)
+        
+        # 企画課Web側に画像が存在する枝番のセット (例: {1, 2, 3, 4})
+        viewer_branches = {
+            v.get("branch_no") for v in viewer_images 
+            if v.get("branch_no") is not None and v.get("branch_no") > 0
+        }
+        viewer_names = {v.get("name", "").lower() for v in viewer_images}
 
-                    if '.' in name and not name.startswith('.'):
-                        continue 
-                        
-                    try:
-                        if os.path.isdir(full_path):
-                            dirs_to_visit.append((full_path, next_parent_matches))
-                    except Exception:
-                        pass
+        for f_img in image_files:
+            f_branch = f_img.get("branch_no", 0) or 0
+            f_name = f_img.get("name", "").lower()
             
-            # Recurse
-            for subdir_path, matches_status in dirs_to_visit:
-                 sub_results = safe_walk(subdir_path, query_lower, extensions, max_depth, current_depth + 1, matches_status)
-                 results.extend(sub_results)
-                 if len(results) >= 50: 
-                     break
-            
-            return results
+            # 1. 完全に同一ファイル名が企画課Web側にある場合はスキップ
+            if f_name in viewer_names:
+                continue
+                
+            # 2. 同一の枝番(branch_no > 0)が既に企画課Web側に存在する場合はスキップ（企画課Web側を優先して被りを防止）
+            if f_branch > 0 and f_branch in viewer_branches:
+                continue
+                
+            # 企画課Web側に存在しない枝番や、過去の画像のみを追加
+            all_merged.append(f_img)
 
-        # Main search loop
-        try:
-            for search_root in search_roots:
-                logging.debug(f"Searching root: {search_root}")
-                # Use custom walker
-                # Initial parent_matches logic:
-                # If the search_root ITSELF matches query (e.g. we targeted a specific user folder matched by filename, but query is DesignNo),
-                # expected behavior: search for DesignNo INSIDE user folder.
-                # So initial parent_matches = False usually.
-                found_images = safe_walk(search_root, query.lower(), valid_extensions)
-                image_files.extend(found_images)
-                if len(image_files) >= MAX_RESULTS:
-                    image_files = image_files[:MAX_RESULTS]
-                    break
-        except Exception as e:
-            logging.error(f"Search loop failed: {e}")
-            # Return whatever we found so far instead of 500
-            pass
-            
-        # Sort by mtime descending (newest first)
-        image_files.sort(key=lambda x: x['mtime'], reverse=True)
+        # 3. パスやURLによる重複排除
+        seen_paths = set()
+        unique_merged = []
+        for img in all_merged:
+            p = img.get("path")
+            if p and p in seen_paths:
+                continue
+            if p:
+                seen_paths.add(p)
+            unique_merged.append(img)
 
-        return {"images": image_files, "query": query}
+        # ソート基準: 枝番(branch_no)降順 -> 企画課Web優先 -> mtime降順
+        def sort_key(img):
+            b_no = img.get("branch_no", 0) or 0
+            mt = img.get("mtime", 0.0) or 0.0
+            is_viewer = 1 if img.get("source") == "viewer" else 0
+            return (b_no, is_viewer, mt)
+
+        unique_merged.sort(key=sort_key, reverse=True)
+
+        return {
+            "images": unique_merged[:MAX_RESULTS],
+            "query": query,
+            "viewer_count": len(viewer_images),
+            "file_server_count": len(image_files)
+        }
 
     except Exception as e:
-        # print(f"Error searching images: {e}")
-        # Log to file safely if needed, or just return detailed 500
-        # Ensure 'e' conversion to string doesn't fail
         error_msg = "Unknown error"
         try:
             error_msg = str(e)
         except:
             pass
+        logging.exception(f"Error searching images: {e}")
         raise HTTPException(status_code=500, detail=error_msg)
 
 

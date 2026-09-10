@@ -25,26 +25,54 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
   const [viewerImages, setViewerImages] = useState<ExtendedDesignImage[]>([]);
 
   useEffect(() => {
-    // ファイル名から担当営業名（名字）を抽出するヘルパー
     if (!selectedFile) return;
 
     getLatestDesignRequests()
       .then(data => {
         if (data && data.documents) {
-          // 担当営業が一致し、進行中で、かつカンプ画像(compUrl)がある案件のみ抽出
-          const list = data.documents.filter(doc => {
-            if (doc.status === 'completed' || doc.status === 'rejected') return false;
-            if (!doc.compUrl || !doc.salesPerson) return false;
-            
-            return isSalesPersonMatch(doc.salesPerson, selectedFile);
-          }).map(doc => ({
-            name: `[企画課最新カンプ] ${doc.requestId.split('-')[0]} - ${doc.designContent}`,
-            path: doc.compUrl!,
-            folder: '企画課デザインビューア',
-            mtime: doc.requestedAt ? new Date(doc.requestedAt).getTime() / 1000 : 0,
-            url: `http://192.168.1.5:8888${doc.compUrl}`,
-            isViewerImage: true
-          }));
+          // 担当営業が一致し、却下(rejected)以外の案件からカンプ画像を抽出
+          const list: ExtendedDesignImage[] = [];
+          data.documents.forEach(doc => {
+            if (doc.status === 'rejected' || !doc.salesPerson) return;
+            if (!isSalesPersonMatch(doc.salesPerson, selectedFile)) return;
+
+            // 1. compImages 配列からの抽出
+            const compImages = (doc as any).compImages || [];
+            if (compImages.length > 0) {
+              compImages.forEach((cImg: any, idx: number) => {
+                if (cImg.url) {
+                  const proxyPath = `/api/images/viewer-content?url=${encodeURIComponent(cImg.url)}`;
+                  const fullId = `${doc.requestId}${doc.subId && doc.subId !== '0' ? `-${doc.subId}` : ''}`;
+                  const dtStr = (doc as any).completedAt || doc.requestedAt || doc.deliveryDate;
+                  const mtime = dtStr ? new Date(dtStr).getTime() / 1000 : 0;
+                  list.push({
+                    name: `[企画課] ${fullId} ${doc.designContent || ''}${compImages.length > 1 ? ` (${idx + 1})` : ''}`,
+                    path: proxyPath,
+                    folder: `企画課Web (${doc.planner || '企画'})`,
+                    mtime,
+                    url: proxyPath,
+                    isViewerImage: true,
+                    branch_no: Number(doc.subId) || 0
+                  });
+                }
+              });
+            } else if (doc.compUrl) {
+              // 2. 単一 compUrl
+              const proxyPath = `/api/images/viewer-content?url=${encodeURIComponent(doc.compUrl)}`;
+              const fullId = `${doc.requestId}${doc.subId && doc.subId !== '0' ? `-${doc.subId}` : ''}`;
+              const dtStr = (doc as any).completedAt || doc.requestedAt || doc.deliveryDate;
+              const mtime = dtStr ? new Date(dtStr).getTime() / 1000 : 0;
+              list.push({
+                name: `[企画課] ${fullId} ${doc.designContent || ''}`,
+                path: proxyPath,
+                folder: `企画課Web (${doc.planner || '企画'})`,
+                mtime,
+                url: proxyPath,
+                isViewerImage: true,
+                branch_no: Number(doc.subId) || 0
+              });
+            }
+          });
           setViewerImages(list);
         }
       })

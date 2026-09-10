@@ -198,9 +198,16 @@ export default function DesignImageHoverButton({
 
                     {/* 上部ヘッダー */}
                     <div className="relative z-10 flex items-center justify-between gap-1 pb-1 mb-1.5 border-b border-gray-100 text-[10px] text-gray-500 font-medium">
-                        <span className="truncate font-bold text-gray-800">No.{cleanNo}</span>
+                        <div className="flex items-center gap-1.5 truncate">
+                            <span className="truncate font-bold text-gray-800">No.{cleanNo}</span>
+                            {firstImage?.isViewerImage && (
+                                <span className="bg-emerald-50 text-emerald-700 font-bold px-1 py-0.2 rounded text-[9px] border border-emerald-200 shrink-0">
+                                    企画課Web
+                                </span>
+                            )}
+                        </div>
                         {images && images.length > 0 && (
-                            <span className="bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded text-[10px]">
+                            <span className="bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0">
                                 全{images.length}枚
                             </span>
                         )}
@@ -227,9 +234,14 @@ export default function DesignImageHoverButton({
                                     </span>
                                 </div>
                             </div>
-                            <div className="mt-1 text-[10px] text-gray-500 truncate font-mono text-center">
+                            <div className="mt-1 text-[10px] text-gray-600 truncate font-mono text-center">
                                 {firstImage.name}
                             </div>
+                            {firstImage.folder && (
+                                <div className="text-[9px] text-gray-400 truncate text-center">
+                                    {firstImage.folder}
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="relative z-10 h-24 flex flex-col items-center justify-center text-gray-400 text-center text-xs gap-1">

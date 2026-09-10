@@ -258,6 +258,12 @@ export const searchDesignImages = async (query: string, filename?: string): Prom
         if (filename) {
             params.filename = filename;
         }
+        if (typeof window !== 'undefined') {
+            const passcode = localStorage.getItem('viewer_passcode');
+            if (passcode) {
+                params.passcode = passcode;
+            }
+        }
         const response = await apiLong.get(`${API_URL}/images/search`, {
             params
         });
@@ -269,6 +275,13 @@ export const searchDesignImages = async (query: string, filename?: string): Prom
 };
 
 export const getImageUrl = (path: string): string => {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+        return path;
+    }
+    if (path.startsWith('/api/')) {
+        return path;
+    }
     return `${API_URL}/images/content?path=${encodeURIComponent(path)}`;
 };
 

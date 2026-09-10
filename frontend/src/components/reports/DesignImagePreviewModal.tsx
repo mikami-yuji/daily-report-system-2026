@@ -25,15 +25,24 @@ interface DesignGroup {
 
 // ファイル名からデザイン番号および規格・容量を抽出するヘルパー
 const parseImageInfo = (filename: string, targetDesignNo?: string): ParsedImageInfo => {
-    // 5桁〜8桁の連続した数字をデザイン番号として抽出
-    const matchNo = filename.match(/\d{5,8}/);
-    const designNo = matchNo ? matchNo[0] : 'その他';
+    // 4桁〜8桁の連続した数字をデザイン番号として抽出
+    const cleanTarget = targetDesignNo ? String(targetDesignNo).replace('.0', '').trim() : '';
+    
+    // まず targetDesignNo がファイル名に含まれているか優先確認
+    let designNo = 'その他';
+    if (cleanTarget && filename.includes(cleanTarget)) {
+        designNo = cleanTarget;
+    } else {
+        const matchNo = filename.match(/\d{4,8}/);
+        if (matchNo) {
+            designNo = matchNo[0];
+        }
+    }
 
     // 容量・サイズ（例: 5kg, 10kg, 2kg, 1.4kg, 300g, 150g等）
     const matchCap = filename.match(/(\d+(?:\.\d+)?(?:kg|k|g|K|G))/i);
     const capacity = matchCap ? matchCap[1].toLowerCase() : undefined;
 
-    const cleanTarget = targetDesignNo ? String(targetDesignNo).replace('.0', '').trim() : '';
     const isMain = cleanTarget ? designNo === cleanTarget : false;
 
     return {
@@ -53,9 +62,19 @@ export default function DesignImagePreviewModal({
         return targetDesignNo ? String(targetDesignNo).replace('.0', '').trim() : '';
     }, [targetDesignNo]);
 
-    // 画像リストを更新日時の新しい順にソート
+    // 画像リストをソート（枝番の降順 -> 企画課Web優先 -> 更新日時の新しい順）
     const sortedImages = useMemo((): DesignImage[] => {
         return [...images].sort((a, b): number => {
+            const aBranch = a.branch_no || 0;
+            const bBranch = b.branch_no || 0;
+            if (bBranch !== aBranch) {
+                return bBranch - aBranch;
+            }
+            const aViewer = a.isViewerImage || a.source === 'viewer' ? 1 : 0;
+            const bViewer = b.isViewerImage || b.source === 'viewer' ? 1 : 0;
+            if (bViewer !== aViewer) {
+                return bViewer - aViewer;
+            }
             const timeA = a.mtime || 0;
             const timeB = b.mtime || 0;
             return timeB - timeA;
@@ -199,6 +218,15 @@ export default function DesignImagePreviewModal({
                                 <h3 className="font-bold text-sm truncate text-gray-800" title={currentImage.name}>
                                     {currentImage.name}
                                 </h3>
+                                {currentImage.isViewerImage || currentImage.source === 'viewer' ? (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex-shrink-0">
+                                        企画課Web(最新)
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex-shrink-0">
+                                        営業部サーバー
+                                    </span>
+                                )}
                                 {currentInfo.designNo !== 'その他' && (
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
                                         currentInfo.isMain 
@@ -463,13 +491,22 @@ export default function DesignImagePreviewModal({
                                                     </div>
                                                     {/* 詳細情報 */}
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="flex items-center gap-1.5 mb-1">
+                                                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                                            {img.isViewerImage || img.source === 'viewer' ? (
+                                                                <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                                                    企画課Web
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[8px] font-medium px-1 py-0.2 rounded bg-gray-100 text-gray-500 border border-gray-200 shrink-0">
+                                                                    営業部
+                                                                </span>
+                                                            )}
                                                             {info.capacity && (
                                                                 <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-gray-100 text-gray-700 border border-gray-200">
                                                                     {info.capacity}
                                                                 </span>
                                                             )}
-                                                            <span className="text-[10px] text-gray-400">
+                                                            <span className="text-[10px] text-gray-400 ml-auto">
                                                                 {formatDateTime(img.mtime)}
                                                             </span>
                                                         </div>
@@ -522,7 +559,16 @@ export default function DesignImagePreviewModal({
                                         </div>
                                         {/* 情報 */}
                                         <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-1.5 mb-1">
+                                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                                {img.isViewerImage || img.source === 'viewer' ? (
+                                                    <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                                        企画課Web
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-[8px] font-medium px-1 py-0.2 rounded bg-gray-100 text-gray-500 border border-gray-200 shrink-0">
+                                                        営業部
+                                                    </span>
+                                                )}
                                                 {info.designNo !== 'その他' && (
                                                     <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
                                                         info.isMain 

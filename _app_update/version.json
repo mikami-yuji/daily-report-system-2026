@@ -1,15 +1,12 @@
 {
-  "version": "2.4.5",
-  "releaseDate": "2026-09-08",
-  "fileName": "DailyReportServer_v2.4.5.exe",
-  "fileSize": 49495023,
-  "sha256": "e700d3bcda4071ee9a8b3bd9f14450ce95348bbb366b2fabee3640dafd6c12bb",
+  "version": "2.4.6",
+  "releaseDate": "2026-09-10",
+  "fileName": "DailyReportServer_v2.4.6.exe",
+  "fileSize": 49153322,
+  "sha256": "98d91174d957586941f1aa3ad4259f68eda662f1e72f491a467e0d2831371bed",
   "forceUpdate": false,
   "releaseNotes": [
-    "日報一括承認・クイック承認(役職選択対応)",
-    "過去商談履歴クイック表示",
-    "日報複製作成",
-    "画像ホバープレビュー(見切れ解消)",
-    "デザイン情報配色改善"
+    "企画課Webデータベースとファイルサーバー画像のハイブリッド統合",
+    "枝番別重複排除機能の追加"
   ]
 }

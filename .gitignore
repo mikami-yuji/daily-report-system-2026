@@ -49,6 +49,7 @@ test_python.py
 
 # User-specific configuration
 backend/config.json
+backend/data/viewer_passcode.txt
 
 
 # Archives and Standalone Builds

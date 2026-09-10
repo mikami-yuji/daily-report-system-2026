@@ -64,6 +64,14 @@ export type DesignImage = {
     path: string;
     folder: string;
     mtime?: number;
+    source?: 'file_server' | 'viewer';
+    branch_no?: number;
+    isViewerImage?: boolean;
+    isAttachment?: boolean;
+    status?: string;
+    subId?: string;
+    requestId?: string;
+    url?: string;
 };
 
 export type DashboardStats = {

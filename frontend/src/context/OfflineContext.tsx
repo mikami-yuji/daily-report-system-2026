@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { Report, Customer, getSyncStatus, triggerSyncProcess } from '@/lib/api';
 import { generateUUID } from '@/lib/reportUtils';
 
@@ -33,6 +34,7 @@ type OfflineContextType = {
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 
 export function OfflineProvider({ children }: { children: ReactNode }): React.JSX.Element {
+    const queryClient = useQueryClient();
     const [isOnline, setIsOnline] = useState(true);
     const [fileServerConnected, setFileServerConnected] = useState(true);
     const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -45,17 +47,27 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
     }, [offlineReports]);
     const [cachedReports, setCachedReports] = useState<Report[]>([]);
 
+    const prevPendingCountRef = useRef<number>(0);
+
     // サーバーの同期状態チェック
     const checkServerSyncStatus = useCallback(async () => {
         try {
             const status = await getSyncStatus();
             setFileServerConnected(status.file_server_connected);
             setPendingSyncCount(status.pending_sync_count);
+
+            // サーバー側で未同期キューが消化された（例: 2件 -> 0件になった）場合、最新日報を即時再取得
+            if (prevPendingCountRef.current > 0 && status.pending_sync_count === 0) {
+                queryClient.invalidateQueries({ queryKey: ['reports'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+                queryClient.invalidateQueries({ queryKey: ['stats'] });
+            }
+            prevPendingCountRef.current = status.pending_sync_count;
         } catch (e) {
             console.warn('Sync status check error:', e);
             setFileServerConnected(false);
         }
-    }, []);
+    }, [queryClient]);
 
     // サーバー同期の手動実行
     const triggerServerSync = useCallback(async () => {
@@ -63,11 +75,17 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
             toast.loading('サーバー同期を実行中...', { id: 'manual-sync' });
             const res = await triggerSyncProcess();
             toast.success(`同期完了: ${res.processed}件反映しました (残${res.remaining}件)`, { id: 'manual-sync' });
+            if (res.processed > 0) {
+                await queryClient.invalidateQueries({ queryKey: ['reports'] });
+                await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+                await queryClient.invalidateQueries({ queryKey: ['stats'] });
+            }
             await checkServerSyncStatus();
         } catch (e) {
+            console.error('Manual sync error:', e);
             toast.error('サーバー同期に失敗しました', { id: 'manual-sync' });
         }
-    }, [checkServerSyncStatus]);
+    }, [checkServerSyncStatus, queryClient]);
 
     // 15秒ごとのヘルス・同期状態ポーリング
     useEffect(() => {
@@ -237,6 +255,9 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
 
         if (successCount > 0) {
             toast.success(`${successCount}件の同期が完了しました`, { id: toastId });
+            await queryClient.invalidateQueries({ queryKey: ['reports'] });
+            await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+            await queryClient.invalidateQueries({ queryKey: ['stats'] });
         }
         if (failCount > 0) {
             toast.error(`${failCount}件の同期に失敗しました`, { id: toastId });

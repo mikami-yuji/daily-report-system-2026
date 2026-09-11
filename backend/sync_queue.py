@@ -198,6 +198,12 @@ def process_sync_queue() -> Dict[str, int]:
 
                 mark_task_completed(task_id)
                 cache.invalidate_cache(filename, '営業日報')
+                try:
+                    # 同期完了後に即座に最新原本データを読み込んでSQLiteキャッシュを最新化
+                    cache.get_cached_dataframe(filename, '営業日報')
+                    logging.info(f"Pre-warmed SQLite cache for {filename} after sync task #{task_id}")
+                except Exception as e_refresh:
+                    logging.warning(f"Failed to pre-warm cache after sync: {e_refresh}")
                 processed_count += 1
 
         except Exception as e:

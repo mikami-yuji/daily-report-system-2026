@@ -1,13 +1,13 @@
 {
-  "version": "2.4.8",
+  "version": "2.4.9",
   "releaseDate": "2026-09-11",
-  "fileName": "DailyReportServer_v2.4.8.exe",
-  "fileSize": 49252476,
-  "sha256": "b0653b596f49020833b7da24b12e9326b7f999390f5b9e364e00385e09433ced",
+  "fileName": "DailyReportServer_v2.4.9.exe",
+  "fileSize": 49280256,
+  "sha256": "9a76192cedf8bc9efdb06a3ab87ac61d2b71c31cf4305711d6fd3dafd869d07b",
   "forceUpdate": false,
   "releaseNotes": [
-    "完全オフライン起動対応",
-    "シャドウキャッシュ自動復元",
-    "企画課カンプ画像最適化"
+    "オフライン同期直後の画面即時自動反映",
+    "原本反映時のSQLiteキャッシュ事前ウォームアップ",
+    "過去PKLによる不整合防止"
   ]
 }

@@ -272,46 +272,46 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
         logging.warning(f"SQLite cache lookup failed: {e}")
 
     # 2.5 レガシーPKLキャッシュからのフォールバックチェック
-    # (SQLiteキャッシュに該当テーブルが存在しない場合、過去の .cache/*.pkl が残っていれば自動的にSQLiteへインポートして復元)
-    legacy_candidates = [
-        os.path.join(config.BASE_DIR, '.cache', f"{cache_id}.pkl"),
-        os.path.join(os.path.dirname(config.DATA_DIR), '.cache', f"{cache_id}.pkl"),
-        os.path.join(os.getcwd(), '.cache', f"{cache_id}.pkl"),
-    ]
-    for pkl_file in legacy_candidates:
-        if os.path.exists(pkl_file):
-            try:
-                pickle_mod = __import__('pickle')
-                with open(pkl_file, 'rb') as pf:
-                    legacy_data = pickle_mod.load(pf)
-                if isinstance(legacy_data, dict) and 'df' in legacy_data:
-                    df = legacy_data['df']
-                    legacy_mtime = legacy_data.get('mtime', 0.0)
-                    try:
-                        with _get_sqlite_conn() as conn:
-                            df.to_sql(table_name, conn, if_exists='replace', index=False)
-                            now_str = datetime.now().isoformat()
-                            conn.execute(
-                                """
-                                INSERT OR REPLACE INTO _cache_meta 
-                                (cache_id, filename, sheet_name, mtime, updated_at) 
-                                VALUES (?, ?, ?, ?, ?)
-                                """,
-                                (cache_id, filename, sheet_name, legacy_mtime, now_str)
-                            )
-                            conn.commit()
-                        logging.info(f"Restored {filename} ({sheet_name}) from legacy .pkl cache into SQLite shadow cache ({len(df)} rows)")
-                    except Exception as e_sql:
-                        logging.warning(f"Failed to auto-import legacy cache into SQLite: {e_sql}")
-
-                    CACHE[cache_key] = {'mtime': legacy_mtime or 0.0, 'df': df}
-                    return df.copy()
-            except Exception as e_pkl:
-                logging.warning(f"Failed to read legacy cache {pkl_file}: {e_pkl}")
-
-    # 3. 原本が存在しない、かつSQLiteキャッシュにも存在しない場合 -> エラー
+    # (原本アクセス不可のオフライン時、かつSQLiteキャッシュに該当テーブルが存在しない場合のみ、過去の .cache/*.pkl から復元)
     if not excel_exists:
-        logging.error(f"File not accessible and not in SQLite cache: {excel_file}")
+        legacy_candidates = [
+            os.path.join(config.BASE_DIR, '.cache', f"{cache_id}.pkl"),
+            os.path.join(os.path.dirname(config.DATA_DIR), '.cache', f"{cache_id}.pkl"),
+            os.path.join(os.getcwd(), '.cache', f"{cache_id}.pkl"),
+        ]
+        for pkl_file in legacy_candidates:
+            if os.path.exists(pkl_file):
+                try:
+                    pickle_mod = __import__('pickle')
+                    with open(pkl_file, 'rb') as pf:
+                        legacy_data = pickle_mod.load(pf)
+                    if isinstance(legacy_data, dict) and 'df' in legacy_data:
+                        df = legacy_data['df']
+                        legacy_mtime = legacy_data.get('mtime', 0.0)
+                        try:
+                            with _get_sqlite_conn() as conn:
+                                df.to_sql(table_name, conn, if_exists='replace', index=False)
+                                now_str = datetime.now().isoformat()
+                                conn.execute(
+                                    """
+                                    INSERT OR REPLACE INTO _cache_meta 
+                                    (cache_id, filename, sheet_name, mtime, updated_at) 
+                                    VALUES (?, ?, ?, ?, ?)
+                                    """,
+                                    (cache_id, filename, sheet_name, legacy_mtime, now_str)
+                                )
+                                conn.commit()
+                            logging.info(f"Restored {filename} ({sheet_name}) from legacy .pkl cache into SQLite shadow cache ({len(df)} rows)")
+                        except Exception as e_sql:
+                            logging.warning(f"Failed to auto-import legacy cache into SQLite: {e_sql}")
+
+                        CACHE[cache_key] = {'mtime': legacy_mtime or 0.0, 'df': df}
+                        return df.copy()
+                except Exception as e_pkl:
+                    logging.warning(f"Failed to read legacy cache {pkl_file}: {e_pkl}")
+
+        # 3. 原本が存在しない、かつSQLiteキャッシュおよびレガシーキャッシュにも存在しない場合 -> エラー
+        logging.error(f"File not accessible and not in SQLite/legacy cache: {excel_file}")
         raise HTTPException(
             status_code=404, 
             detail=f"Excel file '{filename}' is not accessible and no local cache was found."
@@ -338,6 +338,14 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
                 )
                 conn.commit()
             logging.debug(f"Saved {filename} ({sheet_name}) to SQLite cache")
+            # 不整合の原因となる過去の古い .pkl キャッシュを削除
+            for pkl_dir in [os.path.join(config.BASE_DIR, '.cache'), os.path.join(os.path.dirname(config.DATA_DIR), '.cache')]:
+                pkl_path = os.path.join(pkl_dir, f"{cache_id}.pkl")
+                if os.path.exists(pkl_path):
+                    try:
+                        os.remove(pkl_path)
+                    except Exception:
+                        pass
         except Exception as e:
             logging.warning(f"Failed to save SQLite cache: {e}")
             

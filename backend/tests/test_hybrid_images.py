@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 # Add backend directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import config
 import routes_proxy
 import routes_images
 from fastapi import Request
@@ -40,8 +41,10 @@ def test_search_design_images_hybrid_merge():
     mock_request.cookies = {}
 
     with patch.object(routes_proxy, 'fetch_viewer_documents', return_value=mock_docs):
-        # ファイルサーバー側に枝番1と枝番2(被り)が存在すると仮定
-        with patch.object(routes_images, 'safe_walk', return_value=[
+        # ファイルサーバーへのアクセス可能性とsafe_walkをモック（CI/Linux環境対応）
+        with patch.object(config, 'is_network_path_accessible', return_value=True), \
+             patch.object(os.path, 'exists', return_value=True), \
+             patch.object(routes_images, 'safe_walk', return_value=[
             {"name": "99999-2-old_server.jpg", "path": "test/99999-2-old_server.jpg", "folder": "データ", "mtime": 500.0},
             {"name": "99999-1-test.jpg", "path": "test/99999-1-test.jpg", "folder": "データ", "mtime": 1000.0}
         ]):

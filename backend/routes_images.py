@@ -520,7 +520,7 @@ def search_design_images(query: str, filename: Optional[str] = None, passcode: O
         valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf') 
         MAX_RESULTS = 50
 
-        if os.path.exists(DESIGN_DIR):
+        if config.is_network_path_accessible(DESIGN_DIR, timeout=0.35):
             search_roots = [DESIGN_DIR]
             found_folder = None
             if filename:

@@ -2,11 +2,12 @@
   "version": "2.4.8",
   "releaseDate": "2026-09-11",
   "fileName": "DailyReportServer_v2.4.8.exe",
-  "fileSize": 49237345,
-  "sha256": "cf1c420d05c483a50855f33b4f7fdea9a423c5705346d8d9f5d2543f2e3fb25c",
+  "fileSize": 49252476,
+  "sha256": "b0653b596f49020833b7da24b12e9326b7f999390f5b9e364e00385e09433ced",
   "forceUpdate": false,
   "releaseNotes": [
     "完全オフライン起動対応",
-    "シャドウキャッシュ復元による圏外動作保証"
+    "シャドウキャッシュ自動復元",
+    "企画課カンプ画像最適化"
   ]
 }

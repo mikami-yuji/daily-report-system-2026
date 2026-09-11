@@ -100,9 +100,9 @@ def get_design_images(filename: str) -> dict:
 
             logging.debug(f"Searching for folder containing '{target_name}' (Norm: {normalized_target}) in {DESIGN_DIR}")
             
-            if not os.path.exists(DESIGN_DIR):
-                 logging.error(f"Design directory not found: {DESIGN_DIR}")
-                 return {"message": "Design directory not found", "images": []}
+            if not config.is_network_path_accessible(DESIGN_DIR, timeout=0.3):
+                 logging.warning(f"Design directory not accessible: {DESIGN_DIR}")
+                 return {"message": "Design directory not accessible (offline)", "images": []}
 
             # Find matching directory
             

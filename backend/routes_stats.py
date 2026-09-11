@@ -29,8 +29,7 @@ def get_team_summary(month: str = None):
     month: "YY/MM" 形式 (例: "26/03")。
     """
     logging.info(f"Team Summary triggered for month: {month}")
-    if not os.path.exists(config.EXCEL_DIR):
-        raise HTTPException(status_code=500, detail="Excel directory not found")
+    excel_accessible = config.is_network_path_accessible(config.EXCEL_DIR, timeout=0.35)
 
     # 除外リスト
     EXCLUDE_FILES = [
@@ -41,11 +40,20 @@ def get_team_summary(month: str = None):
     ]
 
     try:
-        # ファイル一覧の取得
-        target_files = [
-            f for f in os.listdir(config.EXCEL_DIR) 
-            if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
-        ]
+        # ファイル一覧の取得（オンライン時は原本フォルダ、オフライン時はSQLiteシャドウキャッシュ）
+        if excel_accessible:
+            target_files = [
+                f for f in os.listdir(config.EXCEL_DIR) 
+                if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
+            ]
+        else:
+            with cache._get_sqlite_conn() as conn:
+                cur = conn.execute(
+                    "SELECT DISTINCT filename FROM _cache_meta WHERE filename LIKE '%.xlsm'"
+                )
+                target_files = [r[0] for r in cur.fetchall() if r[0] not in EXCLUDE_FILES]
+            logging.info(f"Offline mode: Scanning {len(target_files)} cached files for team summary.")
+
         logging.info(f"Scanning {len(target_files)} files for aggregation.")
 
         def extract_staff_name_py(filename: str) -> str:
@@ -583,8 +591,7 @@ def get_points_table(target_months_count: int = 7):
     """
     全メンバーの日報点数表を集計する。
     """
-    if not os.path.exists(config.EXCEL_DIR):
-        raise HTTPException(status_code=500, detail="Excel directory not found")
+    excel_accessible = config.is_network_path_accessible(config.EXCEL_DIR, timeout=0.35)
 
     EXCLUDE_FILES = [
         "●20260117_2026年度用_日報【原本_2】.xlsm",
@@ -594,10 +601,18 @@ def get_points_table(target_months_count: int = 7):
     ]
 
     try:
-        target_files = [
-            f for f in os.listdir(config.EXCEL_DIR) 
-            if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
-        ]
+        if excel_accessible:
+            target_files = [
+                f for f in os.listdir(config.EXCEL_DIR) 
+                if f.endswith('.xlsm') and f not in EXCLUDE_FILES and not f.startswith('~$')
+            ]
+        else:
+            with cache._get_sqlite_conn() as conn:
+                cur = conn.execute(
+                    "SELECT DISTINCT filename FROM _cache_meta WHERE filename LIKE '%.xlsm'"
+                )
+                target_files = [r[0] for r in cur.fetchall() if r[0] not in EXCLUDE_FILES]
+            logging.info(f"Offline mode: Scanning {len(target_files)} cached files for points table.")
         
         # 2026年度の月リスト（2月〜翌1月）
         month_keys = [

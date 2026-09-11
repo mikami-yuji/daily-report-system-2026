@@ -27,21 +27,21 @@ def get_update_dir() -> Optional[str]:
     """共有サーバー上の _app_update ディレクトリパスを特定"""
     # 1. config.json に明示的な指定があればそれを使用
     custom_update_dir = config._RAW_CONFIG.get('update_dir')
-    if custom_update_dir and os.path.exists(custom_update_dir):
+    if custom_update_dir and config.is_network_path_accessible(custom_update_dir, timeout=0.3):
         return custom_update_dir
 
     # 2. Excel日報フォルダの同一階層または親階層の _app_update を検索
     try:
         excel_dir = config.resolve_excel_dir()
         candidate = os.path.join(excel_dir, "_app_update")
-        if os.path.exists(candidate):
+        if config.is_network_path_accessible(candidate, timeout=0.3):
             return candidate
     except Exception as e:
         logger.debug(f"Failed to check excel_dir/_app_update: {e}")
 
     # 3. 既定のUNCパス
     default_unc = r"\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度\_app_update"
-    if os.path.exists(default_unc):
+    if config.is_network_path_accessible(default_unc, timeout=0.3):
         return default_unc
 
     # 4. ローカル検証用（開発環境の _app_update）

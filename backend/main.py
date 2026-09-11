@@ -1,11 +1,28 @@
+import logging
+import os
+import sys
+
+# Setup logging immediately before any internal imports to ensure output is captured
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('server_debug.log', encoding='utf-8', mode='a'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+print("=" * 60)
+print("  営業日報システム 2026 (Daily Report System)")
+print("  起動処理中... (Wi-Fiオフ・オフライン環境でも動作します)")
+print("=" * 60)
+sys.stdout.flush()
+
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-import logging
-import os
-import sys
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -19,16 +36,8 @@ import routes_proxy
 import routes_updater
 import sync_queue
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('server_debug.log'),
-        logging.StreamHandler()
-    ]
-)
-logging.info("Server starting up...")
+logging.info("Server initialized successfully.")
+
 
 async def sync_worker_loop():
     """30秒ごとに未同期キューの処理を試みる自動再同期タスク"""
@@ -119,9 +128,25 @@ if os.path.exists(STATIC_DIR):
         return FileResponse(si) if os.path.exists(si) else {"detail": "Not Found"}
 
 if __name__ == "__main__":
-    import uvicorn, webbrowser, threading, socket
+    import uvicorn, webbrowser, threading, socket, time
+    import urllib.request
+
+    # 1. 既存プロセスの稼働チェック（2重起動防止）
+    try:
+        req = urllib.request.Request("http://127.0.0.1:8001/api/health", headers={"User-Agent": "StartupCheck"})
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            if resp.status == 200:
+                print("\n[INFO] 営業日報システムは既に起動しています。ブラウザを開きます...")
+                sys.stdout.flush()
+                webbrowser.open("http://127.0.0.1:8001")
+                time.sleep(1.0)
+                sys.exit(0)
+    except Exception:
+        pass
+
     def get_local_ip():
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
         try:
             s.connect(('8.8.8.8', 80))
             ip = s.getsockname()[0]
@@ -132,12 +157,23 @@ if __name__ == "__main__":
         return ip
 
     def ob():
-        import time; time.sleep(2)
-        # ホストPC自身は常に127.0.0.1で開くことで、DHCP等でIPが変わってもlocalStorageが維持されるようにします
+        time.sleep(1.5)
+        # ホストPC自身は常に127.0.0.1で開くことで、DHCP等でIPが変わってもlocalStorageが維持されます
         webbrowser.open("http://127.0.0.1:8001")
         local_ip = get_local_ip()
-        logging.info(f"For access from other computers on the network, use: http://{local_ip}:8001")
+        print(f"\n[INFO] 他のPC・タブレットからアクセスする場合: http://{local_ip}:8001")
+        sys.stdout.flush()
+
+    print("[1/3] ローカルキャッシュと設定の準備完了")
+    print(f"      - Excel格納先: {config.EXCEL_DIR}")
+    print(f"      - デフォルト日報: {config.DEFAULT_EXCEL_FILE}")
+    print("[2/3] ブラウザ自動起動タスクを開始中...")
     threading.Thread(target=ob, daemon=True).start()
+
+    print("[3/3] Webサーバーを起動しています (http://127.0.0.1:8001)...")
+    print("      ※この画面を閉じるとシステムが終了します（最小化してご利用ください）\n")
+    sys.stdout.flush()
+
     for retry in range(10):
         try:
             uvicorn.run(app, host="0.0.0.0", port=8001, log_level="info")
@@ -148,3 +184,4 @@ if __name__ == "__main__":
                 time.sleep(1.5)
             else:
                 raise
+

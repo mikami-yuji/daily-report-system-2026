@@ -60,41 +60,68 @@ def trigger_sync_process() -> Dict[str, Any]:
 
 @router.get("/api/files")
 def list_excel_files() -> Dict[str, Any]:
-    """List all Excel files in the directory"""
-    logging.debug(f"Listing files in {config.EXCEL_DIR}")
-    if not os.path.exists(config.EXCEL_DIR):
-         logging.error(f"Directory not found: {config.EXCEL_DIR}")
-         raise HTTPException(status_code=500, detail=f"Excel Directory not found: {config.EXCEL_DIR}")
-         
-    try:
-        files = []
-        # Add timeout protection or more verbose logging? 
-        # listing network drive can appear to hang.
-        
-        items = os.listdir(config.EXCEL_DIR)
-        logging.debug(f"Found {len(items)} items in directory")
-        
-        for file in items:
-            if file.endswith(('.xlsx', '.xlsm')):
-                file_path = os.path.join(config.EXCEL_DIR, file)
-                try:
-                    file_size = os.path.getsize(file_path)
-                    file_mtime = os.path.getmtime(file_path)
+    """List all Excel files in the directory (falls back to SQLite cache when offline)"""
+    files = []
+    excel_dir_accessible = config.is_network_path_accessible(config.EXCEL_DIR, timeout=0.35)
+    
+    if excel_dir_accessible:
+        try:
+            items = os.listdir(config.EXCEL_DIR)
+            for file in items:
+                if file.endswith(('.xlsx', '.xlsm')) and not file.startswith('~$'):
+                    file_path = os.path.join(config.EXCEL_DIR, file)
+                    try:
+                        file_size = os.path.getsize(file_path)
+                        file_mtime = os.path.getmtime(file_path)
+                        files.append({
+                            "name": file,
+                            "size": file_size,
+                            "modified": datetime.fromtimestamp(file_mtime).isoformat(),
+                            "is_cached": False
+                        })
+                    except Exception as file_err:
+                        logging.warning(f"Error processing file {file}: {file_err}")
+                        continue
+        except Exception as e:
+            logging.warning(f"Error listing files from directory {config.EXCEL_DIR}: {e}")
+
+    # オフライン時、またはディレクトリ内にファイルが見つからない場合は SQLite キャッシュから一覧を復元
+    if not files:
+        try:
+            with cache._get_sqlite_conn() as conn:
+                cur = conn.execute(
+                    """
+                    SELECT filename, MAX(mtime), MAX(updated_at)
+                    FROM _cache_meta
+                    WHERE filename LIKE '%.xlsm' OR filename LIKE '%.xlsx'
+                    GROUP BY filename
+                    ORDER BY filename ASC
+                    """
+                )
+                rows = cur.fetchall()
+                for r in rows:
+                    fname, mtime_val, updated_at = r
+                    mod_str = updated_at or (datetime.fromtimestamp(mtime_val).isoformat() if mtime_val else datetime.now().isoformat())
                     files.append({
-                        "name": file,
-                        "size": file_size,
-                        "modified": datetime.fromtimestamp(file_mtime).isoformat()
+                        "name": fname,
+                        "size": 0,
+                        "modified": mod_str,
+                        "is_cached": True
                     })
-                except Exception as file_err:
-                    logging.warning(f"Error processing file {file}: {file_err}")
-                    continue
-                    
-        return {"files": files, "default": config.DEFAULT_EXCEL_FILE}
-    except Exception as e:
-        logging.critical(f"CRITICAL ERROR in list_excel_files: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+                logging.info(f"Restored {len(files)} files from SQLite cache (offline mode)")
+        except Exception as e:
+            logging.warning(f"Failed to restore files from SQLite cache: {e}")
+
+    default_file = config.DEFAULT_EXCEL_FILE
+    if files and not any(f["name"] == default_file for f in files):
+        default_file = files[0]["name"]
+
+    return {
+        "files": files, 
+        "default": default_file,
+        "offline": not excel_dir_accessible
+    }
+
 
 
 # Cache for Excel dataframes: {(filename, sheet_name): {'mtime': float, 'df': pd.DataFrame}}
@@ -267,14 +294,11 @@ def get_priority_customers(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Di
 
 @router.get("/api/interviewers")
 def get_interviewers_by_query(customer_code: str, filename: str = config.DEFAULT_EXCEL_FILE) -> List[str]:
-    """Get list of interviewers for a specific customer"""
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
-    if not os.path.exists(excel_file):
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found")
-    
+    """Get list of interviewers for a specific customer (offline cache supported)"""
     try:
-        # Read the '営業日報' sheet
-        df = pd.read_excel(excel_file, sheet_name='営業日報', header=0)
+        # Read the '営業日報' sheet from cache/excel
+        df = cache.get_cached_dataframe(filename, '営業日報')
+
         
         # Clean up column names
         df.columns = [str(col).replace('\n', '').strip() for col in df.columns]
@@ -434,12 +458,13 @@ def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any
             last_error = e
             logging.warning(f"File access error for {filename} (attempt {attempt + 1}): {type(e).__name__}: {e}")
             if attempt < max_retries:
-                time.sleep(1)
-                # キャッシュをクリアして再試行
-                cache.invalidate_cache(filename, '営業日報')
+                time.sleep(0.5)
+                # インメモリキャッシュのみクリアして再試行（SQLiteキャッシュは絶対に消去しない）
+                cache.invalidate_cache(filename, '営業日報', clear_sqlite=False)
                 continue
             else:
                 logging.error(f"All retries exhausted for {filename}: {e}")
+
                 import traceback
                 traceback.print_exc()
                 raise HTTPException(

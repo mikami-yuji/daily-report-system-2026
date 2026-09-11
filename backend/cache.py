@@ -30,33 +30,50 @@ def _get_sqlite_conn():
     """)
     return conn
 
-def invalidate_cache(filename: str, sheet_name: Optional[str] = None):
-    """指定されたファイルのキャッシュ（インメモリおよびSQLite）を無効化"""
+def invalidate_cache(filename: str, sheet_name: Optional[str] = None, clear_sqlite: Optional[bool] = None):
+    """
+    指定されたファイルのキャッシュ（インメモリおよびSQLite）を無効化。
+    - インメモリキャッシュは常に削除。
+    - SQLiteキャッシュ:
+      - clear_sqlite=True の場合は無条件に削除
+      - clear_sqlite=False の場合は保持（オフライン保護）
+      - clear_sqlite=None (デフォルト) の場合: 原本Excelへのアクセスが確認できた場合のみ削除。
+        原本アクセス不可（オフライン時）は、シャドウキャッシュが唯一の生命線となるため絶対に削除しない。
+    """
     filename = os.path.basename(filename)
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
     
     # 1. インメモリキャッシュの削除
     keys_to_del = [k for k in CACHE.keys() if k[0] == filename and (sheet_name is None or k[1] == sheet_name)]
     for k in keys_to_del:
         CACHE.pop(k, None)
         
-    # 2. SQLiteキャッシュの削除
-    try:
-        with _get_sqlite_conn() as conn:
-            if sheet_name:
-                cache_id = hashlib.md5(f"{filename}_{sheet_name}".encode('utf-8')).hexdigest()
-                table_name = f"sheet_{cache_id}"
-                conn.execute(f"DROP TABLE IF EXISTS [{table_name}]")
-                conn.execute("DELETE FROM _cache_meta WHERE cache_id = ?", (cache_id,))
-            else:
-                cursor = conn.execute("SELECT cache_id FROM _cache_meta WHERE filename = ?", (filename,))
-                rows = cursor.fetchall()
-                for (cid,) in rows:
-                    conn.execute(f"DROP TABLE IF EXISTS [sheet_{cid}]")
-                conn.execute("DELETE FROM _cache_meta WHERE filename = ?", (filename,))
-            conn.commit()
-        logging.debug(f"Invalidated SQLite cache for {filename} (sheet={sheet_name})")
-    except Exception as e:
-        logging.warning(f"Failed to invalidate SQLite cache for {filename}: {e}")
+    # 2. SQLiteキャッシュの判定
+    should_clear_sqlite = clear_sqlite
+    if should_clear_sqlite is None:
+        # 原本が存在しアクセス可能な場合のみSQLiteもクリア。オフライン時は保護
+        should_clear_sqlite = config.is_network_path_accessible(excel_file, timeout=0.25)
+        
+    if should_clear_sqlite:
+        try:
+            with _get_sqlite_conn() as conn:
+                if sheet_name:
+                    cache_id = hashlib.md5(f"{filename}_{sheet_name}".encode('utf-8')).hexdigest()
+                    table_name = f"sheet_{cache_id}"
+                    conn.execute(f"DROP TABLE IF EXISTS [{table_name}]")
+                    conn.execute("DELETE FROM _cache_meta WHERE cache_id = ?", (cache_id,))
+                else:
+                    cursor = conn.execute("SELECT cache_id FROM _cache_meta WHERE filename = ?", (filename,))
+                    rows = cursor.fetchall()
+                    for (cid,) in rows:
+                        conn.execute(f"DROP TABLE IF EXISTS [sheet_{cid}]")
+                    conn.execute("DELETE FROM _cache_meta WHERE filename = ?", (filename,))
+                conn.commit()
+            logging.debug(f"Invalidated SQLite cache for {filename} (sheet={sheet_name})")
+        except Exception as e:
+            logging.warning(f"Failed to invalidate SQLite cache for {filename}: {e}")
+
+
 
 def cleanup_old_backups(
     backup_dir: str, 
@@ -204,53 +221,105 @@ def create_backup(excel_file: str, backup_dir: Optional[str] = None) -> Optional
 def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
     """
     ExcelシートのDataFrameを取得。
-    1. インメモリキャッシュを最優先参照
-    2. SQLiteシャドウキャッシュを参照（mtimeが一致すれば超高速に復元）
-    3. キャッシュ未存在またはmtime更新時はExcelから読み込み、SQLiteに保存
+    1. インメモリキャッシュを最優先参照（オンライン時）
+    2. 原本アクセス可能な場合: mtime一致確認の上、SQLiteシャドウキャッシュまたは原本読込
+    3. オフライン時（原本アクセス不可時）: SQLiteシャドウキャッシュから復元して返却
+    4. 原本もキャッシュも存在しない場合のみ 404 エラー
     """
     filename = os.path.basename(filename)
     excel_file = os.path.join(config.EXCEL_DIR, filename)
-    
-    if not os.path.exists(excel_file):
-        logging.error(f"File not found: {excel_file}")
-        raise HTTPException(status_code=404, detail=f"Excel file '{filename}' not found at {excel_file}")
-    
-    try:
-        current_mtime = os.path.getmtime(excel_file)
-    except OSError as e:
-        logging.warning(f"Cannot access file metadata for {excel_file}: {e}")
-        raise
-    
     cache_key = (filename, sheet_name)
-    
-    # 1. インメモリキャッシュをチェック
-    if cache_key in CACHE:
-        cached_data = CACHE[cache_key]
-        if cached_data['mtime'] == current_mtime:
-            return cached_data['df'].copy()
-
     cache_id = hashlib.md5(f"{filename}_{sheet_name}".encode('utf-8')).hexdigest()
     table_name = f"sheet_{cache_id}"
+
+    # 原本へのアクセス可能性を安全・高速に確認（UNCフリーズ防止）
+    excel_exists = config.is_network_path_accessible(excel_file, timeout=0.35)
+    current_mtime = None
+
+    # 1. オンライン時: インメモリキャッシュをチェック
+    if excel_exists:
+        try:
+            current_mtime = os.path.getmtime(excel_file)
+            if cache_key in CACHE:
+                cached_data = CACHE[cache_key]
+                if cached_data.get('mtime') == current_mtime:
+                    return cached_data['df'].copy()
+        except OSError:
+            excel_exists = False
+    elif cache_key in CACHE:
+        # オフライン時でもインメモリにあれば即返却
+        return CACHE[cache_key]['df'].copy()
 
     # 2. SQLiteシャドウキャッシュをチェック
     try:
         with _get_sqlite_conn() as conn:
-            cursor = conn.execute(
-                "SELECT mtime FROM _cache_meta WHERE cache_id = ?",
-                (cache_id,)
-            )
-            row = cursor.fetchone()
-            if row and row[0] == current_mtime:
-                df = pd.read_sql_query(f'SELECT * FROM [{table_name}]', conn)
-                logging.debug(f"Loaded {filename} ({sheet_name}) from SQLite cache ({len(df)} rows)")
-                CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
-                return df.copy()
+            cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            if cur.fetchone():
+                cursor = conn.execute(
+                    "SELECT mtime FROM _cache_meta WHERE cache_id = ?",
+                    (cache_id,)
+                )
+                row = cursor.fetchone()
+                cached_mtime = row[0] if row else None
+
+                # 原本が存在してmtime一致、または原本アクセス不可（オフラインモード）
+                if (excel_exists and cached_mtime is not None and cached_mtime == current_mtime) or (not excel_exists):
+                    df = pd.read_sql_query(f'SELECT * FROM [{table_name}]', conn)
+                    logging.info(f"Loaded {filename} ({sheet_name}) from SQLite shadow cache ({len(df)} rows, offline={not excel_exists})")
+                    CACHE[cache_key] = {'mtime': cached_mtime or 0.0, 'df': df}
+                    return df.copy()
     except Exception as e:
         logging.warning(f"SQLite cache lookup failed: {e}")
 
-    # 3. Excel原本から読み込んでSQLiteに保存
+    # 2.5 レガシーPKLキャッシュからのフォールバックチェック
+    # (SQLiteキャッシュに該当テーブルが存在しない場合、過去の .cache/*.pkl が残っていれば自動的にSQLiteへインポートして復元)
+    legacy_candidates = [
+        os.path.join(config.BASE_DIR, '.cache', f"{cache_id}.pkl"),
+        os.path.join(os.path.dirname(config.DATA_DIR), '.cache', f"{cache_id}.pkl"),
+        os.path.join(os.getcwd(), '.cache', f"{cache_id}.pkl"),
+    ]
+    for pkl_file in legacy_candidates:
+        if os.path.exists(pkl_file):
+            try:
+                pickle_mod = __import__('pickle')
+                with open(pkl_file, 'rb') as pf:
+                    legacy_data = pickle_mod.load(pf)
+                if isinstance(legacy_data, dict) and 'df' in legacy_data:
+                    df = legacy_data['df']
+                    legacy_mtime = legacy_data.get('mtime', 0.0)
+                    try:
+                        with _get_sqlite_conn() as conn:
+                            df.to_sql(table_name, conn, if_exists='replace', index=False)
+                            now_str = datetime.now().isoformat()
+                            conn.execute(
+                                """
+                                INSERT OR REPLACE INTO _cache_meta 
+                                (cache_id, filename, sheet_name, mtime, updated_at) 
+                                VALUES (?, ?, ?, ?, ?)
+                                """,
+                                (cache_id, filename, sheet_name, legacy_mtime, now_str)
+                            )
+                            conn.commit()
+                        logging.info(f"Restored {filename} ({sheet_name}) from legacy .pkl cache into SQLite shadow cache ({len(df)} rows)")
+                    except Exception as e_sql:
+                        logging.warning(f"Failed to auto-import legacy cache into SQLite: {e_sql}")
+
+                    CACHE[cache_key] = {'mtime': legacy_mtime or 0.0, 'df': df}
+                    return df.copy()
+            except Exception as e_pkl:
+                logging.warning(f"Failed to read legacy cache {pkl_file}: {e_pkl}")
+
+    # 3. 原本が存在しない、かつSQLiteキャッシュにも存在しない場合 -> エラー
+    if not excel_exists:
+        logging.error(f"File not accessible and not in SQLite cache: {excel_file}")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Excel file '{filename}' is not accessible and no local cache was found."
+        )
+
+    # 4. 原本Excelから読み込んでSQLiteに保存（オンライン時でキャッシュ未作成または更新時）
     try:
-        logging.debug(f"Reading Excel {excel_file}, sheet={sheet_name}")
+        logging.info(f"Reading Excel {excel_file}, sheet={sheet_name}")
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=0)
         
         CACHE[cache_key] = {'mtime': current_mtime, 'df': df}
@@ -274,12 +343,24 @@ def get_cached_dataframe(filename: str, sheet_name: str) -> pd.DataFrame:
             
         return df.copy()
     except (PermissionError, OSError) as e:
-        # ファイルロック・ネットワーク障害はそのまま上位に伝播（リトライ可能）
+        # ファイルロックまたはネットワーク切断エラー発生時: 既にSQLiteキャッシュが存在すればフォールバックとして安全に返却
         logging.warning(f"File access error reading Excel {excel_file}: {type(e).__name__}: {e}")
+        try:
+            with _get_sqlite_conn() as conn:
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+                if cur.fetchone():
+                    df = pd.read_sql_query(f'SELECT * FROM [{table_name}]', conn)
+                    logging.info(f"Fallback to SQLite shadow cache after Excel access error ({len(df)} rows)")
+                    CACHE[cache_key] = {'mtime': 0.0, 'df': df}
+                    return df.copy()
+        except Exception as e_sql:
+            logging.warning(f"Failed to load SQLite shadow cache fallback: {e_sql}")
         raise
+
     except Exception as e:
         logging.error(f"Reading Excel failed: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error reading Excel file: {str(e)}")
+
 

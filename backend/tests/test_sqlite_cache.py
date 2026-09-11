@@ -191,3 +191,63 @@ def test_no_pickle_usage_in_codebase():
                     content = f.read()
                     for f_pattern in forbidden:
                         assert f_pattern not in content, f"Forbidden '{f_pattern}' found in {filepath}"
+
+
+def test_legacy_pkl_cache_fallback():
+    """原本Excel・SQLiteキャッシュが存在せず、レガシー.pklが存在する場合に自動フォールバック復元されることを検証"""
+    import pickle
+    import hashlib
+
+    temp_dir = tempfile.mkdtemp()
+    test_db_path = os.path.join(temp_dir, "test_fallback.db")
+    test_excel_filename = "fallback_test.xlsm"
+    sheet_name = "営業日報"
+
+    # レガシーキャッシュの準備
+    cache_id = hashlib.md5(f"{test_excel_filename}_{sheet_name}".encode('utf-8')).hexdigest()
+    legacy_cache_dir = os.path.join(temp_dir, ".cache")
+    os.makedirs(legacy_cache_dir, exist_ok=True)
+    legacy_pkl_path = os.path.join(legacy_cache_dir, f"{cache_id}.pkl")
+
+    dummy_df = pd.DataFrame([{"管理番号": 999, "商談内容": "レガシー復元データ"}])
+    with open(legacy_pkl_path, 'wb') as pf:
+        pickle.dump({'mtime': 1234567.8, 'df': dummy_df}, pf)
+
+    orig_base_dir = config.BASE_DIR
+    orig_excel_dir = config.EXCEL_DIR
+    orig_sqlite_db = config.SQLITE_CACHE_DB
+
+    config.BASE_DIR = temp_dir
+    config.EXCEL_DIR = os.path.join(temp_dir, "nonexistent_excel_dir")
+    config.SQLITE_CACHE_DB = test_db_path
+    cache.CACHE.clear()
+
+    try:
+        # 原本ExcelもSQLiteも無い状態で取得 -> レガシーpklから復元されること
+        df = cache.get_cached_dataframe(test_excel_filename, sheet_name)
+        assert len(df) == 1
+        assert df.iloc[0]["商談内容"] == "レガシー復元データ"
+
+        # SQLiteにも自動的に保存されていること
+        assert os.path.exists(test_db_path)
+        with sqlite3.connect(test_db_path) as conn:
+            cur = conn.execute("SELECT filename, sheet_name FROM _cache_meta WHERE cache_id = ?", (cache_id,))
+            row = cur.fetchone()
+            assert row is not None
+            assert row[0] == test_excel_filename
+            assert row[1] == sheet_name
+
+    finally:
+        config.BASE_DIR = orig_base_dir
+        config.EXCEL_DIR = orig_excel_dir
+        config.SQLITE_CACHE_DB = orig_sqlite_db
+        try:
+            for root, dirs, files in os.walk(temp_dir, topdown=False):
+                for f in files:
+                    os.remove(os.path.join(root, f))
+                for d in dirs:
+                    os.rmdir(os.path.join(root, d))
+            os.rmdir(temp_dir)
+        except Exception:
+            pass
+

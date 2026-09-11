@@ -211,6 +211,7 @@ export type ViewerDesignRequest = {
     deliveryDate?: string;
     requestDate?: string;
     requestedAt?: string;
+    completedAt?: string;
     salesPerson: string;
     planner: string;
     customer: string;
@@ -220,5 +221,6 @@ export type ViewerDesignRequest = {
     status: string;
     submissionId?: string;
     compUrl?: string;
+    compImages?: Array<{ url: string; name?: string }>;
     pdfUrl?: string;
 };

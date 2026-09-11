@@ -19,7 +19,7 @@ type DesignImageGalleryProps = {
 export default function DesignImageGallery({ selectedFile }: DesignImageGalleryProps): React.JSX.Element {
   const { data, isLoading } = useDesignImages(selectedFile);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
-  const [activePreviewImage, setActivePreviewImage] = useState<ExtendedDesignImage | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<ExtendedDesignImage | null>(null);
   
   // 企画課ビューアから取得したカンプ画像用のステート
   const [viewerImages, setViewerImages] = useState<ExtendedDesignImage[]>([]);
@@ -32,18 +32,18 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
         if (data && data.documents) {
           // 担当営業が一致し、却下(rejected)以外の案件からカンプ画像を抽出
           const list: ExtendedDesignImage[] = [];
-          data.documents.forEach(doc => {
+          data.documents.forEach((doc: ViewerDesignRequest): void => {
             if (doc.status === 'rejected' || !doc.salesPerson) return;
             if (!isSalesPersonMatch(doc.salesPerson, selectedFile)) return;
 
             // 1. compImages 配列からの抽出
-            const compImages = (doc as any).compImages || [];
+            const compImages = doc.compImages || [];
             if (compImages.length > 0) {
-              compImages.forEach((cImg: any, idx: number) => {
+              compImages.forEach((cImg: { url: string; name?: string }, idx: number): void => {
                 if (cImg.url) {
                   const proxyPath = `/api/images/viewer-content?url=${encodeURIComponent(cImg.url)}`;
                   const fullId = `${doc.requestId}${doc.subId && doc.subId !== '0' ? `-${doc.subId}` : ''}`;
-                  const dtStr = (doc as any).completedAt || doc.requestedAt || doc.deliveryDate;
+                  const dtStr = doc.completedAt || doc.requestedAt || doc.deliveryDate;
                   const mtime = dtStr ? new Date(dtStr).getTime() / 1000 : 0;
                   list.push({
                     name: `[企画課] ${fullId} ${doc.designContent || ''}${compImages.length > 1 ? ` (${idx + 1})` : ''}`,
@@ -60,7 +60,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
               // 2. 単一 compUrl
               const proxyPath = `/api/images/viewer-content?url=${encodeURIComponent(doc.compUrl)}`;
               const fullId = `${doc.requestId}${doc.subId && doc.subId !== '0' ? `-${doc.subId}` : ''}`;
-              const dtStr = (doc as any).completedAt || doc.requestedAt || doc.deliveryDate;
+              const dtStr = doc.completedAt || doc.requestedAt || doc.deliveryDate;
               const mtime = dtStr ? new Date(dtStr).getTime() / 1000 : 0;
               list.push({
                 name: `[企画課] ${fullId} ${doc.designContent || ''}`,
@@ -76,7 +76,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
           setViewerImages(list);
         }
       })
-      .catch(err => {
+      .catch((err: unknown) => {
         console.error('Failed to load viewer images for gallery:', err);
       });
   }, [selectedFile]);
@@ -136,16 +136,8 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
     return img.isViewerImage && img.url ? img.url : getImageUrl(img.path);
   };
 
-  // 代表画像のインデックスが変更されたときにアクティブプレビューを初期化
-  useEffect((): void => {
-    if (selectedImageIndex !== null && images[selectedImageIndex]) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setActivePreviewImage(images[selectedImageIndex]);
-    } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setActivePreviewImage(null);
-    }
-  }, [selectedImageIndex, images]);
+  // モーダルで表示するアクティブな画像（選択中のバリエーション、未選択時は代表画像）
+  const activePreviewImage = selectedVariant ?? (selectedImageIndex !== null ? images[selectedImageIndex] ?? null : null);
 
   // モーダル表示時に背後のスクロールをロックする
   useEffect((): (() => void) => {
@@ -175,7 +167,10 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
             {images.map((img: ExtendedDesignImage, i: number) => (
               <button
                 key={i}
-                onClick={(): void => setSelectedImageIndex(i)}
+                onClick={(): void => {
+                  setSelectedImageIndex(i);
+                  setSelectedVariant(null);
+                }}
                 className="group flex flex-col bg-white rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 text-left focus:outline-none cursor-pointer"
               >
                 <div className="w-full aspect-[3/4] bg-gray-50 flex items-center justify-center p-3 relative overflow-hidden">
@@ -218,7 +213,10 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                 </h3>
               </div>
               <button
-                onClick={(): void => setSelectedImageIndex(null)}
+                onClick={(): void => {
+                  setSelectedImageIndex(null);
+                  setSelectedVariant(null);
+                }}
                 className="text-gray-400 hover:text-gray-600 bg-gray-200/50 hover:bg-gray-200 rounded-full p-2 transition-colors cursor-pointer"
               >
                 <X size={20} />
@@ -231,7 +229,10 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
               <div className="flex-1 md:w-2/3 p-6 flex flex-col items-center justify-center relative bg-black/5 min-h-[350px]">
                 {selectedImageIndex > 0 && (
                   <button
-                    onClick={(): void => setSelectedImageIndex(selectedImageIndex - 1)}
+                    onClick={(): void => {
+                      setSelectedImageIndex(selectedImageIndex - 1);
+                      setSelectedVariant(null);
+                    }}
                     className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-800 shadow-md rounded-full p-2.5 transition-all z-10 cursor-pointer"
                     title="前の商品"
                   >
@@ -241,7 +242,10 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                 
                 {selectedImageIndex < images.length - 1 && (
                   <button
-                    onClick={(): void => setSelectedImageIndex(selectedImageIndex + 1)}
+                    onClick={(): void => {
+                      setSelectedImageIndex(selectedImageIndex + 1);
+                      setSelectedVariant(null);
+                    }}
                     className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-gray-800 shadow-md rounded-full p-2.5 transition-all z-10 cursor-pointer"
                     title="次の商品"
                   >
@@ -295,7 +299,7 @@ export default function DesignImageGallery({ selectedFile }: DesignImageGalleryP
                     return (
                       <button
                         key={idx}
-                        onClick={(): void => setActivePreviewImage(relImg)}
+                        onClick={(): void => setSelectedVariant(relImg)}
                         className={`w-full flex items-center gap-3 p-2 rounded-xl text-left border transition-all cursor-pointer ${
                           isActive 
                             ? 'border-sf-light-blue bg-blue-50/50 ring-1 ring-sf-light-blue' 

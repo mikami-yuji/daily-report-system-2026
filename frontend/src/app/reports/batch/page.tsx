@@ -175,6 +175,54 @@ export default function BatchReportPage() {
         }
     }, [isLoaded]);
 
+    // URLクエリパラメータから重点顧客などの初期情報を自動反映
+    const urlParamsHandledRef = useRef<boolean>(false);
+    useEffect(() => {
+        if (!isLoaded || urlParamsHandledRef.current) return;
+        if (typeof window === 'undefined') return;
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const paramCode = searchParams.get('customerCode');
+        const paramName = searchParams.get('customerName');
+        const paramArea = searchParams.get('area');
+
+        if (paramCode || paramName) {
+            urlParamsHandledRef.current = true;
+            setVisits(prev => {
+                const targetVisit = prev[0] || createEmptyVisit();
+                const updatedFirst: VisitEntry = {
+                    ...targetVisit,
+                    得意先CD: paramCode || targetVisit.得意先CD,
+                    訪問先名: paramName || targetVisit.訪問先名,
+                    エリア: paramArea || targetVisit.エリア,
+                    行動内容: targetVisit.行動内容 || '訪問（アポあり）',
+                };
+                return [updatedFirst, ...prev.slice(1)];
+            });
+
+            if (paramName) {
+                toast.success(`重点顧客「${paramName}」の日報入力を開始しました`, {
+                    icon: '🏢',
+                    id: 'neglected-customer-prefilled',
+                    duration: 4000
+                });
+            }
+
+            if (paramCode) {
+                getDesigns(paramCode, selectedFile)
+                    .then(designs => {
+                        setVisits(prev => prev.map((v, idx) => idx === 0 ? { ...v, designs } : v));
+                    })
+                    .catch(() => {});
+                getInterviewers(paramCode, selectedFile, paramName || undefined)
+                    .then(interviewers => {
+                        setVisits(prev => prev.map((v, idx) => idx === 0 ? { ...v, interviewers } : v));
+                    })
+                    .catch(() => {});
+            }
+        }
+    }, [isLoaded, selectedFile]);
+
     const handleDiscardDraft = (): void => {
         clearDraft();
         setDate(today);

@@ -148,9 +148,12 @@ def proxy_design_requests(request: Request, response: Response, passcode: Option
             )
 
     if not docs and not _cached_viewer_cookies and not passcode:
-        # パスコードもCookieもない場合は401表示
-        response.status_code = 401
-        return {"message": "企画課デザインビューアへのログイン（パスコード入力）が必要です", "documents": []}
+        # パスコードもCookieもない場合は401エラーではなく200で未認証メッセージを返却（トースト誤発火防止）
+        return {
+            "message": "企画課デザインビューアへのログイン（パスコード入力）が必要です",
+            "documents": [],
+            "authenticated": False
+        }
 
-    return {"documents": docs}
+    return {"documents": docs, "authenticated": True if (docs or _cached_viewer_cookies) else False}
 

@@ -48,21 +48,13 @@ const apiLong = axios.create({
 // エラーハンドリングの共通インターセプター設定
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleResponseError = (error: any): Promise<never> => {
-    const isProxy401 = error.config?.url?.includes('/proxy/') && error.response?.status === 401;
+    const isProxy = error.config?.url?.includes('/proxy/');
     const isConflict409 = error.response?.status === 409;
-    let message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
+    const message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
     console.error('API Error:', error);
-    if (isProxy401) {
-        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-        let redirectNotice = '';
-        if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
-            redirectNotice = '\n★Cookie共有のため、日報システムへも「http://192.168.1.5:8001」でアクセスすることをお勧めします。';
-        }
-        message = `企画課ビューアの認証が必要です。「設定」画面でビューアのパスコードを保存するか、下記URLからログインしてください。\nhttp://192.168.1.5:8888/viewer.html${redirectNotice}`;
-        toast.error(`通信エラー: ${message}`, {
-            id: 'proxy-unauthorized',
-            duration: 12000, // URLと案内を確認・コピーしやすくするため表示時間を長め(12秒)に設定
-        });
+    if (isProxy) {
+        // 企画課ビューアとの通信エラー（未認証・出先未接続・オフライン時等）は画面全体への12秒エラートーストを抑止
+        console.warn(`[Viewer Proxy Notice] ${message}`);
     } else if (isConflict409) {
         toast.error(`⚠️ ${message}`, {
             id: 'concurrency-conflict',

@@ -1,14 +1,13 @@
 {
-  "version": "2.5.0",
+  "version": "2.5.1",
   "releaseDate": "2026-09-11",
-  "fileName": "DailyReportServer_v2.5.0.exe",
-  "fileSize": 49162395,
-  "sha256": "fd0e7c37a981e47e36c960629b47132d6f3af1fe37f9c7e8dcf4959cae30480b",
+  "fileName": "DailyReportServer_v2.5.1.exe",
+  "fileSize": 49166999,
+  "sha256": "85959f51f1d32d67216d9a118b462a88e67c22a163889ed1ff3e8dae5c3fc668",
   "forceUpdate": false,
   "releaseNotes": [
-    "オフライン作業時の日報一覧・詳細即時表示",
-    "未同期バッジ表示",
-    "一括作成オフライン対応",
-    "手動再同期通知改善"
+    "オフライン日報の再編集・削除堅牢化",
+    "企画課ビューア未認証通知抑制",
+    "重点顧客アラートからの自動入力連携"
   ]
 }

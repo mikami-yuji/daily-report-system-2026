@@ -93,6 +93,43 @@ def get_pending_create_task(task_id: int) -> Optional[Dict[str, Any]]:
             return t
     return None
 
+def update_pending_create_task(task_id: int, updated_payload: Dict[str, Any]) -> bool:
+    """保留中の新規作成タスクのpayloadを更新（オフライン作成日報の再編集）"""
+    with _get_sqlite_conn() as conn:
+        cursor = conn.execute(
+            "SELECT payload_json FROM sync_queue WHERE id = ? AND task_type = 'create' AND status IN ('pending', 'error')",
+            (task_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+        try:
+            existing_payload = json.loads(row[0])
+        except Exception:
+            existing_payload = {}
+        existing_payload.update(updated_payload)
+        new_payload_json = json.dumps(existing_payload, ensure_ascii=False)
+        conn.execute(
+            "UPDATE sync_queue SET payload_json = ?, last_error = NULL WHERE id = ?",
+            (new_payload_json, task_id)
+        )
+        conn.commit()
+        logging.info(f"Updated pending create task #{task_id} with new fields.")
+        return True
+
+def cancel_pending_task(task_id: int) -> bool:
+    """保留中のタスクを取り消し（オフライン作成日報の破棄）"""
+    with _get_sqlite_conn() as conn:
+        cursor = conn.execute(
+            "UPDATE sync_queue SET status = 'canceled' WHERE id = ? AND status IN ('pending', 'error')",
+            (task_id,)
+        )
+        conn.commit()
+        canceled = cursor.rowcount > 0
+        if canceled:
+            logging.info(f"Canceled pending sync task #{task_id}.")
+        return canceled
+
 def get_pending_task_count() -> int:
     """未同期のタスク件数を取得"""
     try:

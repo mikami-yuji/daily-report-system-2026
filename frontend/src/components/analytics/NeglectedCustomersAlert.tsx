@@ -174,8 +174,13 @@ export default function NeglectedCustomersAlert({ alerts, onSelectCustomer }: Ne
                                         )}
 
                                         <Link
-                                            href={`/reports/batch`}
-                                            className="px-3 py-1 text-xs font-bold text-white bg-sf-light-blue hover:bg-blue-600 rounded-md shadow-sm transition-colors flex items-center gap-1"
+                                            href={`/reports/batch?customerCode=${encodeURIComponent(alert.code)}&customerName=${encodeURIComponent(alert.name)}${alert.area ? `&area=${encodeURIComponent(alert.area)}` : ''}`}
+                                            onClick={() => {
+                                                if (onSelectCustomer) {
+                                                    onSelectCustomer(alert.code, alert.name);
+                                                }
+                                            }}
+                                            className="px-3 py-1 text-xs font-bold text-white bg-sf-light-blue hover:bg-blue-600 rounded-md shadow-sm transition-colors flex items-center gap-1 cursor-pointer"
                                             title="この顧客の日報を作成"
                                         >
                                             <PlusCircle size={13} />

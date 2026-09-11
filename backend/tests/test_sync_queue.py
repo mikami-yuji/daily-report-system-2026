@@ -3,6 +3,9 @@ import sys
 import tempfile
 import openpyxl
 import pytest
+import hashlib
+import sqlite3
+import pandas as pd
 from fastapi import BackgroundTasks
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -269,4 +272,95 @@ def test_overlay_pending_tasks_in_get_reports():
             os.rmdir(temp_dir)
         except Exception:
             pass
+
+
+def test_negative_mgmt_no_update_and_delete():
+    """未同期のオフライン新規日報（負の管理番号）に対する再編集と削除を検証"""
+    temp_dir = tempfile.mkdtemp()
+    orig_db = config.SQLITE_CACHE_DB
+    orig_excel_dir = config.EXCEL_DIR
+    test_db = os.path.join(temp_dir, "test_neg_mgmt.db")
+    test_filename = "neg_mgmt.xlsm"
+
+    config.SQLITE_CACHE_DB = test_db
+    config.EXCEL_DIR = os.path.join(temp_dir, "non_existent_excel_dir")
+
+    try:
+        # 0. 空の既存キャッシュを作成
+        cache_id = hashlib.md5(f"{test_filename}_営業日報".encode('utf-8')).hexdigest()
+        table_name = f"sheet_{cache_id}"
+        dummy_df = pd.DataFrame(columns=["管理番号", "日付", "得意先CD", "訪問先名", "商談内容", "上長コメント", "コメント返信欄"])
+        with sqlite3.connect(test_db) as conn:
+            dummy_df.to_sql(table_name, conn, if_exists='replace', index=False)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _cache_meta (
+                    cache_id TEXT PRIMARY KEY,
+                    filename TEXT,
+                    sheet_name TEXT,
+                    mtime REAL,
+                    updated_at TEXT
+                )
+            """)
+            conn.execute("INSERT OR REPLACE INTO _cache_meta VALUES (?, ?, ?, ?, ?)",
+                         (cache_id, test_filename, "営業日報", 1.0, "2026-09-11T12:00:00"))
+            conn.commit()
+
+        from fastapi import BackgroundTasks
+        # 1. オフライン新規日報作成
+        new_report = models.ReportInput(
+            日付="2026-09-11",
+            得意先CD="12345",
+            訪問先名="修正前先",
+            商談内容="修正前商談内容",
+            行動内容="訪問"
+        )
+        res_add = routes_reports.add_report(new_report, BackgroundTasks(), filename=test_filename)
+        task_id = res_add["task_id"]
+        temp_mgmt_no = -task_id
+
+        # 一覧で確認
+        reports = routes_reports.get_reports(test_filename)
+        assert len(reports) == 1
+        assert reports[0]["訪問先名"] == "修正前先"
+
+        # 2. オフライン日報の再編集 (update_report)
+        updated_input = models.ReportInput(
+            日付="2026-09-11",
+            得意先CD="12345",
+            訪問先名="修正後先",
+            商談内容="更新された商談内容",
+            行動内容="訪問"
+        )
+        res_update = routes_reports.update_report(temp_mgmt_no, updated_input, BackgroundTasks(), filename=test_filename)
+        assert res_update.get("status") == "updated_in_queue"
+
+        # 一覧と詳細で修正後の内容が即時反映されているか確認
+        single = routes_reports.get_report_by_id(temp_mgmt_no, filename=test_filename)
+        assert single["訪問先名"] == "修正後先"
+        assert single["商談内容"] == "更新された商談内容"
+
+        # 3. 返信欄の更新 (update_report_reply)
+        res_reply = routes_reports.update_report_reply(temp_mgmt_no, models.ReplyInput(コメント返信欄="返信追記"), BackgroundTasks(), filename=test_filename)
+        assert res_reply.get("success") is True
+        single2 = routes_reports.get_report_by_id(temp_mgmt_no, filename=test_filename)
+        assert single2["コメント返信欄"] == "返信追記"
+
+        # 4. オフライン日報の削除 (delete_report)
+        res_del = routes_reports.delete_report(temp_mgmt_no, filename=test_filename)
+        assert "削除しました" in res_del.get("message", "")
+
+        # 一覧から消えていることを確認
+        reports_after_del = routes_reports.get_reports(test_filename)
+        assert len(reports_after_del) == 0
+
+    finally:
+        config.SQLITE_CACHE_DB = orig_db
+        config.EXCEL_DIR = orig_excel_dir
+        try:
+            for f in os.listdir(temp_dir):
+                os.remove(os.path.join(temp_dir, f))
+            os.rmdir(temp_dir)
+        except Exception:
+            pass
+
 

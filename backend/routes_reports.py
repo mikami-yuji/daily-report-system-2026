@@ -1213,6 +1213,16 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
     """コメント返信欄のみを更新（安全な保存・排他制御・オフライン退避付き）"""
     filename = os.path.basename(filename)
     logging.debug(f"update_report_reply: management_number={management_number}, reply={reply.コメント返信欄}")
+
+    # 0. 未同期のオフライン新規作成日報（負の管理番号）の場合はキュー内を直接更新
+    if management_number < 0:
+        task_id = abs(management_number)
+        ok = sync_queue.update_pending_create_task(task_id, {"コメント返信欄": reply.コメント返信欄})
+        if ok:
+            cache.invalidate_cache(filename, '営業日報', clear_sqlite=False)
+            return {"success": True, "management_number": management_number, "message": "一時退避中の日報返信を更新しました"}
+        raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
+
     excel_file = os.path.join(config.EXCEL_DIR, filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
@@ -1265,6 +1275,21 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
     """上長コメントとコメント返信欄を個別に更新（安全な保存・排他制御・オフライン退避付き）"""
     filename = os.path.basename(filename)
     logging.debug(f"update_report_comment: management_number={management_number}, 上長コメント={comment.上長コメント}, コメント返信欄={comment.コメント返信欄}")
+
+    # 0. 未同期のオフライン新規作成日報（負の管理番号）の場合はキュー内を直接更新
+    if management_number < 0:
+        task_id = abs(management_number)
+        comment_data = {}
+        if comment.上長コメント is not None:
+            comment_data["上長コメント"] = comment.上長コメント
+        if comment.コメント返信欄 is not None:
+            comment_data["コメント返信欄"] = comment.コメント返信欄
+        ok = sync_queue.update_pending_create_task(task_id, comment_data)
+        if ok:
+            cache.invalidate_cache(filename, '営業日報', clear_sqlite=False)
+            return {"success": True, "management_number": management_number, "message": "一時退避中の日報コメントを更新しました"}
+        raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
+
     excel_file = os.path.join(config.EXCEL_DIR, filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
@@ -1319,6 +1344,27 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
     """承認チェック（上長、山澄常務、岡本常務、中野次長、既読チェック）を個別に更新（排他制御・オフライン退避付き）"""
     filename = os.path.basename(filename)
     logging.debug(f"update_report_approval: management_number={management_number}")
+
+    # 0. 未同期のオフライン新規作成日報（負の管理番号）の場合はキュー内を直接更新
+    if management_number < 0:
+        task_id = abs(management_number)
+        approval_data = {}
+        if approval.上長 is not None:
+            approval_data["上長"] = approval.上長
+        if approval.山澄常務 is not None:
+            approval_data["山澄常務"] = approval.山澄常務
+        if approval.岡本常務 is not None:
+            approval_data["岡本常務"] = approval.岡本常務
+        if approval.中野次長 is not None:
+            approval_data["中野次長"] = approval.中野次長
+        if approval.既読チェック is not None:
+            approval_data["既読チェック"] = approval.既読チェック
+        ok = sync_queue.update_pending_create_task(task_id, approval_data)
+        if ok:
+            cache.invalidate_cache(filename, '営業日報', clear_sqlite=False)
+            return {"success": True, "management_number": management_number, "message": "一時退避中の日報承認を更新しました"}
+        raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
+
     excel_file = os.path.join(config.EXCEL_DIR, filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
@@ -1399,6 +1445,21 @@ def update_report(management_number: int, report: models.ReportInput, background
     """既存の日報を更新（全項目対応・排他制御・オフライン退避付き）"""
     filename = os.path.basename(filename)
     logging.info(f"update_report called: management_number={management_number}, original_values={report.original_values}")
+
+    # 0. 未同期のオフライン新規作成日報（負の管理番号）の場合はキュー内を直接更新
+    if management_number < 0:
+        task_id = abs(management_number)
+        ok = sync_queue.update_pending_create_task(task_id, report.model_dump())
+        if ok:
+            cache.invalidate_cache(filename, '営業日報', clear_sqlite=False)
+            return {
+                "message": "一時退避中の日報を更新しました",
+                "management_number": management_number,
+                "status": "updated_in_queue",
+                "offline": True
+            }
+        raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
+
     excel_file = os.path.join(config.EXCEL_DIR, filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
@@ -1450,6 +1511,19 @@ def update_report(management_number: int, report: models.ReportInput, background
 def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_FILE):
     """指定された管理番号の日報を削除（排他制御・オフライン退避付き）"""
     filename = os.path.basename(filename)
+
+    # 0. 未同期のオフライン新規作成日報（負の管理番号）の場合はキュー内タスクを安全に取り消し
+    if management_number < 0:
+        task_id = abs(management_number)
+        ok = sync_queue.cancel_pending_task(task_id)
+        if ok:
+            cache.invalidate_cache(filename, '営業日報', clear_sqlite=False)
+            return {
+                "message": "一時退避中の日報を削除しました",
+                "management_number": management_number
+            }
+        raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
+
     excel_file = os.path.join(config.EXCEL_DIR, filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）

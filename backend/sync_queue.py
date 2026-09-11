@@ -79,6 +79,20 @@ def get_pending_tasks() -> List[Dict[str, Any]]:
             })
         return tasks
 
+def get_pending_tasks_for_file(filename: str) -> List[Dict[str, Any]]:
+    """指定されたExcelファイルの未同期タスクを登録日時順（FIFO）に取得"""
+    target_basename = os.path.basename(filename)
+    all_pending = get_pending_tasks()
+    return [t for t in all_pending if os.path.basename(t.get("filename", "")) == target_basename]
+
+def get_pending_create_task(task_id: int) -> Optional[Dict[str, Any]]:
+    """ID指定で新規作成未同期タスクを取得"""
+    tasks = get_pending_tasks()
+    for t in tasks:
+        if t["id"] == task_id:
+            return t
+    return None
+
 def get_pending_task_count() -> int:
     """未同期のタスク件数を取得"""
     try:

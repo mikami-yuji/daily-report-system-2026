@@ -353,6 +353,11 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                 <div className="p-5 border-b border-sf-border flex justify-between items-start bg-slate-50/80">
                     <div className="flex-1 pr-4">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            {report._is_pending_sync && (
+                                <span className="text-xs px-2.5 py-0.5 rounded font-semibold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                                    ☁️ 一時退避中（未同期）
+                                </span>
+                            )}
                             <span className="text-xs px-2 py-0.5 rounded font-semibold bg-blue-100 text-blue-800 border border-blue-200">
                                 {report.行動内容 || '訪問'}
                             </span>
@@ -439,6 +444,15 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                         </button>
                     </div>
                 </div>
+
+                {report._is_pending_sync && (
+                    <div className="bg-amber-50 border-b border-amber-200 px-5 py-2.5 text-xs text-amber-800 flex items-center gap-2">
+                        <span className="text-base">☁️</span>
+                        <span>
+                            <strong>一時退避中（未同期）：</strong> この日報はオフラインまたはサーバー未接続時に保存されました。社内ファイルサーバー接続復旧時に自動で原本Excelへ反映されます。
+                        </span>
+                    </div>
+                )}
 
                 {/* タブ切り替えバー */}
                 <div className="bg-slate-100/90 px-5 pt-2 border-b border-sf-border flex items-center gap-2">

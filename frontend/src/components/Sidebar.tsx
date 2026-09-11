@@ -21,6 +21,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useOffline } from '@/context/OfflineContext';
 import { CloudOff, RefreshCw } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { getSyncStatus } from '@/lib/api';
 
 function SyncStatus({ collapsed }: { collapsed: boolean }) {
     const { isOnline, fileServerConnected, pendingSyncCount, triggerServerSync, offlineReports, syncReports } = useOffline();
@@ -29,6 +31,32 @@ function SyncStatus({ collapsed }: { collapsed: boolean }) {
 
     const isServerOffline = !fileServerConnected;
     const totalPending = pendingSyncCount + browserPending;
+
+    const handleManualSync = async () => {
+        if (browserSyncing > 0) return;
+
+        // 1. ブラウザ側オフラインキューがあれば同期試行
+        if (browserPending > 0) {
+            await syncReports();
+        }
+
+        // 2. サーバー接続診断と即時同期
+        toast.loading('ファイルサーバー接続を確認中...', { id: 'manual-sync-check' });
+        try {
+            const status = await getSyncStatus();
+            if (status.file_server_connected) {
+                toast.success('ファイルサーバー接続確認！同期を開始します', { id: 'manual-sync-check' });
+                await triggerServerSync();
+            } else {
+                toast.error(
+                    '社内ファイルサーバーに接続できません。\n社内Wi-FiまたはVPNが接続されているかご確認ください。',
+                    { id: 'manual-sync-check', duration: 5000 }
+                );
+            }
+        } catch {
+            toast.error('サーバー状態の確認に失敗しました', { id: 'manual-sync-check' });
+        }
+    };
 
     // 完全に正常な場合：安心の接続中インジケーター
     if (isOnline && !isServerOffline && totalPending === 0 && browserSyncing === 0) {
@@ -61,12 +89,7 @@ function SyncStatus({ collapsed }: { collapsed: boolean }) {
     if (isServerOffline || totalPending > 0) {
         return (
             <div
-                onClick={() => {
-                    if (isOnline && fileServerConnected) {
-                        triggerServerSync();
-                        syncReports();
-                    }
-                }}
+                onClick={handleManualSync}
                 className={`p-2 rounded-md text-xs cursor-pointer transition-all border ${
                     isServerOffline 
                         ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' 

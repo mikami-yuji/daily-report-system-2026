@@ -31,6 +31,8 @@ export type Report = {
     既読チェック: string;
     'システム確認用デザインNo.': string;
     original_values?: Record<string, unknown>; // For optimistic locking
+    _is_pending_sync?: boolean; // オフライン一時退避フラグ
+    _sync_task_id?: number;
 };
 
 export type ExcelFile = {

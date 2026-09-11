@@ -321,9 +321,125 @@ def get_interviewers_by_query(customer_code: str, filename: str = config.DEFAULT
 
 
 
+def _merge_pending_sync_tasks(records: List[Dict[str, Any]], filename: str) -> List[Dict[str, Any]]:
+    """未同期タスク（sync_queue）を日報レコード一覧へ合成（オーバーレイ）"""
+    try:
+        pending = sync_queue.get_pending_tasks_for_file(filename)
+        if not pending:
+            return records
+
+        records_map = {r["管理番号"]: r for r in records if "管理番号" in r and r["管理番号"] is not None}
+        new_pending_records = []
+        deleted_ids = set()
+
+        for task in pending:
+            t_type = task["task_type"]
+            mgmt = task.get("management_number")
+            payload = task.get("payload", {})
+
+            if t_type == "create":
+                # 新規作成タスク: 仮管理番号として -task_id を割り当て
+                temp_id = -task["id"]
+                pending_rec = {
+                    "管理番号": temp_id,
+                    "_is_pending_sync": True,
+                    "_sync_task_id": task["id"],
+                    "日付": payload.get("日付", ""),
+                    "得意先CD": str(payload.get("得意先CD", "")) if payload.get("得意先CD") is not None else "",
+                    "訪問先名": payload.get("訪問先名", ""),
+                    "直送先CD": str(payload.get("直送先CD", "")) if payload.get("直送先CD") is not None else "",
+                    "直送先名": payload.get("直送先名", ""),
+                    "面談者": payload.get("面談者", ""),
+                    "滞在時間": payload.get("滞在時間", ""),
+                    "商談内容": payload.get("商談内容", ""),
+                    "提案物": payload.get("提案物", ""),
+                    "次回プラン": payload.get("次回プラン", ""),
+                    "競合他社情報": payload.get("競合他社情報", ""),
+                    "エリア": payload.get("エリア", ""),
+                    "行動内容": payload.get("行動内容", ""),
+                    "ランク": payload.get("ランク", ""),
+                    "重点顧客": payload.get("重点顧客", ""),
+                    "デザイン提案有無": payload.get("デザイン提案有無", ""),
+                    "デザイン種別": payload.get("デザイン種別", ""),
+                    "デザイン名": payload.get("デザイン名", ""),
+                    "デザイン進捗状況": payload.get("デザイン進捗状況", ""),
+                    "デザイン依頼No.": payload.get("デザイン依頼No.", ""),
+                    "システム確認用デザインNo.": payload.get("システム確認用デザインNo.", payload.get("デザイン依頼No.", "")),
+                    "上長コメント": payload.get("上長コメント", ""),
+                    "コメント返信欄": payload.get("コメント返信欄", ""),
+                    "上長確認": payload.get("上長確認", ""),
+                    "山澄常務確認": payload.get("山澄常務確認", ""),
+                    "岡本常務確認": payload.get("岡本常務確認", ""),
+                    "中野次長確認": payload.get("中野次長確認", ""),
+                }
+                for k, v in payload.items():
+                    if k not in pending_rec:
+                        pending_rec[k] = v
+                new_pending_records.append(pending_rec)
+
+            elif t_type == "update" and mgmt in records_map:
+                rec = records_map[mgmt]
+                rec["_is_pending_sync"] = True
+                rec["_sync_task_id"] = task["id"]
+                for k, v in payload.items():
+                    if k != "管理番号" and v is not None:
+                        rec[k] = v
+
+            elif t_type == "comment" and mgmt in records_map:
+                rec = records_map[mgmt]
+                rec["_is_pending_sync"] = True
+                rec["_sync_task_id"] = task["id"]
+                if "上長コメント" in payload and payload["上長コメント"] is not None:
+                    rec["上長コメント"] = payload["上長コメント"]
+                if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
+                    rec["コメント返信欄"] = payload["コメント返信欄"]
+
+            elif t_type == "reply" and mgmt in records_map:
+                rec = records_map[mgmt]
+                rec["_is_pending_sync"] = True
+                rec["_sync_task_id"] = task["id"]
+                if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
+                    rec["コメント返信欄"] = payload["コメント返信欄"]
+
+            elif t_type == "approval" and mgmt in records_map:
+                rec = records_map[mgmt]
+                rec["_is_pending_sync"] = True
+                rec["_sync_task_id"] = task["id"]
+                for role_col in ["上長確認", "山澄常務確認", "岡本常務確認", "中野次長確認"]:
+                    if role_col in payload:
+                        rec[role_col] = payload[role_col]
+
+            elif t_type == "delete" and mgmt:
+                deleted_ids.add(mgmt)
+
+        filtered_records = [r for r in records if r.get("管理番号") not in deleted_ids]
+        merged = new_pending_records + filtered_records
+        logging.info(f"Overlayed {len(pending)} pending sync tasks onto reports for {filename} ({len(new_pending_records)} new pending)")
+        return merged
+    except Exception as e:
+        logging.warning(f"Failed to overlay pending sync tasks: {e}")
+        return records
+
+
 @router.get("/api/reports/{management_number}")
 def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCEL_FILE) -> Dict[str, Any]:
-    """指定された管理番号の日報を取得"""
+    """指定された管理番号の日報を取得（未同期タスク合成対応）"""
+    filename = os.path.basename(filename)
+
+    # 1. 負の管理番号（未同期作成タスク）の場合: sync_queue から直接復元
+    if management_number < 0:
+        task_id = abs(management_number)
+        task = sync_queue.get_pending_create_task(task_id)
+        if task:
+            payload = task.get("payload", {})
+            return {
+                "管理番号": management_number,
+                "_is_pending_sync": True,
+                "_sync_task_id": task["id"],
+                **payload
+            }
+        raise HTTPException(status_code=404, detail=f"Pending report #{task_id} not found in sync queue")
+
     try:
         # Get dataframe from cache
         df = cache.get_cached_dataframe(filename, excel_schema.SHEET_DAILY_REPORT)
@@ -369,6 +485,28 @@ def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCE
             else:
                 cleaned_record[key] = value
         
+        # 未同期タスクがあればオーバーレイ
+        pending = sync_queue.get_pending_tasks_for_file(filename)
+        for task in pending:
+            if task.get("management_number") == management_number:
+                t_type = task["task_type"]
+                payload = task.get("payload", {})
+                cleaned_record["_is_pending_sync"] = True
+                cleaned_record["_sync_task_id"] = task["id"]
+                if t_type == "update":
+                    for k, v in payload.items():
+                        if k != "管理番号" and v is not None:
+                            cleaned_record[k] = v
+                elif t_type in ("comment", "reply"):
+                    if "上長コメント" in payload and payload["上長コメント"] is not None:
+                        cleaned_record["上長コメント"] = payload["上長コメント"]
+                    if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
+                        cleaned_record["コメント返信欄"] = payload["コメント返信欄"]
+                elif t_type == "approval":
+                    for role_col in ["上長確認", "山澄常務確認", "岡本常務確認", "中野次長確認"]:
+                        if role_col in payload:
+                            cleaned_record[role_col] = payload[role_col]
+
         return cleaned_record
     except HTTPException:
         raise
@@ -448,7 +586,7 @@ def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any
                 cleaned_records.append(cleaned_record)
 
             logging.info(f"Successfully fetched {len(cleaned_records)} reports for {filename}")
-            return cleaned_records
+            return _merge_pending_sync_tasks(cleaned_records, filename)
             
         except HTTPException:
             # HTTPException（404など）はそのまま再送出

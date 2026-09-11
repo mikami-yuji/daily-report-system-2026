@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Report, searchDesignImages, DesignImage, batchUpdateReportApproval, updateReportApproval } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
+import { useOffline } from '@/context/OfflineContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { 
     Plus, 
@@ -39,6 +40,7 @@ import { queryKeys } from '@/hooks/useQueryHooks';
 export default function ReportsPage(): React.JSX.Element {
     const router = useRouter();
     const { files, selectedFile, setSelectedFile } = useFile();
+    const { offlineReports } = useOffline();
     const queryClient = useQueryClient();
 
     // React Queryでデータ取得（自動キャッシュ）
@@ -121,8 +123,46 @@ export default function ReportsPage(): React.JSX.Element {
 
     // レポートのソートと有効データフィルタリング（useMemoでキャッシュ）
     const reports = useMemo(() => {
-        // 日付があるレポートのみ
-        const validData = rawReports.filter(report => report.日付 && report.日付.trim() !== '');
+        // ブラウザローカル未送信データがあれば合成
+        const browserPendingReports: Report[] = (offlineReports || [])
+            .filter(r => !selectedFile || r.filename === selectedFile)
+            .filter(r => r.status === 'pending' || r.status === 'error')
+            .map((r, idx) => ({
+                管理番号: -(900000 + idx),
+                日付: (r.data as Report).日付 || '',
+                得意先CD: (r.data as Report).得意先CD || '',
+                訪問先名: (r.data as Report).訪問先名 || '',
+                直送先CD: (r.data as Report).直送先CD || '',
+                直送先名: (r.data as Report).直送先名 || '',
+                行動内容: (r.data as Report).行動内容 || '',
+                面談者: (r.data as Report).面談者 || '',
+                滞在時間: (r.data as Report).滞在時間 || '',
+                商談内容: (r.data as Report).商談内容 || '',
+                提案物: (r.data as Report).提案物 || '',
+                次回プラン: (r.data as Report).次回プラン || '',
+                競合他社情報: (r.data as Report).競合他社情報 || '',
+                エリア: (r.data as Report).エリア || '',
+                ランク: (r.data as Report).ランク || '',
+                重点顧客: (r.data as Report).重点顧客 || '',
+                デザイン提案有無: (r.data as Report).デザイン提案有無 || '',
+                デザイン種別: (r.data as Report).デザイン種別 || '',
+                デザイン名: (r.data as Report).デザイン名 || '',
+                デザイン進捗状況: (r.data as Report).デザイン進捗状況 || '',
+                'デザイン依頼No.': (r.data as Report)['デザイン依頼No.'] || '',
+                'システム確認用デザインNo.': (r.data as Report)['システム確認用デザインNo.'] || '',
+                上長コメント: '',
+                コメント返信欄: '',
+                上長: '',
+                山澄常務: '',
+                岡本常務: '',
+                中野次長: '',
+                既読チェック: '',
+                得意先目標: '',
+                _is_pending_sync: true
+            }));
+
+        const combined = [...browserPendingReports, ...rawReports];
+        const validData = combined.filter(report => report.日付 && report.日付.trim() !== '');
         // ソート
         return [...validData].sort((a, b) => {
             const dateA = String(a.日付 || '');
@@ -140,7 +180,7 @@ export default function ReportsPage(): React.JSX.Element {
             const numB = Number(b.管理番号) || 0;
             return sortOrder === 'asc' ? numA - numB : numB - numA;
         });
-    }, [rawReports, sortOrder]);
+    }, [rawReports, offlineReports, selectedFile, sortOrder]);
 
     const totalPages = Math.ceil(reports.length / itemsPerPage);
     const paginatedReports = reports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -619,7 +659,20 @@ export default function ReportsPage(): React.JSX.Element {
                                                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                                 />
                                             </td>
-                                            <td className="py-2.5 px-3 text-sf-text-weak font-mono align-top">{report.管理番号}</td>
+                                            <td className="py-2.5 px-3 text-sf-text-weak font-mono align-top">
+                                                {Number(report.管理番号) < 0 ? (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                                        ☁️ 未同期
+                                                    </span>
+                                                ) : (
+                                                    <>
+                                                        {report.管理番号}
+                                                        {report._is_pending_sync && (
+                                                            <span className="block text-[10px] text-amber-700 font-sans font-semibold">☁️未同期</span>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </td>
                                             <td className="py-2.5 px-3 font-medium whitespace-nowrap align-top">{report.日付}</td>
                                             <td className="py-2.5 px-3 align-top">
                                                 <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] border font-medium whitespace-nowrap ${getActionBadgeColor(report.行動内容)}`}>
@@ -750,6 +803,11 @@ export default function ReportsPage(): React.JSX.Element {
                                                             <span className={`px-1.5 py-0.5 rounded text-[11px] border font-medium whitespace-nowrap ${getActionBadgeColor(report.行動内容)}`}>
                                                                 {report.行動内容 || '訪問'}
                                                             </span>
+                                                            {report._is_pending_sync && (
+                                                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                                    ☁️ 未同期
+                                                                </span>
+                                                            )}
                                                             <span className="font-bold text-sf-text text-sm">
                                                                 {report.訪問先名}
                                                             </span>
@@ -856,6 +914,11 @@ export default function ReportsPage(): React.JSX.Element {
                                                             <span className={`px-2 py-0.5 rounded text-xs border font-medium ${getActionBadgeColor(report.行動内容)}`}>
                                                                 {report.行動内容 || '訪問'}
                                                             </span>
+                                                            {report._is_pending_sync && (
+                                                                <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                                    ☁️ 一時退避中（未同期）
+                                                                </span>
+                                                            )}
                                                             <span className="font-bold text-sm sm:text-base text-sf-text hover:text-sf-light-blue transition-colors">
                                                                 {report.訪問先名}
                                                             </span>
@@ -958,6 +1021,11 @@ export default function ReportsPage(): React.JSX.Element {
                                                         <span className={`px-2.5 py-1 rounded text-xs border font-medium ${getActionBadgeColor(report.行動内容)}`}>
                                                             {report.行動内容 || '訪問'}
                                                         </span>
+                                                        {report._is_pending_sync && (
+                                                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                                ☁️ 一時退避中（未同期）
+                                                            </span>
+                                                        )}
                                                         <span className="text-lg font-bold text-sf-text hover:text-sf-light-blue">
                                                             {report.訪問先名}
                                                         </span>

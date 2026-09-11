@@ -821,6 +821,11 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                             日報編集 (No. {report?.管理番号})
                             {submitting && <span className="ml-3 text-sm text-blue-600">処理中...</span>}
                         </h2>
+                        {report?._is_pending_sync && (
+                            <span className="text-xs px-2.5 py-1 rounded font-semibold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 shadow-2xs">
+                                ☁️ 一時退避中（未同期）
+                            </span>
+                        )}
                         {initialDraft && (
                             <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
                                 <span className="text-xs text-blue-700 font-medium animate-pulse">
@@ -846,6 +851,15 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         <X size={24} />
                     </button>
                 </div>
+
+                {report?._is_pending_sync && (
+                    <div className="bg-amber-50 border-b border-amber-200 px-6 py-2.5 text-xs text-amber-800 flex items-center gap-2">
+                        <span className="text-base">☁️</span>
+                        <span>
+                            <strong>一時退避中（未同期）：</strong> この日報はオフラインまたはサーバー未接続時に保存されました。再編集して保存した場合もオフラインキューで保持され、ファイルサーバー復旧時に自動同期されます。
+                        </span>
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

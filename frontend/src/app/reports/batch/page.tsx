@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
+import { useOffline } from '@/context/OfflineContext';
 import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
@@ -92,6 +93,7 @@ type BatchDraftData = {
 
 export default function BatchReportPage() {
     const { selectedFile } = useFile();
+    const { isOnline, saveOfflineReport } = useOffline();
     const queryClient = useQueryClient();
 
     // 下書き保存フック
@@ -750,6 +752,7 @@ export default function BatchReportPage() {
         setSaveStatus('sending');
 
         let successCount = 0;
+        let savedOfflineCount = 0;
         let errorCount = 0;
 
         // 最低表示時間を並行で走らせる
@@ -823,11 +826,27 @@ export default function BatchReportPage() {
                 };
 
                 try {
-                    await addReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
-                    successCount++;
+                    if (!isOnline) {
+                        saveOfflineReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
+                        savedOfflineCount++;
+                        successCount++;
+                    } else {
+                        const res = await addReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
+                        if (res && (res as { offline?: boolean }).offline) {
+                            savedOfflineCount++;
+                        }
+                        successCount++;
+                    }
                 } catch (error) {
-                    console.error('Failed to create report:', error);
-                    errorCount++;
+                    console.warn('Network save failed, falling back to browser offline storage:', error);
+                    try {
+                        saveOfflineReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
+                        savedOfflineCount++;
+                        successCount++;
+                    } catch (offlineErr) {
+                        console.error('Failed to create report even offline:', offlineErr);
+                        errorCount++;
+                    }
                 }
             }
         })();
@@ -838,7 +857,11 @@ export default function BatchReportPage() {
 
             if (successCount > 0) {
                 setSaveStatus('success');
-                toast.success(`${successCount}件の日報を保存しました`);
+                if (savedOfflineCount > 0) {
+                    toast.success(`${successCount}件の日報を一時保存しました（オンライン復帰時に自動反映されます）`, { icon: '☁️' });
+                } else {
+                    toast.success(`${successCount}件の日報を保存しました`);
+                }
                 queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
                 
                 // 成功演出をしっかり見せてからリセット

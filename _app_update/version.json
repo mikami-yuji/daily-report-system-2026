@@ -1,13 +1,14 @@
 {
-  "version": "2.4.9",
+  "version": "2.5.0",
   "releaseDate": "2026-09-11",
-  "fileName": "DailyReportServer_v2.4.9.exe",
-  "fileSize": 49280256,
-  "sha256": "9a76192cedf8bc9efdb06a3ab87ac61d2b71c31cf4305711d6fd3dafd869d07b",
+  "fileName": "DailyReportServer_v2.5.0.exe",
+  "fileSize": 49162395,
+  "sha256": "fd0e7c37a981e47e36c960629b47132d6f3af1fe37f9c7e8dcf4959cae30480b",
   "forceUpdate": false,
   "releaseNotes": [
-    "オフライン同期直後の画面即時自動反映",
-    "原本反映時のSQLiteキャッシュ事前ウォームアップ",
-    "過去PKLによる不整合防止"
+    "オフライン作業時の日報一覧・詳細即時表示",
+    "未同期バッジ表示",
+    "一括作成オフライン対応",
+    "手動再同期通知改善"
   ]
 }

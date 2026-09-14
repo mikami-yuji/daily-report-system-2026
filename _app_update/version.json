@@ -1,11 +1,13 @@
 {
-  "version": "2.5.5",
-  "releaseDate": "2026-09-14",
-  "fileName": "DailyReportServer_v2.5.5.exe",
-  "fileSize": 49169701,
-  "sha256": "dc9bdf5324b712db76d5c46c44f76da6dc205cd5e6bd7dc189b9b50a4bbc3c3d",
+  "version": "2.5.6",
+  "releaseDate": "2026-09-15",
+  "fileName": "DailyReportServer_v2.5.6.exe",
+  "fileSize": 49170706,
+  "sha256": "b84b02add4f42da8f59db7f2747cccfb413868b00e8600753aad9f9a86342313",
   "forceUpdate": false,
   "releaseNotes": [
-    "デザイン検索の得意先名から直送先名の混入を除去・分離表示対応"
+    "フロントエンド警告完全解消",
+    "売上CSV自動読込受け口の安全実装",
+    "オフライン同期改善"
   ]
 }

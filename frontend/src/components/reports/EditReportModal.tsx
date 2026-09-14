@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Report, updateReport, getDesigns, Design, getSuggestedArea, Customer, getCustomers, getInterviewers } from '@/lib/api';
-import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
-import { X, Loader2, Check, MapPin } from 'lucide-react';
+import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, isKidokuChecked } from '@/lib/reportUtils';
+import { X, Loader2, Check, MapPin, CheckCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useOffline } from '@/context/OfflineContext';
@@ -1437,8 +1437,14 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-sf-border">
                         <div>
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <label className="block text-sm font-medium text-sf-text text-blue-800">上長コメント</label>
+                                {isKidokuChecked(report?.既読チェック) && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-full shadow-2xs">
+                                        <CheckCheck size={12} className="stroke-[2.5] text-emerald-600" />
+                                        既読チェック済
+                                    </span>
+                                )}
                                 {hasDraftComment && (
                                     <div className="flex items-center gap-2 ml-auto">
                                         <span className="text-xs font-normal text-yellow-700 bg-yellow-100 border border-yellow-300 px-2 py-0.5 rounded animate-pulse">

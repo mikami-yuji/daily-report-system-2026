@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Report, deleteReport, updateReportComment, updateReportApproval, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
-import { cleanText } from '@/lib/reportUtils';
+import { cleanText, isKidokuChecked } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, ExternalLink, Lightbulb, MessageSquare, Copy, History, FileText } from 'lucide-react';
+import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, ExternalLink, Lightbulb, MessageSquare, Copy, History, FileText, CheckCheck } from 'lucide-react';
 import DesignImagePreviewModal from './DesignImagePreviewModal';
 import DesignImageHoverButton from './DesignImageHoverButton';
 import toast from 'react-hot-toast';
@@ -758,6 +758,12 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
                                         <MessageSquare size={15} className="text-blue-600" />
                                     )}
                                     上長コメント
+                                    {isKidokuChecked(approvals.既読チェック || report?.既読チェック) && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-full shadow-2xs">
+                                            <CheckCheck size={12} className="stroke-[2.5] text-emerald-600" />
+                                            既読チェック済
+                                        </span>
+                                    )}
                                     {processingComment === '上長コメント' && (
                                         <span className="text-xs font-normal text-blue-600 ml-2">保存中...</span>
                                     )}

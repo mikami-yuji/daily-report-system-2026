@@ -294,3 +294,14 @@ export function extractCleanCustomerName(
 
     return cleanName;
 }
+
+/**
+ * 既読チェックが入っているかを判定します。
+ * Excel原本やAPIレスポンスの '✓', 'ü', '済', '1', 'true' などの値に対応します。
+ */
+export function isKidokuChecked(val?: string | null): boolean {
+    if (!val) return false;
+    const s = String(val).trim();
+    if (!s || s === '0' || s.toLowerCase() === 'false') return false;
+    return s === '✓' || s === '済' || s === 'ü' || s === '1' || s.toLowerCase() === 'true';
+}

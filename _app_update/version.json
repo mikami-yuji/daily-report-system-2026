@@ -1,13 +1,11 @@
 {
-  "version": "2.5.6",
+  "version": "2.5.7",
   "releaseDate": "2026-09-15",
-  "fileName": "DailyReportServer_v2.5.6.exe",
-  "fileSize": 49170706,
-  "sha256": "b84b02add4f42da8f59db7f2747cccfb413868b00e8600753aad9f9a86342313",
+  "fileName": "DailyReportServer_v2.5.7.exe",
+  "fileSize": 49171616,
+  "sha256": "59653a300b16d726f0834118e615973417e54d01ea62be01fa682165a1d81221",
   "forceUpdate": false,
   "releaseNotes": [
-    "フロントエンド警告完全解消",
-    "売上CSV自動読込受け口の安全実装",
-    "オフライン同期改善"
+    "上長コメント枠内での既読チェック状態表示対応"
   ]
 }

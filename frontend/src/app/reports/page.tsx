@@ -15,6 +15,7 @@ import {
     Table, 
     Calendar, 
     Check, 
+    CheckCheck,
     MessageSquare, 
     Lightbulb, 
     Palette,
@@ -30,7 +31,7 @@ import EditReportModal from '@/components/reports/EditReportModal';
 import ReportDetailModal from '@/components/reports/ReportDetailModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
 import DesignImageHoverButton from '@/components/reports/DesignImageHoverButton';
-import { cleanText, compareDates } from '@/lib/reportUtils';
+import { cleanText, compareDates, isKidokuChecked } from '@/lib/reportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 
@@ -690,15 +691,34 @@ export default function ReportsPage(): React.JSX.Element {
                                                 )}
 
                                                 {/* 上長コメント（折り返してすべて表示） */}
-                                                {hasContent(report.上長コメント) && (
-                                                    <div className="text-[11px] text-blue-900 whitespace-pre-wrap break-words leading-relaxed mt-1 flex items-start gap-1 bg-blue-50/80 p-1.5 rounded border border-blue-200/80">
-                                                        <MessageSquare size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                                                        <div className="flex-1">
-                                                            <span className="font-semibold text-blue-800 mr-1">上長コメント:</span>
-                                                            {cleanText(report.上長コメント)}
+                                                {hasContent(report.上長コメント) && (() => {
+                                                    const isKidoku = isKidokuChecked(report.既読チェック);
+                                                    return (
+                                                        <div className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed mt-1 flex items-start gap-1 p-1.5 rounded border ${
+                                                            isKidoku 
+                                                                ? 'bg-blue-50/70 border-blue-200/90 border-l-3 border-l-emerald-500 text-blue-950' 
+                                                                : 'bg-blue-50/80 border-blue-200/80 border-l-3 border-l-blue-400 text-blue-900'
+                                                        }`}>
+                                                            <MessageSquare size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center justify-between gap-1 mb-0.5 flex-wrap">
+                                                                    <span className="font-semibold text-blue-800">上長コメント:</span>
+                                                                    {isKidoku ? (
+                                                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded shadow-2xs">
+                                                                            <CheckCheck size={11} className="stroke-[2.5] text-emerald-600" />
+                                                                            既読チェック済
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded">
+                                                                            未読
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {cleanText(report.上長コメント)}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                )}
+                                                    );
+                                                })()}
 
                                                 {/* コメント返信欄（あれば折り返して表示） */}
                                                 {hasContent(report.コメント返信欄) && (
@@ -830,15 +850,34 @@ export default function ReportsPage(): React.JSX.Element {
                                                     )}
 
                                                     {/* 上長コメント（折り返してすべて表示） */}
-                                                    {hasContent(report.上長コメント) && (
-                                                        <div className="text-[11px] bg-blue-50/80 border border-blue-200/80 rounded px-2 py-1 text-blue-950 flex items-start gap-1.5">
-                                                            <MessageSquare size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                                                            <div className="flex-1 whitespace-pre-wrap break-words leading-relaxed">
-                                                                <span className="font-semibold text-blue-800 mr-1">上長コメント:</span>
-                                                                {cleanText(report.上長コメント)}
+                                                    {hasContent(report.上長コメント) && (() => {
+                                                        const isKidoku = isKidokuChecked(report.既読チェック);
+                                                        return (
+                                                            <div className={`text-[11px] border rounded px-2 py-1 text-blue-950 flex items-start gap-1.5 ${
+                                                                isKidoku
+                                                                    ? 'bg-blue-50/70 border-blue-200/90 border-l-3 border-l-emerald-500'
+                                                                    : 'bg-blue-50/80 border-blue-200/80 border-l-3 border-l-blue-400'
+                                                            }`}>
+                                                                <MessageSquare size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                                                                <div className="flex-1 whitespace-pre-wrap break-words leading-relaxed">
+                                                                    <div className="flex items-center justify-between gap-1.5 mb-0.5 flex-wrap">
+                                                                        <span className="font-semibold text-blue-800">上長コメント:</span>
+                                                                        {isKidoku ? (
+                                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded shadow-2xs">
+                                                                                <CheckCheck size={11} className="stroke-[2.5] text-emerald-600" />
+                                                                                既読チェック済
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded">
+                                                                                未読
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {cleanText(report.上長コメント)}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
 
                                                     {/* コメント返信（あれば折り返して表示） */}
                                                     {hasContent(report.コメント返信欄) && (
@@ -939,15 +978,34 @@ export default function ReportsPage(): React.JSX.Element {
                                                     )}
 
                                                     {/* 上長コメント（データがある場合のみ表示: 折り返して全文表示） */}
-                                                    {hasContent(report.上長コメント) && (
-                                                        <div className="text-xs bg-blue-50/80 border border-blue-200 rounded px-3 py-2 text-blue-950 flex items-start gap-2">
-                                                            <MessageSquare size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                                                            <div className="flex-1 whitespace-pre-wrap break-words leading-relaxed">
-                                                                <span className="font-semibold text-blue-800 mr-1.5">上長コメント:</span>
-                                                                {cleanText(report.上長コメント)}
+                                                    {hasContent(report.上長コメント) && (() => {
+                                                        const isKidoku = isKidokuChecked(report.既読チェック);
+                                                        return (
+                                                            <div className={`text-xs border rounded px-3 py-2 text-blue-950 flex items-start gap-2 ${
+                                                                isKidoku
+                                                                    ? 'bg-blue-50/70 border-blue-200/90 border-l-4 border-l-emerald-500'
+                                                                    : 'bg-blue-50/80 border-blue-200 border-l-4 border-l-blue-400'
+                                                            }`}>
+                                                                <MessageSquare size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                                                                <div className="flex-1 whitespace-pre-wrap break-words leading-relaxed">
+                                                                    <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                                                                        <span className="font-semibold text-blue-800">上長コメント:</span>
+                                                                        {isKidoku ? (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-full shadow-2xs">
+                                                                                <CheckCheck size={12} className="stroke-[2.5] text-emerald-600" />
+                                                                                既読チェック済
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded">
+                                                                                未読
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {cleanText(report.上長コメント)}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    )}
+                                                        );
+                                                    })()}
 
                                                     {/* コメント返信（データがある場合のみ表示: 折り返して全文表示） */}
                                                     {hasContent(report.コメント返信欄) && (
@@ -1053,16 +1111,35 @@ export default function ReportsPage(): React.JSX.Element {
 
                                                 {(hasContent(report.上長コメント) || hasContent(report.コメント返信欄)) && (
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100">
-                                                        {hasContent(report.上長コメント) && (
-                                                            <div>
-                                                                <h4 className="text-xs font-semibold text-blue-800 mb-1 flex items-center gap-1">
-                                                                    <MessageSquare size={12} /> 上長コメント
-                                                                </h4>
-                                                                <p className="text-sm text-sf-text whitespace-pre-wrap bg-blue-50 p-3 rounded border border-blue-100">
-                                                                    {cleanText(report.上長コメント)}
-                                                                </p>
-                                                            </div>
-                                                        )}
+                                                        {hasContent(report.上長コメント) && (() => {
+                                                            const isKidoku = isKidokuChecked(report.既読チェック);
+                                                            return (
+                                                                <div>
+                                                                    <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                                                                        <h4 className="text-xs font-semibold text-blue-800 flex items-center gap-1">
+                                                                            <MessageSquare size={12} /> 上長コメント
+                                                                        </h4>
+                                                                        {isKidoku ? (
+                                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-full shadow-2xs">
+                                                                                <CheckCheck size={12} className="stroke-[2.5] text-emerald-600" />
+                                                                                既読チェック済
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded">
+                                                                                未読
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className={`text-sm text-sf-text whitespace-pre-wrap p-3 rounded border ${
+                                                                        isKidoku
+                                                                            ? 'bg-blue-50/70 border-blue-200 border-l-4 border-l-emerald-500'
+                                                                            : 'bg-blue-50 border-blue-100 border-l-4 border-l-blue-400'
+                                                                    }`}>
+                                                                        {cleanText(report.上長コメント)}
+                                                                    </p>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         {hasContent(report.コメント返信欄) && (
                                                             <div>
                                                                 <h4 className="text-xs font-semibold text-emerald-800 mb-1">コメント返信欄</h4>

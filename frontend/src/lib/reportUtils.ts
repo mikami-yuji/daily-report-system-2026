@@ -237,7 +237,7 @@ export function extractCleanCustomerName(
     }
 
     if (!customerName || !customerName.trim()) return '';
-    let cleanName = customerName.trim();
+    const cleanName = customerName.trim();
 
     // 2. 直送先名が指定されている場合、それを除去
     if (deliveryName && deliveryName.trim()) {

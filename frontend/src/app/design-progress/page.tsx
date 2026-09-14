@@ -138,8 +138,17 @@ export default function DesignProgressPage() {
         return [];
     }, [selectedDesignNo, selectedCustomer, reports]);
 
+    const getCustomerName = (customerCD: string): string => {
+        const masterCust = customerMaster.find((c: Customer) => String(c.得意先CD).trim() === customerCD.trim());
+        const masterName = masterCust?.得意先名 ? String(masterCust.得意先名).trim() : undefined;
+        const report = reports.find((r: Report): boolean => String(r.得意先CD) === customerCD);
+        const rawName = report?.訪問先名 || customerCD;
+        const dName = report?.直送先名;
+        return extractCleanCustomerName(rawName, dName, masterName);
+    };
+
     // サマリー用の直送先名（日報データ優先、なければ企画課ビューワーから補完）
-    const summaryDelivery = useMemo(() => {
+    const summaryDelivery = (() => {
         for (const r of progressHistory) {
             if (r.直送先名 && String(r.直送先名).trim()) {
                 return {
@@ -160,16 +169,7 @@ export default function DesignProgressPage() {
             }
         }
         return { name: '-', code: '', source: 'none' };
-    }, [progressHistory, currentViewerDesigns]);
-
-    const getCustomerName = (customerCD: string): string => {
-        const masterCust = customerMaster.find((c: Customer) => String(c.得意先CD).trim() === customerCD.trim());
-        const masterName = masterCust?.得意先名 ? String(masterCust.得意先名).trim() : undefined;
-        const report = reports.find((r: Report): boolean => String(r.得意先CD) === customerCD);
-        const rawName = report?.訪問先名 || customerCD;
-        const dName = report?.直送先名 || summaryDelivery?.name;
-        return extractCleanCustomerName(rawName, dName, masterName);
-    };
+    })();
 
     return (
         <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col">

@@ -124,24 +124,8 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const [viewerRequests, setViewerRequests] = useState<ViewerDesignRequest[]>([]);
     const [viewerAuthError, setViewerAuthError] = useState(false);
 
-    // ファイル名から担当営業名（名字）を抽出するヘルパー
-    const extractSalesPersonName = (filename: string | null | undefined): string => {
-        if (!filename) return '';
-        const base = String(filename).replace(/\.xlsm$/, '');
-        const matchBrackets = base.match(/【(.*?)】/);
-        let name = matchBrackets ? matchBrackets[1] : base;
-        name = name.replace(/^日報_/, '');
-        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
-        name = name.replace(/[\(（].*?[\)）]/, '');
-        return name.trim();
-    };
-
-    const [passcode, setPasscode] = useState('');
-    const [isVerifying, setIsVerifying] = useState(false);
-
     // 企画課ビューアから最新デザイン依頼を取得
     const loadViewerRequests = async (code?: string) => {
-        setIsVerifying(true);
         try {
             const savedCode = code || (typeof window !== 'undefined' ? localStorage.getItem('viewer_passcode') : null) || '';
             const data = await getLatestDesignRequests(savedCode);
@@ -158,8 +142,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             if (error.response?.status === 401) {
                 setViewerAuthError(true);
             }
-        } finally {
-            setIsVerifying(false);
         }
     };
 
@@ -167,6 +149,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         loadViewerRequests();
     }, []);
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [viewerSearchTerm, setViewerSearchTerm] = useState('');
     
     // 担当営業名が自分自身の「進行中」の依頼を抽出し、同一デザインNo.は1件に集約
@@ -220,6 +203,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         if (isDraftRestored) {
             toast.success('前回の入力内容を復元しました', { icon: '📝', id: 'modal-draft-restored' });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleDiscardDraft = (): void => {
@@ -314,6 +298,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 toast('キャッシュされた得意先リストを使用します', { icon: '📡', id: 'cached-customers' });
             }
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedFile, isOnline, initialDesignData]);
 
 

@@ -14,16 +14,9 @@ import {
     updateReport,
     deleteReport,
     getDesignImages,
-    DesignImage,
     getLatestDesignRequests
 } from '@/lib/api';
-import {
-    Report,
-    ExcelFile,
-    Customer,
-    SalesData,
-    ViewerDesignRequest
-} from '@/types/report';
+import { Report } from '@/types/report';
 import toast from 'react-hot-toast';
 
 // クエリキー定数

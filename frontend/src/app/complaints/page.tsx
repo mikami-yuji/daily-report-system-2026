@@ -3,12 +3,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
-import { Search, Calendar, User, Building2, AlertTriangle, Truck } from 'lucide-react';
+import { Search, User, Building2, AlertTriangle, Truck } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
 export default function ComplaintsPage() {
-    const { selectedFile, isLoadingFiles } = useFile();
+    const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）
     const { data: allReports = [], isLoading, error } = useReports(selectedFile || undefined);

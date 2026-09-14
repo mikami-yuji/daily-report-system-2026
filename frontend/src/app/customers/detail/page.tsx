@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, Suspense } from 'react';
-import { getReports, getCustomers, Report, Customer, searchDesignImages, DesignImage } from '@/lib/api';
+import { getReports, getCustomers, Report, searchDesignImages, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
 import {
@@ -18,14 +18,8 @@ import {
 
     AlertTriangle,
     DollarSign,
-    Upload,
     Database,
     Image as ImageIcon,
-    X,
-    Download,
-    Search,
-    ChevronLeft,
-    ChevronRight,
     BarChart3
 } from 'lucide-react';
 import {

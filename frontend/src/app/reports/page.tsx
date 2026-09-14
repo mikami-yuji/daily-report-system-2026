@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Report, searchDesignImages, DesignImage, batchUpdateReportApproval, updateReportApproval } from '@/lib/api';
+import { Report, batchUpdateReportApproval, updateReportApproval, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import { useOffline } from '@/context/OfflineContext';
 import { useReports } from '@/hooks/useQueryHooks';
@@ -17,14 +17,11 @@ import {
     Check, 
     MessageSquare, 
     Lightbulb, 
-    Sparkles, 
     Palette,
     Layers,
     AlignJustify,
-    Image as ImageIcon,
     Loader2,
     CheckSquare,
-    Square,
     UserCheck
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -37,14 +34,18 @@ import { cleanText, compareDates } from '@/lib/reportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 
+// 承認者役職定数
+const APPROVER_ROLES = ['上長', '山澄常務', '岡本常務', '中野次長'] as const;
+type ApproverRole = typeof APPROVER_ROLES[number];
+
 export default function ReportsPage(): React.JSX.Element {
     const router = useRouter();
-    const { files, selectedFile, setSelectedFile } = useFile();
+    const { selectedFile } = useFile();
     const { offlineReports } = useOffline();
     const queryClient = useQueryClient();
 
     // React Queryでデータ取得（自動キャッシュ）
-    const { data: rawReports = [], isLoading, error, refetch } = useReports(selectedFile || undefined);
+    const { data: rawReports = [], isLoading, error } = useReports(selectedFile || undefined);
 
     const [selectedReportIndex, setSelectedReportIndex] = useState<number | null>(null);
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -52,9 +53,6 @@ export default function ReportsPage(): React.JSX.Element {
     // タイムラインの表示密度（高密度・標準・詳細）
     const [density, setDensity] = useState<'compact' | 'normal' | 'detailed'>('normal');
 
-    // 承認者役職
-    const APPROVER_ROLES = ['上長', '山澄常務', '岡本常務', '中野次長'] as const;
-    type ApproverRole = typeof APPROVER_ROLES[number];
     const [selectedApproverRole, setSelectedApproverRole] = useState<ApproverRole>('上長');
 
     // 一括選択・承認ステート
@@ -65,8 +63,7 @@ export default function ReportsPage(): React.JSX.Element {
     // 複製作成用ステート
     const [duplicateReport, setDuplicateReport] = useState<Report | null>(null);
 
-    // デザイン画像検索用ステート
-    const [searchingImageNo, setSearchingImageNo] = useState<string | null>(null);
+    // デザイン画像モーダル用ステート
     const [imageResults, setImageResults] = useState<DesignImage[]>([]);
     const [showImageModal, setShowImageModal] = useState(false);
     const [currentSearchDesignNo, setCurrentSearchDesignNo] = useState<string>('');
@@ -410,33 +407,6 @@ export default function ReportsPage(): React.JSX.Element {
                 )}
             </div>
         );
-    };
-
-    // デザイン画像検索アクション
-    const handleImageSearch = async (designNo: string, e: React.MouseEvent) => {
-        e.stopPropagation(); // 行やカード全体のクリックモーダル発火を防止
-        if (!designNo) return;
-        const cleanNo = cleanText(designNo).replace('.0', '').trim();
-        if (!cleanNo) return;
-
-        setCurrentSearchDesignNo(cleanNo);
-        setSearchingImageNo(cleanNo);
-        try {
-            const result = await searchDesignImages(cleanNo, selectedFile || undefined);
-            if (result.images && result.images.length > 0) {
-                setImageResults(result.images);
-                setShowImageModal(true);
-                toast.success(`${result.images.length}件のデザイン画像が見つかりました`);
-            } else {
-                setImageResults([]);
-                toast.error('関連するデザイン画像が見つかりませんでした');
-            }
-        } catch (error) {
-            console.error('Failed to search design images:', error);
-            toast.error('画像検索中にエラーが発生しました');
-        } finally {
-            setSearchingImageNo(null);
-        }
     };
 
     // デザインNoと画像表示アイコンのレンダリング（ホバープレビュー対応）

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { PersonalScoreData } from '@/types/analytics';
-import { Award, TrendingUp, CheckCircle, Target, ArrowRight, Zap, Calendar } from 'lucide-react';
+import { Award, TrendingUp, CheckCircle, Target, Zap, Calendar } from 'lucide-react';
 
 interface MonthlyScorePacerProps {
     scoreData: PersonalScoreData;

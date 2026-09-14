@@ -7,7 +7,7 @@ import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport,
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Calendar, Building2, Clock, MessageSquare, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check, ExternalLink, MapPin } from 'lucide-react';
+import { Plus, Trash2, Save, Calendar, Building2, ChevronDown, ChevronUp, Search, Loader2, AlertCircle, Check, ExternalLink, MapPin } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID, isSalesPersonMatch } from '@/lib/reportUtils';
@@ -173,6 +173,7 @@ export default function BatchReportPage() {
                 setIsLoaded(true);
             });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLoaded]);
 
     // URLクエリパラメータから重点顧客などの初期情報を自動反映
@@ -234,34 +235,17 @@ export default function BatchReportPage() {
         toast.success('一括登録の下書きを破棄しました');
     };
 
-    // 得意先・面談者リスト
+    // 得意先リスト
     const [customers, setCustomers] = useState<Customer[]>([]);
-    const [interviewers, setInterviewers] = useState<string[]>([]);
     // 得意先リストからエリア一覧を動的に取得
     const [areaOptions, setAreaOptions] = useState<string[]>([]);
 
-    // 送信中フラグ
     // 企画課ビューア連携用のステート
     const [viewerRequests, setViewerRequests] = useState<ViewerDesignRequest[]>([]);
     const [viewerAuthError, setViewerAuthError] = useState(false);
-    const [passcode, setPasscode] = useState('');
-    const [isVerifying, setIsVerifying] = useState(false);
-
-    // ファイル名から担当営業名（名字）を抽出するヘルパー
-    const extractSalesPersonName = useCallback((filename: string | null | undefined): string => {
-        if (!filename) return '';
-        const base = String(filename).replace(/\.xlsm$/, '');
-        const matchBrackets = base.match(/【(.*?)】/);
-        let name = matchBrackets ? matchBrackets[1] : base;
-        name = name.replace(/^日報_/, '');
-        name = name.replace(/(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$/i, '');
-        name = name.replace(/[\(（].*?[\)）]/, '');
-        return name.trim();
-    }, []);
 
     // 企画課ビューアから最新デザイン依頼を取得
     const loadViewerRequests = useCallback(async (code?: string) => {
-        setIsVerifying(true);
         try {
             const savedCode = code || (typeof window !== 'undefined' ? localStorage.getItem('viewer_passcode') : null) || '';
             const data = await getLatestDesignRequests(savedCode);
@@ -278,8 +262,6 @@ export default function BatchReportPage() {
             if (error.response?.status === 401) {
                 setViewerAuthError(true);
             }
-        } finally {
-            setIsVerifying(false);
         }
     }, []);
 
@@ -430,6 +412,7 @@ export default function BatchReportPage() {
 
     // バリデーションエラー状態
     const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [showErrors, setShowErrors] = useState(false); // エラー表示フラグ
 
     // 過去の量販店調査訪問名履歴（reportsから抽出）
@@ -778,12 +761,6 @@ export default function BatchReportPage() {
         ));
     };
 
-    // バリデーション関数（警告のみ、保存はブロックしない）
-    const validateVisits = useCallback((): { isValid: boolean; errors: ValidationErrors } => {
-        // どんな条件でも保存可能にするため、常にバリデーション通過
-        return { isValid: true, errors: {} };
-    }, [visits]);
-
     // 一括保存（どんな条件でも保存可能）
     const handleSubmit = async (): Promise<void> => {
         // 何かしらデータが入力されている訪問を抽出（完全に空のブロックはスキップ）
@@ -959,7 +936,7 @@ export default function BatchReportPage() {
         } else {
             clearDraft();
         }
-    }, [date, visits, searchTerms, retailerSearchTerms, deliverySearchTerms, isLoaded, saveDraft, clearDraft]);
+    }, [date, visits, searchTerms, retailerSearchTerms, deliverySearchTerms, isLoaded, saveDraft, clearDraft, today]);
 
     // 有効な訪問数
     // 何かしらデータが入力されている訪問数をカウント

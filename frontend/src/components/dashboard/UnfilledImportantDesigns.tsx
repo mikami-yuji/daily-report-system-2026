@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { AlertTriangle, PenSquare, Calendar, User, Truck } from 'lucide-react';
+import { AlertTriangle, PenSquare, Truck } from 'lucide-react';
 import { Report, ViewerDesignRequest } from '@/types/report';
 import { InitialDesignData } from '@/components/reports/NewReportModal';
 import { isSalesPersonMatch } from '@/lib/reportUtils';

@@ -26,7 +26,7 @@ export default function DesignProgressPage() {
     }, [defaultFile, selectedFile]);
 
     // React Queryでレポート取得
-    const { data: reports = [], isLoading } = useReports(selectedFile || undefined);
+    const { data: reports = [] } = useReports(selectedFile || undefined);
 
     // 企画課ビューワーからデザインデータ取得
     const { data: viewerData, isLoading: isLoadingViewer } = useViewerDesignRequests();

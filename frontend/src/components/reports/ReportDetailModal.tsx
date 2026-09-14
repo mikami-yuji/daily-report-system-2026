@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Report, updateReport, deleteReport, updateReportComment, updateReportApproval, searchDesignImages, DesignImage } from '@/lib/api';
+import { Report, deleteReport, updateReportComment, updateReportApproval, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
-import { sanitizeReport, cleanText } from '@/lib/reportUtils';
+import { cleanText } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
-import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, Image as ImageIcon, ExternalLink, Lightbulb, MessageSquare, Copy, History, FileText } from 'lucide-react';
+import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, ExternalLink, Lightbulb, MessageSquare, Copy, History, FileText } from 'lucide-react';
 import DesignImagePreviewModal from './DesignImagePreviewModal';
 import DesignImageHoverButton from './DesignImageHoverButton';
 import toast from 'react-hot-toast';
@@ -14,14 +14,6 @@ const getCommentDraft = (reportId: number | string | undefined, field: string): 
         return null;
     }
     return localStorage.getItem(`draft_comment_${reportId}_${field}`);
-};
-
-// ローカルストレージにコメント下書きデータを保存する関数
-const saveCommentDraft = (reportId: number | string | undefined, field: string, value: string): void => {
-    if (typeof window === 'undefined' || !reportId) {
-        return;
-    }
-    localStorage.setItem(`draft_comment_${reportId}_${field}`, value);
 };
 
 // ローカルストレージのコメント下書きデータを削除する関数
@@ -52,17 +44,6 @@ const hasContent = (val: unknown): boolean => {
     if (['なし', '無し', '特になし', '特に無し', '-', 'ー'].includes(cleaned)) return false;
     return true;
 };
-
-function InfoRow({ label, value }: { label: string; value: unknown }) {
-    return (
-        <div className="flex justify-between items-start gap-2">
-            <span className="text-xs text-sf-text-weak whitespace-nowrap">{label}:</span>
-            <span className="text-sm text-sf-text text-right flex-1">
-                {cleanText(value !== null && value !== undefined ? String(value) : '') || '-'}
-            </span>
-        </div>
-    );
-}
 
 // Excelの「済」または「ü」をUIでは「✓」として表示
 const convertToDisplay = (value: string | undefined): string => {
@@ -163,35 +144,10 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
         }
     }, [report?.管理番号]);
 
-    // デザイン画像検索用ステート
-    const [searchingImage, setSearchingImage] = useState(false);
+    // デザイン画像モーダル用ステート
     const [imageResults, setImageResults] = useState<DesignImage[]>([]);
     const [showImageModal, setShowImageModal] = useState(false);
     const [currentSearchDesignNo, setCurrentSearchDesignNo] = useState<string>('');
-
-    // 画像検索アクション
-    const handleImageSearch = async (designNo: string, e: React.MouseEvent) => {
-        e.stopPropagation(); // 詳細モーダルの他部分のクリックイベントを防止
-        if (!designNo) return;
-        setCurrentSearchDesignNo(String(designNo));
-        setSearchingImage(true);
-        try {
-            const result = await searchDesignImages(String(designNo), selectedFile || undefined);
-            if (result.images && result.images.length > 0) {
-                setImageResults(result.images);
-                setShowImageModal(true);
-                toast.success(`${result.images.length}件の画像が見つかりました`);
-            } else {
-                setImageResults([]);
-                toast.error('関連するデザイン画像が見つかりませんでした');
-            }
-        } catch (error) {
-            console.error('Failed to search design images:', error);
-            toast.error('画像検索中にエラーが発生しました');
-        } finally {
-            setSearchingImage(false);
-        }
-    };
 
     // レポート変更時にステートを更新（セッションストレージからの下書き復元も含む）
     useEffect(() => {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Bell, ChevronDown, ChevronUp, Send, Check, X, FileText } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, Send, Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 import { updateReportReply, updateReportApproval, Report } from '@/lib/api';
@@ -40,7 +40,7 @@ export default function UnreadComments({ reports, selectedFile }: UnreadComments
       await queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
       await queryClient.invalidateQueries({ queryKey: ['stats'] });
       toast.success('返信を送信しました');
-    } catch (error: unknown) {
+    } catch {
       toast.error('返信の送信に失敗しました');
     } finally {
       setProcessingNotifications((prev: Set<number>) => {
@@ -58,7 +58,7 @@ export default function UnreadComments({ reports, selectedFile }: UnreadComments
       await queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
       await queryClient.invalidateQueries({ queryKey: ['stats'] });
       toast.success('既読にしました');
-    } catch (error: unknown) {
+    } catch {
       toast.error('既読処理に失敗しました');
     } finally {
       setProcessingNotifications((prev: Set<number>) => {

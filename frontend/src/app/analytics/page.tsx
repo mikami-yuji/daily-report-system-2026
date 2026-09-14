@@ -16,7 +16,7 @@ import KPICard from '@/components/KPICard';
 import MonthlyScorePacer from '@/components/analytics/MonthlyScorePacer';
 import NeglectedCustomersAlert from '@/components/analytics/NeglectedCustomersAlert';
 import {
-    Star, MapPin, Palette, BarChart3, Users,
+    Star, MapPin, Palette,
     FileText, CheckCircle, XCircle, TrendingUp, Briefcase
 } from 'lucide-react';
 import {

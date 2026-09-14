@@ -79,14 +79,6 @@ export default function CustomersPage() {
                 return nameMatch || codeMatch || ddNameMatch || ddCodeMatch;
             };
 
-            const checkFilters = (c: CustomerSummary, checkPriorityForSub: boolean = false) => {
-                if (selectedArea && c.area !== selectedArea) return false;
-                if (selectedRank && c.rank !== selectedRank) return false;
-                // 重点フィルターは親と子で別々にチェック
-                if (!checkPriorityForSub && isPriorityOnly && !c.isPriority) return false;
-                return true;
-            };
-
             result = result.map(parent => {
                 // 親（得意先）のフィルターチェック（エリア、ランク）
                 if (selectedArea && parent.area !== selectedArea) return null;

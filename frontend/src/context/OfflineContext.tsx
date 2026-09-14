@@ -147,6 +147,7 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Save to local storage whenever reports change

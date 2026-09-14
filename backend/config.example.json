@@ -2,5 +2,6 @@
     "excel_dir": "\\\\Asahipack02\\社内書類ｎｅｗ\\01：部署別　営業部\\02：営業日報\\2026年度",
     "design_dir": "\\\\Asahipack02\\社内書類ｎｅｗ\\01：部署別　営業部\\03：デザインデータ",
     "viewer_url": "http://192.168.1.5:8888",
-    "sqlite_cache_db": "data/shadow_cache.db"
+    "sqlite_cache_db": "data/shadow_cache.db",
+    "sales_csv_path": "\\\\Asahipack02\\社内書類ｎｅｗ\\01：部署別　営業部\\02：営業日報\\sales_data.csv"
 }

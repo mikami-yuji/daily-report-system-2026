@@ -91,7 +91,7 @@ export function generateUUID(): string {
     if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
         try {
             return window.crypto.randomUUID();
-        } catch (e) {
+        } catch {
             // フォールバックへ
         }
     }

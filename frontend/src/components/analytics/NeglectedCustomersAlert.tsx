@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { NeglectedCustomerAlert } from '@/types/analytics';
-import { AlertCircle, Clock, ChevronDown, ChevronUp, PlusCircle, ExternalLink, ShieldAlert, CheckCircle2, Building, MessageSquare, ArrowRight } from 'lucide-react';
+import { Clock, ChevronDown, ChevronUp, PlusCircle, ShieldAlert, CheckCircle2, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 
 interface NeglectedCustomersAlertProps {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Download, ArrowUpDown, ChevronLeft, ChevronRight, Award, BarChart3, HelpCircle, Calendar, RefreshCw } from 'lucide-react';
+import { Search, Download, ArrowUpDown, Award, BarChart3, HelpCircle, Calendar, RefreshCw } from 'lucide-react';
 import axios from 'axios';
 import { PointsRecord, MonthlyActivity, TeamSummaryRecord } from '@/types/analytics';
 

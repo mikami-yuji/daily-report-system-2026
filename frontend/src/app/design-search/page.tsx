@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports, useViewerDesignRequests, useCustomers } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage } from '@/lib/api';
-import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare, Truck } from 'lucide-react';
+import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
@@ -98,6 +98,7 @@ export default function DesignSearchPage() {
     const [showProgressFilter, setShowProgressFilter] = useState(false); // 進捗フィルターの表示状態
 
     // Image Search State
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [searchingImage, setSearchingImage] = useState(false);
     const [imageResults, setImageResults] = useState<DesignImage[]>([]);
     const [showImageModal, setShowImageModal] = useState(false);

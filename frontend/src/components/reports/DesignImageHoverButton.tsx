@@ -222,6 +222,7 @@ export default function DesignImageHoverButton({
                     ) : firstImage ? (
                         <div className="relative z-10 group cursor-pointer">
                             <div className="w-full h-32 bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center border border-gray-100 relative">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
                                     src={getImageUrl(firstImage.path || '')}
                                     alt={firstImage.name || 'デザイン画像'}

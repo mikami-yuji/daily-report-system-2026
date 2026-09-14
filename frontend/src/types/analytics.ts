@@ -1,5 +1,3 @@
-import { Report } from './report';
-
 // 全メンバー活動分析（日報点数表）用の型定義
 
 export type MonthlyActivity = {

@@ -343,7 +343,7 @@ export function aggregateAnalytics(
     });
 
     const priorityByCustomer = Array.from(priorityCustomerMap.entries())
-        .map(([key, data]) => ({
+        .map(([, data]) => ({
             name: data.isDirectDelivery ? `【直送】${data.name}` : data.name,
             visits: data.visits,
             calls: data.calls,

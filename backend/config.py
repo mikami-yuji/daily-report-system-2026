@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import logging
+from typing import Optional, Dict, Any
 import pandas as pd
 
 def get_base_path():
@@ -146,37 +147,59 @@ VIEWER_URL = _RAW_CONFIG.get('viewer_url', 'http://192.168.1.5:8888').rstrip('/'
 
 # --- Global Sales Data Storage ---
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-SALES_CSV_PATH = os.path.join(DATA_DIR, 'sales_data.csv')
-SQLITE_CACHE_DB = _RAW_CONFIG.get('sqlite_cache_db', os.path.join(DATA_DIR, 'shadow_cache.db'))
 os.makedirs(DATA_DIR, exist_ok=True)
+
+def resolve_sales_csv_path() -> str:
+    """
+    設定された sales_csv_path またはローカルの data/sales_data.csv を解決。
+    ネットワーク共有パスの場合は超高速アクセス判定を行い、未接続時はローカルに安全フォールバック。
+    """
+    custom_path = _RAW_CONFIG.get('sales_csv_path')
+    if custom_path:
+        try:
+            if is_network_path_accessible(custom_path, timeout=0.3):
+                if os.path.exists(custom_path):
+                    return custom_path
+            else:
+                logging.debug(f"Configured sales_csv_path is not accessible: {custom_path}")
+        except Exception as e:
+            logging.debug(f"Error checking sales_csv_path ({custom_path}): {e}")
+    
+    return os.path.join(DATA_DIR, 'sales_data.csv')
+
+SALES_CSV_PATH = resolve_sales_csv_path()
+SQLITE_CACHE_DB = _RAW_CONFIG.get('sqlite_cache_db', os.path.join(DATA_DIR, 'shadow_cache.db'))
 
 # Global DataFrame to hold sales data
 global_sales_df = None
 
-def load_sales_data():
+def load_sales_data(target_path: Optional[str] = None):
     """Loads sales data from CSV into global DataFrame."""
-    global global_sales_df
-    if not os.path.exists(SALES_CSV_PATH):
-        logging.info("No existing sales data found.")
+    global global_sales_df, SALES_CSV_PATH
+    actual_path = target_path or resolve_sales_csv_path()
+    SALES_CSV_PATH = actual_path
+
+    if not os.path.exists(actual_path):
+        logging.info(f"No existing sales data found at {actual_path}.")
         return
 
     try:
-        logging.info("Loading sales data from disk...")
+        logging.info(f"Loading sales data from disk: {actual_path}...")
         try:
-            df = pd.read_csv(SALES_CSV_PATH, encoding='cp932')
+            df = pd.read_csv(actual_path, encoding='cp932')
         except Exception:
-            df = pd.read_csv(SALES_CSV_PATH, encoding='utf-8')
+            df = pd.read_csv(actual_path, encoding='utf-8')
         
         df.columns = [str(col).strip() for col in df.columns]
         
         if '得意先コード' in df.columns:
             df['得意先コード'] = df['得意先コード'].astype(str).str.split('.').str[0]
             global_sales_df = df
-            logging.info(f"Sales data loaded successfully. {len(df)} rows.")
+            logging.info(f"Sales data loaded successfully from {actual_path}. {len(df)} rows.")
         else:
-            logging.error("Sales CSV missing '得意先コード' column.")
+            logging.error(f"Sales CSV missing '得意先コード' column: {actual_path}")
     except Exception as e:
-        logging.error(f"Failed to load sales data: {e}")
+        logging.error(f"Failed to load sales data from {actual_path}: {e}")
 
 # Load on startup
 load_sales_data()

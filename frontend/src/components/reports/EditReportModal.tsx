@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Report, updateReport, getDesigns, Design, getSuggestedArea, Customer, getCustomers, getInterviewers } from '@/lib/api';
 import { sanitizeReport, normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD } from '@/lib/reportUtils';
-import { X, Loader2, Check, MapPin, Truck } from 'lucide-react';
+import { X, Loader2, Check, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useOffline } from '@/context/OfflineContext';
@@ -12,14 +12,6 @@ const getCommentDraft = (reportId: number | string | undefined, field: string): 
         return null;
     }
     return localStorage.getItem(`draft_comment_${reportId}_${field}`);
-};
-
-// ローカルストレージにコメント下書きデータを保存する関数
-const saveCommentDraft = (reportId: number | string | undefined, field: string, value: string): void => {
-    if (typeof window === 'undefined' || !reportId) {
-        return;
-    }
-    localStorage.setItem(`draft_comment_${reportId}_${field}`, value);
 };
 
 // ローカルストレージのコメント下書きデータを削除する関数
@@ -35,10 +27,10 @@ type EditReportModalProps = {
     onClose: () => void;
     onSuccess: () => void;
     selectedFile: string;
-    reports: Report[];
+    reports?: Report[];
 };
 
-export default function EditReportModal({ report, onClose, onSuccess, selectedFile, reports }: EditReportModalProps) {
+export default function EditReportModal({ report, onClose, onSuccess, selectedFile }: EditReportModalProps) {
 
 
 
@@ -153,7 +145,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     const justSelectedCustomerRef = useRef(false);
     const justSelectedDeliveryRef = useRef(false);
 
-    const { isOnline, cachedCustomers, cacheCustomers } = useOffline();
+    const { cachedCustomers, cacheCustomers } = useOffline();
 
     // 顧客マスタのロード
     useEffect(() => {
@@ -170,6 +162,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                     }
                 });
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedFile]);
 
     // 初期の得意先CDがあれば面談者リストを取得
@@ -179,6 +172,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                 .then(setInterviewers)
                 .catch(() => setInterviewers([]));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formData.得意先CD, selectedFile]);
 
     const commentSaveTimersRef = useRef<{ [field: string]: NodeJS.Timeout }>({});

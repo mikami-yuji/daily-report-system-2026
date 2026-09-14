@@ -1,12 +1,11 @@
 {
-  "version": "2.5.4",
+  "version": "2.5.5",
   "releaseDate": "2026-09-14",
-  "fileName": "DailyReportServer_v2.5.4.exe",
-  "fileSize": 49169727,
-  "sha256": "4205d461c897855dae1d4c93397c848659bce2241c0608a5bb247b2fe89035bd",
+  "fileName": "DailyReportServer_v2.5.5.exe",
+  "fileSize": 49169701,
+  "sha256": "dc9bdf5324b712db76d5c46c44f76da6dc205cd5e6bd7dc189b9b50a4bbc3c3d",
   "forceUpdate": false,
   "releaseNotes": [
-    "日報入力モーダル消滅防止の改修",
-    "文字選択ドラッグや外枠クリックでの誤終了を防止"
+    "デザイン検索の得意先名から直送先名の混入を除去・分離表示対応"
   ]
 }

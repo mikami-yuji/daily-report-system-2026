@@ -2,15 +2,15 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
-import { useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
+import { useReports, useViewerDesignRequests, useCustomers } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage } from '@/lib/api';
 import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
 import PdfPreviewModal, { PdfItem } from '@/components/reports/PdfPreviewModal';
-import { ViewerDesignRequest } from '@/types/report';
-import { isSalesPersonMatch } from '@/lib/reportUtils';
+import { ViewerDesignRequest, Customer } from '@/types/report';
+import { isSalesPersonMatch, extractCleanCustomerName } from '@/lib/reportUtils';
 
 type DesignRequest = {
     designNo: string;
@@ -34,6 +34,20 @@ export default function DesignSearchPage() {
 
     // 企画課ビューワーからデザインデータ取得
     const { data: viewerData } = useViewerDesignRequests();
+
+    // 得意先マスタ取得（正規の得意先名照合用）
+    const { data: customerMaster = [] } = useCustomers(selectedFile || undefined);
+
+    // 得意先コード -> 正規の得意先名のマッピング
+    const customerCodeMap = useMemo(() => {
+        const map = new Map<string, string>();
+        customerMaster.forEach((c: Customer) => {
+            if (c.得意先CD && c.得意先名) {
+                map.set(String(c.得意先CD).trim(), String(c.得意先名).trim());
+            }
+        });
+        return map;
+    }, [customerMaster]);
 
     // PDFプレビュー用ステート (全版対応)
     const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
@@ -139,7 +153,11 @@ export default function DesignSearchPage() {
         }
     }, [error]);
 
-    const processDesignRequests = (data: Report[], vMap?: Map<string, ViewerDesignRequest[]>): DesignRequest[] => {
+    const processDesignRequests = (
+        data: Report[], 
+        vMap?: Map<string, ViewerDesignRequest[]>,
+        custMap?: Map<string, string>
+    ): DesignRequest[] => {
         const designMap = new Map<string, DesignRequest>();
 
         data.forEach(report => {
@@ -203,8 +221,20 @@ export default function DesignSearchPage() {
                 }
             }
 
-            // 得意先名が空で企画課ビューワーに customer がある場合も補完
+            // 得意先名・得意先CDの取得: 最新日報優先、空なら過去の日報を探索
             let customerName = req.customerName;
+            let customerCode = req.customerCode;
+            for (let i = sortedRequests.length - 1; i >= 0; i--) {
+                const r = sortedRequests[i];
+                if (!customerName && r.訪問先名 && String(r.訪問先名).trim()) {
+                    customerName = String(r.訪問先名).trim();
+                }
+                if (!customerCode && r.得意先CD && String(r.得意先CD).trim()) {
+                    customerCode = String(r.得意先CD).trim();
+                }
+            }
+
+            // 得意先名が空で企画課ビューワーに customer がある場合も補完
             if (!customerName && vMap) {
                 const matchedViewerDocs = vMap.get(req.designNo);
                 if (matchedViewerDocs && matchedViewerDocs.length > 0) {
@@ -215,9 +245,17 @@ export default function DesignSearchPage() {
                 }
             }
 
+            // 得意先コードがある場合は得意先マスタから正規の得意先名を取得
+            const custCode = String(customerCode || '').trim();
+            const masterName = custCode && custMap ? custMap.get(custCode) : undefined;
+
+            // 得意先名に直送先名が混ざっている場合のクリーンアップ
+            const cleanCustomer = extractCleanCustomerName(customerName, foundDeliveryName, masterName);
+
             return {
                 ...req,
-                customerName: customerName,
+                customerCode: customerCode,
+                customerName: cleanCustomer,
                 deliveryCode: foundDeliveryCode || req.deliveryCode,
                 deliveryName: foundDeliveryName,
                 deliverySource: deliverySource,
@@ -246,8 +284,8 @@ export default function DesignSearchPage() {
 
     // レポートからデザイン依頼を抽出（useMemoでキャッシュ）
     const designRequests = useMemo(() => {
-        return processDesignRequests(reports, viewerMap);
-    }, [reports, viewerMap]);
+        return processDesignRequests(reports, viewerMap, customerCodeMap);
+    }, [reports, viewerMap, customerCodeMap]);
 
     // デザイン依頼がある得意先一覧（useMemoでキャッシュ）
     const customers = useMemo(() => {

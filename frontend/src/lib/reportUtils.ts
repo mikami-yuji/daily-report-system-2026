@@ -221,3 +221,76 @@ export function isSalesPersonMatch(
     }
 }
 
+/**
+ * 得意先名に直送先名が混ざっている場合に、得意先名のみを抽出・クリーンアップします。
+ * 例: "（株）東山紙業Ⅰ　（株）丸越" (直送先: "（株）丸越") -> "（株）東山紙業Ⅰ"
+ * 例: "(株) 東山紙業 | (株)丸越" -> "(株) 東山紙業"
+ */
+export function extractCleanCustomerName(
+    customerName: string | null | undefined,
+    deliveryName?: string | null | undefined,
+    masterCustomerName?: string | null | undefined
+): string {
+    // 1. 得意先マスタの正規名称がある場合は最優先
+    if (masterCustomerName && masterCustomerName.trim()) {
+        return masterCustomerName.trim();
+    }
+
+    if (!customerName || !customerName.trim()) return '';
+    let cleanName = customerName.trim();
+
+    // 2. 直送先名が指定されている場合、それを除去
+    if (deliveryName && deliveryName.trim()) {
+        const dName = deliveryName.trim();
+
+        // 単純一致チェック（そのまま含まれている場合）
+        if (cleanName.includes(dName)) {
+            const candidate = cleanName
+                .replace(dName, '')
+                .replace(/^[\s　|｜/／\-ーｰ~〜、,]+/g, '')
+                .replace(/[\s　|｜/／\-ーｰ~〜、,]+$/g, '')
+                .trim();
+            if (candidate) return candidate;
+        }
+
+        // 表記揺れ（（株）や(株)を除去したコア名）での除去
+        const stripCorp = (s: string) => s
+            .replace(/[\(（]株[\)）]/g, '')
+            .replace(/[\(（]有[\)）]/g, '')
+            .replace(/株式会社/g, '')
+            .replace(/有限会社/g, '')
+            .replace(/[\s　]/g, '')
+            .trim();
+
+        const coreDelivery = stripCorp(dName);
+        if (coreDelivery && coreDelivery.length >= 2) {
+            const escaped = coreDelivery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`([\\s　|｜/／\\-ーｰ]+|^)[(（]?(株|有|株式会社|有限会社)?[)）]?\\s*${escaped}\\s*[(（]?(株|有|株式会社|有限会社)?[)）]?([\\s　|｜/／\\-ーｰ]+|$)`, 'g');
+            const candidate = cleanName.replace(regex, ' ').trim();
+            if (candidate && candidate !== cleanName && stripCorp(candidate).length > 0) {
+                return candidate.replace(/^[\s　|｜/／\-ーｰ~〜、,]+/g, '').replace(/[\s　|｜/／\-ーｰ~〜、,]+$/g, '').trim();
+            }
+        }
+    }
+
+    // 3. 明示的区切り文字（| ｜ / ／）での分割
+    const separatorMatch = cleanName.match(/^(.*?)\s*([|｜/／])\s*(.*?)$/);
+    if (separatorMatch) {
+        const firstPart = separatorMatch[1].trim();
+        const secondPart = separatorMatch[3].trim();
+        if (firstPart && secondPart) {
+            return firstPart;
+        }
+    }
+
+    // 4. 全角スペースで区切られていて、後半に（株）や直送先らしき名称がある場合
+    // 例: 「（株）東山紙業Ⅰ　（株）丸越」
+    if (cleanName.includes('　')) {
+        const parts = cleanName.split('　');
+        if (parts.length >= 2 && parts[0].trim() && parts[1].trim()) {
+            return parts[0].trim();
+        }
+    }
+
+    return cleanName;
+}

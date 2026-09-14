@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useFiles, useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
 import { Report } from '@/lib/api';
-import { Search, Calendar, FileText, TrendingUp, Package, Image as ImageIcon, ExternalLink, Key, Loader2, Layers } from 'lucide-react';
+import { Search, Calendar, FileText, TrendingUp, Package, Image as ImageIcon, ExternalLink, Key, Loader2, Layers, Truck } from 'lucide-react';
 import PdfPreviewModal, { PdfItem } from '@/components/reports/PdfPreviewModal';
 import { ViewerDesignRequest } from '@/types/report';
 import { isSalesPersonMatch, extractSalesPersonName } from '@/lib/reportUtils';
@@ -140,6 +140,30 @@ export default function DesignProgressPage() {
         return report?.訪問先名 || customerCD;
     };
 
+    // サマリー用の直送先名（日報データ優先、なければ企画課ビューワーから補完）
+    const summaryDelivery = useMemo(() => {
+        for (const r of progressHistory) {
+            if (r.直送先名 && String(r.直送先名).trim()) {
+                return {
+                    name: String(r.直送先名).trim(),
+                    code: r.直送先CD ? String(r.直送先CD).trim() : '',
+                    source: 'report'
+                };
+            }
+        }
+        if (currentViewerDesigns.length > 0) {
+            const found = currentViewerDesigns.find(d => d.shippingAddress && d.shippingAddress.trim() !== '');
+            if (found) {
+                return {
+                    name: found.shippingAddress.trim(),
+                    code: '',
+                    source: 'viewer'
+                };
+            }
+        }
+        return { name: '-', code: '', source: 'none' };
+    }, [progressHistory, currentViewerDesigns]);
+
     return (
         <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col">
             {/* Header */}
@@ -246,6 +270,20 @@ export default function DesignProgressPage() {
                                     <div>
                                         <p className="text-xs text-sf-text-weak mb-0.5">得意先名</p>
                                         <p className="font-bold text-sm text-sf-text truncate" title={getCustomerName(selectedCustomer)}>{getCustomerName(selectedCustomer)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-sf-text-weak mb-0.5">直送先</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <p className="font-bold text-sm text-sf-text truncate" title={summaryDelivery.name}>
+                                                {summaryDelivery.name}
+                                                {summaryDelivery.code ? ` (${summaryDelivery.code})` : ''}
+                                            </p>
+                                            {summaryDelivery.source === 'viewer' && (
+                                                <span className="text-[10px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded border border-amber-300 shrink-0">
+                                                    企画課Web
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div>
                                         <p className="text-xs text-sf-text-weak mb-0.5">デザイン依頼No.</p>
@@ -358,6 +396,14 @@ export default function DesignProgressPage() {
                                                         <p className="text-xs text-sf-text-weak mb-0.5">納品予定日 (納期)</p>
                                                         <p className="font-bold text-amber-700">{currentViewerDesign.deliveryDate || '-'}</p>
                                                     </div>
+                                                    {currentViewerDesign.shippingAddress && (
+                                                        <div>
+                                                            <p className="text-xs text-sf-text-weak mb-0.5">直送先 (納品先)</p>
+                                                            <p className="font-bold text-amber-900 truncate" title={currentViewerDesign.shippingAddress}>
+                                                                {currentViewerDesign.shippingAddress}
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                     {currentViewerDesign.pdfUrl && (
                                                         <div className="pt-1">
                                                             <button
@@ -453,6 +499,15 @@ export default function DesignProgressPage() {
                                                 </span>
                                             </div>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                                {report.直送先名 && (
+                                                    <div className="col-span-1 md:col-span-2">
+                                                        <p className="text-xs text-sf-text-weak mb-0.5">直送先</p>
+                                                        <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 w-fit">
+                                                            <Truck size={13} className="text-blue-500" />
+                                                            <span>{report.直送先名} {report.直送先CD ? `(${report.直送先CD})` : ''}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 <div>
                                                     <p className="text-xs text-sf-text-weak mb-1">行動内容</p>
                                                     <p className="text-sf-text">{report.行動内容 || '-'}</p>

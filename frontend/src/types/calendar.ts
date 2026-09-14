@@ -13,6 +13,8 @@ export type CalendarDay = {
         commercialContent?: string;
         designType?: string;
         designName?: string;
+        directDeliveryName?: string;
+        directDeliveryCode?: string;
     }[];
 };
 

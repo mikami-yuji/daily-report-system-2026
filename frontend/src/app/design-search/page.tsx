@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports, useViewerDesignRequests } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage } from '@/lib/api';
-import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare } from 'lucide-react';
+import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
@@ -16,6 +16,9 @@ type DesignRequest = {
     designNo: string;
     customerCode: string;
     customerName: string;
+    deliveryCode?: string;
+    deliveryName?: string;
+    deliverySource?: 'report' | 'viewer';
     designProposal: string;
     designType: string;
     designName: string;
@@ -95,6 +98,8 @@ export default function DesignSearchPage() {
         setInitialDesignData({
             得意先CD: req.customerCode,
             得意先名: req.customerName,
+            直送先CD: req.deliveryCode,
+            直送先名: req.deliveryName,
             デザイン依頼No: req.designNo,
             デザイン名: req.designName,
             デザイン種別: req.designType,
@@ -134,7 +139,7 @@ export default function DesignSearchPage() {
         }
     }, [error]);
 
-    const processDesignRequests = (data: Report[]): DesignRequest[] => {
+    const processDesignRequests = (data: Report[], vMap?: Map<string, ViewerDesignRequest[]>): DesignRequest[] => {
         const designMap = new Map<string, DesignRequest>();
 
         data.forEach(report => {
@@ -147,6 +152,8 @@ export default function DesignSearchPage() {
                         designNo: strDesignNo,
                         customerCode: String(report.得意先CD || ''),
                         customerName: String(report.訪問先名 || ''),
+                        deliveryCode: String(report.直送先CD || ''),
+                        deliveryName: String(report.直送先名 || ''),
                         designProposal: String(report['デザイン提案有無'] || ''),
                         designType: String(report['デザイン種別'] || ''),
                         designName: String(report['デザイン名'] || ''),
@@ -159,7 +166,7 @@ export default function DesignSearchPage() {
             }
         });
 
-        // 各デザイン依頼の日報を日付順にソート（昇順）し、最新の進捗状況を取得
+        // 各デザイン依頼の日報を日付順にソート（昇順）し、最新の進捗状況および直送先情報を取得
         const requests = Array.from(designMap.values()).map(req => {
             const sortedRequests = req.requests.sort((a, b) => {
                 const dateA = String(a.日付 || '');
@@ -169,8 +176,51 @@ export default function DesignSearchPage() {
 
             // 最新のレポート（ソート後の最後）から進捗状況を取得
             const latestReport = sortedRequests[sortedRequests.length - 1];
+
+            // 直送先情報の取得: 最新の日報から優先し、空なら過去の日報を探索
+            let foundDeliveryName = '';
+            let foundDeliveryCode = '';
+            for (let i = sortedRequests.length - 1; i >= 0; i--) {
+                const r = sortedRequests[i];
+                if (r.直送先名 && String(r.直送先名).trim()) {
+                    foundDeliveryName = String(r.直送先名).trim();
+                    foundDeliveryCode = String(r.直送先CD || '').trim();
+                    break;
+                }
+            }
+
+            let deliverySource: 'report' | 'viewer' | undefined = foundDeliveryName ? 'report' : undefined;
+
+            // 日報に直送先名がなく、企画課ビューワーに shippingAddress がある場合はフォールバック補完
+            if (!foundDeliveryName && vMap) {
+                const matchedViewerDocs = vMap.get(req.designNo);
+                if (matchedViewerDocs && matchedViewerDocs.length > 0) {
+                    const docWithShipping = matchedViewerDocs.find(d => d.shippingAddress && d.shippingAddress.trim() !== '');
+                    if (docWithShipping) {
+                        foundDeliveryName = docWithShipping.shippingAddress.trim();
+                        deliverySource = 'viewer';
+                    }
+                }
+            }
+
+            // 得意先名が空で企画課ビューワーに customer がある場合も補完
+            let customerName = req.customerName;
+            if (!customerName && vMap) {
+                const matchedViewerDocs = vMap.get(req.designNo);
+                if (matchedViewerDocs && matchedViewerDocs.length > 0) {
+                    const docWithCustomer = matchedViewerDocs.find(d => d.customer && d.customer.trim() !== '');
+                    if (docWithCustomer) {
+                        customerName = docWithCustomer.customer.trim();
+                    }
+                }
+            }
+
             return {
                 ...req,
+                customerName: customerName,
+                deliveryCode: foundDeliveryCode || req.deliveryCode,
+                deliveryName: foundDeliveryName,
+                deliverySource: deliverySource,
                 designProgress: String(latestReport?.['デザイン進捗状況'] || req.designProgress || ''),
                 requests: sortedRequests
             };
@@ -196,8 +246,8 @@ export default function DesignSearchPage() {
 
     // レポートからデザイン依頼を抽出（useMemoでキャッシュ）
     const designRequests = useMemo(() => {
-        return processDesignRequests(reports);
-    }, [reports]);
+        return processDesignRequests(reports, viewerMap);
+    }, [reports, viewerMap]);
 
     // デザイン依頼がある得意先一覧（useMemoでキャッシュ）
     const customers = useMemo(() => {
@@ -282,6 +332,8 @@ export default function DesignSearchPage() {
                 String(req.designNo).includes(term) ||
                 req.customerCode.toLowerCase().includes(term) ||
                 req.customerName.toLowerCase().includes(term) ||
+                (req.deliveryName && req.deliveryName.toLowerCase().includes(term)) ||
+                (req.deliveryCode && req.deliveryCode.toLowerCase().includes(term)) ||
                 req.designName.toLowerCase().includes(term) ||
                 req.designType.toLowerCase().includes(term)
             );
@@ -347,7 +399,7 @@ export default function DesignSearchPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         <input
                             type="text"
-                            placeholder="デザインNo.、得意先、デザイン名、種別で検索..."
+                            placeholder="デザインNo.、得意先、直送先、デザイン名、種別で検索..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
@@ -560,6 +612,7 @@ export default function DesignSearchPage() {
                                     <th className="px-4 py-3 text-left font-medium">デザインNo.</th>
                                     <th className="px-4 py-3 text-left font-medium">得意先CD</th>
                                     <th className="px-4 py-3 text-left font-medium">得意先名</th>
+                                    <th className="px-4 py-3 text-left font-medium">直送先</th>
                                     <th className="px-4 py-3 text-left font-medium">デザイン名</th>
                                     <th className="px-4 py-3 text-left font-medium">種別</th>
                                     <th className="px-4 py-3 text-center font-medium">進捗状況</th>
@@ -638,6 +691,26 @@ export default function DesignSearchPage() {
                                                 <td className="px-4 py-3 text-sf-text font-medium">
                                                     {req.customerName}
                                                 </td>
+                                                <td className="px-4 py-3 text-sf-text">
+                                                    {req.deliveryName ? (
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className="font-medium text-sf-text">{req.deliveryName}</span>
+                                                            {req.deliveryCode && (
+                                                                <span className="text-[11px] text-sf-text-weak font-mono">({req.deliveryCode})</span>
+                                                            )}
+                                                            {req.deliverySource === 'viewer' && (
+                                                                <span 
+                                                                    className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                                                    title="企画課デザイン依頼書から補完された直送先です"
+                                                                >
+                                                                    依頼書
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-300">-</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-3 text-sf-text">{req.designName || '-'}</td>
                                                 <td className="px-4 py-3 text-sf-text-weak text-xs">{req.designType || '-'}</td>
                                                 <td className="px-4 py-3 text-center">
@@ -653,11 +726,11 @@ export default function DesignSearchPage() {
 
                                             {isExpanded && (
                                                 <tr>
-                                                    <td colSpan={9} className="bg-gray-50 p-0">
+                                                    <td colSpan={10} className="bg-gray-50 p-0">
                                                         <div className="px-8 py-4">
                                                             {/* デザイン情報サマリー */}
                                                             <div className="mb-4 p-4 bg-white rounded border border-sf-border">
-                                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                                                     <div className="flex items-start gap-2">
                                                                         <Package size={16} className="text-sf-light-blue mt-0.5" />
                                                                         <div>
@@ -677,6 +750,27 @@ export default function DesignSearchPage() {
                                                                         <div>
                                                                             <p className="text-xs text-sf-text-weak">進捗状況</p>
                                                                             <p className="text-sm font-medium text-sf-text">{req.designProgress || '未設定'}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-start gap-2">
+                                                                        <Truck size={16} className="text-amber-600 mt-0.5" />
+                                                                        <div>
+                                                                            <p className="text-xs text-sf-text-weak">直送先</p>
+                                                                            <p className="text-sm font-medium text-sf-text">
+                                                                                {req.deliveryName ? (
+                                                                                    <>
+                                                                                        {req.deliveryName}
+                                                                                        {req.deliveryCode ? <span className="text-xs text-gray-500 font-normal ml-1 font-mono">({req.deliveryCode})</span> : ''}
+                                                                                        {req.deliverySource === 'viewer' && (
+                                                                                            <span className="ml-1.5 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-normal">
+                                                                                                依頼書より
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <span className="text-gray-400 font-normal">なし（本社納品等）</span>
+                                                                                )}
+                                                                            </p>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -778,7 +872,7 @@ export default function DesignSearchPage() {
                                                                                 {report.日付}
                                                                             </div>
                                                                             <div className="flex-1">
-                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                                                     <span className="text-xs font-medium text-sf-light-blue">
                                                                                         {report.行動内容}
                                                                                     </span>
@@ -786,6 +880,12 @@ export default function DesignSearchPage() {
                                                                                         <span className="text-xs text-sf-text-weak flex items-center gap-1">
                                                                                             <User size={12} />
                                                                                             {report.面談者}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {report.直送先名 && (
+                                                                                        <span className="text-xs text-sf-text-weak flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded border border-sf-border">
+                                                                                            <Truck size={11} className="text-gray-400" />
+                                                                                            直送: {report.直送先名}
                                                                                         </span>
                                                                                     )}
                                                                                 </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
-import { Search, Calendar, User, Building2, AlertCircle, TrendingDown } from 'lucide-react';
+import { Search, Calendar, User, Building2, AlertCircle, TrendingDown, Truck } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 
@@ -53,6 +53,8 @@ export default function CompetitorInfoPage(): React.JSX.Element {
         const filtered = reports.filter(r =>
             String(r.得意先CD || '').toLowerCase().includes(term) ||
             String(r.訪問先名 || '').toLowerCase().includes(term) ||
+            String(r.直送先名 || '').toLowerCase().includes(term) ||
+            String(r.直送先CD || '').toLowerCase().includes(term) ||
             String(r.競合他社情報 || '').toLowerCase().includes(term) ||
             String(r.面談者 || '').toLowerCase().includes(term)
         );
@@ -72,7 +74,7 @@ export default function CompetitorInfoPage(): React.JSX.Element {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                     <input
                         type="text"
-                        placeholder="得意先、競合他社情報、面談者で検索..."
+                        placeholder="得意先、直送先、競合他社情報、面談者で検索..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
@@ -154,6 +156,12 @@ export default function CompetitorInfoPage(): React.JSX.Element {
                                         <div className="flex items-center gap-2 text-sf-text font-medium">
                                             <Building2 size={16} />
                                             {report.訪問先名}
+                                        </div>
+                                    )}
+                                    {report.直送先名 && (
+                                        <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1 ml-6 w-fit">
+                                            <Truck size={13} className="text-blue-500" />
+                                            <span>直送先: {report.直送先名} {report.直送先CD ? `(${report.直送先CD})` : ''}</span>
                                         </div>
                                     )}
                                 </div>

@@ -1,13 +1,12 @@
 {
-  "version": "2.5.1",
-  "releaseDate": "2026-09-11",
-  "fileName": "DailyReportServer_v2.5.1.exe",
-  "fileSize": 49166999,
-  "sha256": "85959f51f1d32d67216d9a118b462a88e67c22a163889ed1ff3e8dae5c3fc668",
+  "version": "2.5.4",
+  "releaseDate": "2026-09-14",
+  "fileName": "DailyReportServer_v2.5.4.exe",
+  "fileSize": 49169727,
+  "sha256": "4205d461c897855dae1d4c93397c848659bce2241c0608a5bb247b2fe89035bd",
   "forceUpdate": false,
   "releaseNotes": [
-    "オフライン日報の再編集・削除堅牢化",
-    "企画課ビューア未認証通知抑制",
-    "重点顧客アラートからの自動入力連携"
+    "日報入力モーダル消滅防止の改修",
+    "文字選択ドラッグや外枠クリックでの誤終了を防止"
   ]
 }

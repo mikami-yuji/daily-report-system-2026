@@ -9,6 +9,8 @@ import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, i
 export type InitialDesignData = {
     得意先CD?: string;
     得意先名?: string;
+    直送先CD?: string;
+    直送先名?: string;
     デザイン依頼No?: string;
     デザイン名?: string;
     デザイン種別?: string;
@@ -55,6 +57,10 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         'デザイン依頼No.': '',
     };
     const { getDraft, saveDraft, clearDraft } = useLocalStorageDraft<ModalDraftData>('new-report-modal-draft');
+    
+    // デザイン引き継ぎの初回適用フラグと背景ドラッグ判定用ref
+    const hasAppliedInitialDesignRef = React.useRef(false);
+    const mouseDownOnBackdropRef = React.useRef(false);
 
     // 下書きがあれば復元、なければ初期値
     const initialDraft = getDraft();
@@ -91,6 +97,8 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 ...base,
                 訪問先名: initialDesignData.得意先名 || '',
                 得意先CD: initialDesignData.得意先CD || '',
+                直送先名: initialDesignData.直送先名 || '',
+                直送先CD: initialDesignData.直送先CD || '',
                 'デザイン依頼No.': initialDesignData.デザイン依頼No || '',
                 デザイン名: initialDesignData.デザイン名 || '',
                 デザイン種別: initialDesignData.デザイン種別 || '',
@@ -262,8 +270,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             const areas = [...new Set(data.map(c => c.エリア).filter(Boolean))].sort();
             setAreaOptions(areas);
 
-            // initialDesignData がある場合、該当得意先情報を埋める
-            if (initialDesignData) {
+            // initialDesignData がある場合、該当得意先情報を埋める（初回1回のみ適用）
+            if (initialDesignData && !hasAppliedInitialDesignRef.current) {
+                hasAppliedInitialDesignRef.current = true;
                 let customer = null;
                 if (initialDesignData.得意先CD) {
                     customer = data.find(c => String(c.得意先CD) === initialDesignData.得意先CD);
@@ -724,9 +733,43 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
     const isOuting = formData.行動内容 === '外出時間';
 
+    const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        mouseDownOnBackdropRef.current = (e.target === e.currentTarget);
+    };
+
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (submitting) return;
+        // モーダル内部からのドラッグ離し（文字選択など）では絶対に閉じない
+        if (!mouseDownOnBackdropRef.current || e.target !== e.currentTarget) {
+            mouseDownOnBackdropRef.current = false;
+            return;
+        }
+        mouseDownOnBackdropRef.current = false;
+
+        // 入力中のデータがある場合は確認ダイアログを表示
+        const hasInputData = !!(
+            formData.商談内容?.trim() ||
+            formData.行動内容 ||
+            formData.面談者?.trim() ||
+            formData.提案物?.trim() ||
+            formData.次回プラン?.trim()
+        );
+
+        if (hasInputData) {
+            if (window.confirm('入力中の内容がありますが、閉じてよろしいですか？\n（入力中の内容は一時保存されます）')) {
+                onClose();
+            }
+        } else {
+            onClose();
+        }
+    };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto pt-10 md:pt-16" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto pt-10 md:pt-16" 
+            onMouseDown={handleBackdropMouseDown}
+            onClick={handleBackdropClick}
+        >
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
                     <div className="flex items-center gap-3">
@@ -765,7 +808,16 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                <form 
+                    onSubmit={handleSubmit} 
+                    onKeyDown={(e) => {
+                        // textarea 以外の input で Enter キーが押されても誤送信しない
+                        if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+                            e.preventDefault();
+                        }
+                    }}
+                    className="p-6 space-y-6"
+                >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-sf-text mb-1">日付 *</label>

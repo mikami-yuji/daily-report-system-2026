@@ -134,6 +134,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     });
     const [startOutTime, setStartOutTime] = useState(initialDraft ? initialDraft.startOutTime : initialParsed.start);
     const [endOutTime, setEndOutTime] = useState(initialDraft ? initialDraft.endOutTime : initialParsed.end);
+    const mouseDownOnBackdropRef = React.useRef(false);
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(() => {
         if (initialDraft) return initialDraft.designMode;
         if (report?.デザイン提案有無 === 'あり') {
@@ -812,8 +813,31 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     const hasDraftComment = formData.上長コメント !== originalComment;
     const hasDraftReply = formData.コメント返信欄 !== originalReply;
 
+    const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        mouseDownOnBackdropRef.current = (e.target === e.currentTarget);
+    };
+
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (submitting) return;
+        // モーダル内部からのドラッグ離し（文字選択など）では絶対に閉じない
+        if (!mouseDownOnBackdropRef.current || e.target !== e.currentTarget) {
+            mouseDownOnBackdropRef.current = false;
+            return;
+        }
+        mouseDownOnBackdropRef.current = false;
+
+        // 入力中の編集データがある場合は確認ダイアログを表示
+        if (window.confirm('編集中の内容がありますが、閉じてよろしいですか？\n（編集中の内容は一時保存されます）')) {
+            onClose();
+        }
+    };
+
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto pt-10 md:pt-16" onClick={(e) => { if (!submitting && e.target === e.currentTarget) onClose(); }}>
+        <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 p-4 overflow-y-auto pt-10 md:pt-16" 
+            onMouseDown={handleBackdropMouseDown}
+            onClick={handleBackdropClick}
+        >
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <div className="sticky top-0 bg-white border-b border-sf-border p-4 flex justify-between items-center z-10">
                     <div className="flex items-center gap-3">
@@ -861,7 +885,16 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                <form 
+                    onSubmit={handleSubmit} 
+                    onKeyDown={(e) => {
+                        // textarea 以外の input で Enter キーが押されても誤送信しない
+                        if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+                            e.preventDefault();
+                        }
+                    }}
+                    className="p-6 space-y-6"
+                >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-sf-text mb-1">日付 *</label>

@@ -112,7 +112,9 @@ export function generateMonthCalendar(year: number, month: number, reports: Repo
                     stayTime: report.滞在時間 || '',
                     commercialContent: report.商談内容 || '',
                     designType: report.デザイン種別 || '',
-                    designName: report.デザイン名 || ''
+                    designName: report.デザイン名 || '',
+                    directDeliveryName: report.直送先名 || '',
+                    directDeliveryCode: report.直送先CD ? String(report.直送先CD) : ''
                 };
             });
 

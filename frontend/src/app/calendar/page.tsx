@@ -5,7 +5,7 @@ import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { generateMonthCalendar, getDayName, getMonthName } from '@/lib/calendar';
 import { MonthData, CalendarDay } from '@/types/calendar';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Printer, Users, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Printer, Users, MapPin, Truck } from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import toast from 'react-hot-toast';
 
@@ -220,10 +220,13 @@ export default function CalendarPage(): React.JSX.Element {
                                         <div
                                             key={vIndex}
                                             className="text-xs bg-blue-50 text-blue-800 px-2 py-1 rounded truncate print:bg-gray-100 print:text-gray-800"
-                                            title={visit.customerName}
+                                            title={visit.directDeliveryName ? `${visit.customerName}（直送: ${visit.directDeliveryName}）` : visit.customerName}
                                         >
                                             {visit.hasDesign && <span className="text-purple-600 mr-1">★</span>}
                                             {visit.customerName}
+                                            {visit.directDeliveryName && !visit.customerName.includes(visit.directDeliveryName) && (
+                                                <span className="text-[10px] text-blue-600 ml-1">({visit.directDeliveryName})</span>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
@@ -271,6 +274,12 @@ export default function CalendarPage(): React.JSX.Element {
                                                 <h4 className="font-semibold text-gray-900 mb-1">
                                                     {visit.customerName}
                                                 </h4>
+                                                {visit.directDeliveryName && (
+                                                    <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mb-1.5 w-fit">
+                                                        <Truck size={13} className="text-blue-500" />
+                                                        <span>直送先: {visit.directDeliveryName}</span>
+                                                    </div>
+                                                )}
                                                 <p className="text-sm text-gray-600">{visit.action}</p>
                                             </div>
                                             <span className="text-xs text-gray-500">

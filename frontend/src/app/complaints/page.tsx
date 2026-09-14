@@ -215,15 +215,23 @@ export default function ComplaintsPage() {
                                         </div>
                                     )}
                                     {/* 直送先表示 */}
-                                    {report.直送先CD && (
-                                        <Link
-                                            href={`/customers/detail?code=${report.得意先CD}&ddCode=${report.直送先CD}`}
-                                            className="flex items-center gap-2 text-blue-600 hover:underline text-sm mt-1 ml-6"
-                                        >
-                                            <Truck size={14} />
-                                            <span className="text-xs bg-blue-50 border border-blue-200 rounded px-1">直送先</span>
-                                            {report.直送先名} ({report.直送先CD})
-                                        </Link>
+                                    {(report.直送先CD || report.直送先名) && (
+                                        report.得意先CD && report.直送先CD ? (
+                                            <Link
+                                                href={`/customers/detail?code=${report.得意先CD}&ddCode=${report.直送先CD}`}
+                                                className="flex items-center gap-2 text-blue-600 hover:underline text-sm mt-1 ml-6"
+                                            >
+                                                <Truck size={14} />
+                                                <span className="text-xs bg-blue-50 border border-blue-200 rounded px-1">直送先</span>
+                                                {report.直送先名 || '直送先'} ({report.直送先CD})
+                                            </Link>
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-blue-700 text-sm mt-1 ml-6">
+                                                <Truck size={14} className="text-blue-500" />
+                                                <span className="text-xs bg-blue-50 border border-blue-200 rounded px-1">直送先</span>
+                                                {report.直送先名 || report.直送先CD}
+                                            </div>
+                                        )
                                     )}
                                 </div>
 

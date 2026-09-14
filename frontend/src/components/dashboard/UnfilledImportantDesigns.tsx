@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { AlertTriangle, PenSquare, Calendar, User } from 'lucide-react';
+import { AlertTriangle, PenSquare, Calendar, User, Truck } from 'lucide-react';
 import { Report, ViewerDesignRequest } from '@/types/report';
 import { InitialDesignData } from '@/components/reports/NewReportModal';
 import { isSalesPersonMatch } from '@/lib/reportUtils';
@@ -114,6 +114,12 @@ export default function UnfilledImportantDesigns({
                                 <h5 className="text-xs font-bold text-sf-text truncate" title={doc.customer}>
                                     {doc.customer}
                                 </h5>
+                                {doc.shippingAddress && (
+                                    <div className="flex items-center gap-1 text-[11px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 w-fit truncate max-w-full" title={`直送先: ${doc.shippingAddress}`}>
+                                        <Truck size={11} className="text-blue-500 shrink-0" />
+                                        <span className="truncate">直送: {doc.shippingAddress}</span>
+                                    </div>
+                                )}
                                 <p className="text-[11px] text-sf-text-weak truncate" title={doc.designContent}>
                                     {doc.designContent}
                                 </p>
@@ -134,6 +140,7 @@ export default function UnfilledImportantDesigns({
                                     onWriteReport({
                                         得意先CD: '', 
                                         得意先名: doc.customer,
+                                        直送先名: doc.shippingAddress || '',
                                         デザイン依頼No: shortId,
                                         デザイン名: doc.designContent,
                                         デザイン種別: isRoll ? 'SP（新版）' : 'その他',

@@ -33,6 +33,11 @@ export default function RecentReportsTable({ reports }: RecentReportsTableProps)
                 <td className="px-4 py-3 text-sf-text">{report.日付}</td>
                 <td className="px-4 py-3 font-medium text-sf-light-blue">
                   <Link href={`/customers/${report.得意先CD}`} className="hover:underline">{report.訪問先名}</Link>
+                  {report.直送先名 && (
+                    <div className="text-[11px] text-sf-text-weak font-normal truncate max-w-xs">
+                      直送: {report.直送先名}
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sf-text">{report.行動内容}</td>
                 <td className="px-4 py-3 text-center">

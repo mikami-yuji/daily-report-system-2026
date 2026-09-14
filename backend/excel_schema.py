@@ -40,6 +40,7 @@ class ColumnNames:
     APPROVAL_OKAMOTO = "岡本常務"
     APPROVAL_NAKANO = "中野次長"
     READ_CHECK = "既読チェック"
+    SYSTEM_DESIGN_NO = "システム確認用デザインNo."
 
 
 def clean_column_names(df) -> Any:
@@ -86,6 +87,7 @@ class DailyReportColumns:
     APPROVAL_OKAMOTO = 27      # AA: 岡本常務
     APPROVAL_NAKANO = 28       # AB: 中野次長
     READ_CHECK = 29            # AC: 既読チェック
+    SYSTEM_DESIGN_NO = 30      # AD: システム確認用デザインNo.
 
 
 # --- Column Indices for "得意先_List" (1-indexed for openpyxl) ---
@@ -147,6 +149,7 @@ def get_new_report_column_data(report: models.ReportInput, new_mgmt_num: int, cu
         DailyReportColumns.COMPETITOR_INFO: report.競合他社情報,
         DailyReportColumns.BOSS_COMMENT: report.上長コメント,
         DailyReportColumns.COMMENT_REPLY: report.コメント返信欄,
+        DailyReportColumns.SYSTEM_DESIGN_NO: getattr(report, 'システム確認用デザインNo', '') or report.デザイン依頼No,
     }
 
 
@@ -175,4 +178,5 @@ def get_update_report_column_data(report: models.ReportInput) -> Dict[int, Any]:
         DailyReportColumns.COMPETITOR_INFO: report.競合他社情報,
         DailyReportColumns.BOSS_COMMENT: report.上長コメント,
         DailyReportColumns.COMMENT_REPLY: report.コメント返信欄,
+        DailyReportColumns.SYSTEM_DESIGN_NO: getattr(report, 'システム確認用デザインNo', '') or report.デザイン依頼No,
     }

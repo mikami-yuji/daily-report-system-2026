@@ -231,11 +231,16 @@ def test_overlay_pending_tasks_in_get_reports():
         res_add = routes_reports.add_report(new_report, BackgroundTasks(), filename=test_filename)
         assert res_add.get("status") == "queued"
         task_id = res_add["task_id"]
+        assert res_add.get("management_number") == -task_id
 
-        # 3. オフラインで既存日報のコメント返信欄を更新 (update_report_reply)
+        # 3. オフラインで既存日報のコメント返信欄および承認を更新 (update_report_reply, update_report_approval)
         reply_in = models.ReplyInput(コメント返信欄="オフライン返信テスト")
         res_reply = routes_reports.update_report_reply(100, reply_in, BackgroundTasks(), filename=test_filename)
         assert res_reply.get("status") == "queued"
+
+        approval_in = models.ApprovalInput(上長="✓")
+        res_appr = routes_reports.update_report_approval(100, approval_in, BackgroundTasks(), filename=test_filename)
+        assert res_appr.get("status") == "queued"
 
         # 4. get_reports() を呼び出す -> 合成された2件が返るはず！
         reports = routes_reports.get_reports(test_filename)
@@ -247,10 +252,11 @@ def test_overlay_pending_tasks_in_get_reports():
         assert pending_new[0]["訪問先名"] == "オフライン新規先"
         assert pending_new[0]["_is_pending_sync"] is True
 
-        # 既存更新分（管理番号 100、コメント返信欄が更新され、_is_pending_sync = True）
+        # 既存更新分（管理番号 100、コメント返信欄および上長承認が更新され、_is_pending_sync = True）
         pending_existing = [r for r in reports if r.get("管理番号") == 100]
         assert len(pending_existing) == 1
         assert pending_existing[0]["コメント返信欄"] == "オフライン返信テスト"
+        assert pending_existing[0]["上長"] == "✓"
         assert pending_existing[0]["_is_pending_sync"] is True
 
         # 5. get_report_by_id で仮管理番号 (-task_id) を取得可能か検証
@@ -261,6 +267,7 @@ def test_overlay_pending_tasks_in_get_reports():
         # 6. get_report_by_id で更新された管理番号 100 を取得可能か検証
         single_existing = routes_reports.get_report_by_id(100, filename=test_filename)
         assert single_existing["コメント返信欄"] == "オフライン返信テスト"
+        assert single_existing["上長"] == "✓"
         assert single_existing["_is_pending_sync"] is True
 
     finally:

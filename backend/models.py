@@ -24,6 +24,7 @@ class ReportInput(BaseModel):
     デザイン名: str = ""
     デザイン進捗状況: str = ""
     デザイン依頼No: str = Field("", alias="デザイン依頼No.")
+    システム確認用デザインNo: str = Field("", alias="システム確認用デザインNo.")
     上長コメント: str = ""
     コメント返信欄: str = ""
     上長: str = ""

@@ -330,6 +330,7 @@ def _merge_pending_sync_tasks(records: List[Dict[str, Any]], filename: str) -> L
 
         records_map = {r["管理番号"]: r for r in records if "管理番号" in r and r["管理番号"] is not None}
         new_pending_records = []
+        new_pending_map = {}
         deleted_ids = set()
 
         for task in pending:
@@ -367,54 +368,50 @@ def _merge_pending_sync_tasks(records: List[Dict[str, Any]], filename: str) -> L
                     "システム確認用デザインNo.": payload.get("システム確認用デザインNo.", payload.get("デザイン依頼No.", "")),
                     "上長コメント": payload.get("上長コメント", ""),
                     "コメント返信欄": payload.get("コメント返信欄", ""),
-                    "上長確認": payload.get("上長確認", ""),
-                    "山澄常務確認": payload.get("山澄常務確認", ""),
-                    "岡本常務確認": payload.get("岡本常務確認", ""),
-                    "中野次長確認": payload.get("中野次長確認", ""),
+                    "上長": payload.get("上長") or payload.get("上長確認", ""),
+                    "山澄常務": payload.get("山澄常務") or payload.get("山澄常務確認", ""),
+                    "岡本常務": payload.get("岡本常務") or payload.get("岡本常務確認", ""),
+                    "中野次長": payload.get("中野次長") or payload.get("中野次長確認", ""),
+                    "既読チェック": payload.get("既読チェック", ""),
+                    "上長確認": payload.get("上長確認") or payload.get("上長", ""),
+                    "山澄常務確認": payload.get("山澄常務確認") or payload.get("山澄常務", ""),
+                    "岡本常務確認": payload.get("岡本常務確認") or payload.get("岡本常務", ""),
+                    "中野次長確認": payload.get("中野次長確認") or payload.get("中野次長", ""),
                 }
                 for k, v in payload.items():
                     if k not in pending_rec:
                         pending_rec[k] = v
                 new_pending_records.append(pending_rec)
-
-            elif t_type == "update" and mgmt in records_map:
-                rec = records_map[mgmt]
-                rec["_is_pending_sync"] = True
-                rec["_sync_task_id"] = task["id"]
-                for k, v in payload.items():
-                    if k != "管理番号" and v is not None:
-                        rec[k] = v
-
-            elif t_type == "comment" and mgmt in records_map:
-                rec = records_map[mgmt]
-                rec["_is_pending_sync"] = True
-                rec["_sync_task_id"] = task["id"]
-                if "上長コメント" in payload and payload["上長コメント"] is not None:
-                    rec["上長コメント"] = payload["上長コメント"]
-                if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
-                    rec["コメント返信欄"] = payload["コメント返信欄"]
-
-            elif t_type == "reply" and mgmt in records_map:
-                rec = records_map[mgmt]
-                rec["_is_pending_sync"] = True
-                rec["_sync_task_id"] = task["id"]
-                if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
-                    rec["コメント返信欄"] = payload["コメント返信欄"]
-
-            elif t_type == "approval" and mgmt in records_map:
-                rec = records_map[mgmt]
-                rec["_is_pending_sync"] = True
-                rec["_sync_task_id"] = task["id"]
-                for role_col in ["上長確認", "山澄常務確認", "岡本常務確認", "中野次長確認"]:
-                    if role_col in payload:
-                        rec[role_col] = payload[role_col]
+                new_pending_map[temp_id] = pending_rec
 
             elif t_type == "delete" and mgmt:
                 deleted_ids.add(mgmt)
 
+            else:
+                target_rec = records_map.get(mgmt) or new_pending_map.get(mgmt)
+                if target_rec:
+                    target_rec["_is_pending_sync"] = True
+                    target_rec["_sync_task_id"] = task["id"]
+                    if t_type == "update":
+                        for k, v in payload.items():
+                            if k != "管理番号" and v is not None:
+                                target_rec[k] = v
+                    elif t_type in ("comment", "reply"):
+                        if "上長コメント" in payload and payload["上長コメント"] is not None:
+                            target_rec["上長コメント"] = payload["上長コメント"]
+                        if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
+                            target_rec["コメント返信欄"] = payload["コメント返信欄"]
+                    elif t_type == "approval":
+                        for role_col in ["上長", "山澄常務", "岡本常務", "中野次長", "既読チェック"]:
+                            if role_col in payload and payload[role_col] is not None:
+                                target_rec[role_col] = payload[role_col]
+                            elif f"{role_col}確認" in payload and payload[f"{role_col}確認"] is not None:
+                                target_rec[role_col] = payload[f"{role_col}確認"]
+
         filtered_records = [r for r in records if r.get("管理番号") not in deleted_ids]
-        merged = new_pending_records + filtered_records
-        logging.info(f"Overlayed {len(pending)} pending sync tasks onto reports for {filename} ({len(new_pending_records)} new pending)")
+        filtered_new_pending = [r for r in new_pending_records if r.get("管理番号") not in deleted_ids]
+        merged = filtered_new_pending + filtered_records
+        logging.info(f"Overlayed {len(pending)} pending sync tasks onto reports for {filename} ({len(filtered_new_pending)} new pending)")
         return merged
     except Exception as e:
         logging.warning(f"Failed to overlay pending sync tasks: {e}")
@@ -503,9 +500,11 @@ def get_report_by_id(management_number: int, filename: str = config.DEFAULT_EXCE
                     if "コメント返信欄" in payload and payload["コメント返信欄"] is not None:
                         cleaned_record["コメント返信欄"] = payload["コメント返信欄"]
                 elif t_type == "approval":
-                    for role_col in ["上長確認", "山澄常務確認", "岡本常務確認", "中野次長確認"]:
-                        if role_col in payload:
+                    for role_col in ["上長", "山澄常務", "岡本常務", "中野次長", "既読チェック"]:
+                        if role_col in payload and payload[role_col] is not None:
                             cleaned_record[role_col] = payload[role_col]
+                        elif f"{role_col}確認" in payload and payload[f"{role_col}確認"] is not None:
+                            cleaned_record[role_col] = payload[f"{role_col}確認"]
 
         return cleaned_record
     except HTTPException:
@@ -1172,6 +1171,7 @@ def add_report(
             "message": "社内ファイルサーバーが一時的にオフラインのため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
+            "management_number": -task_id,
             "offline": True
         }
 
@@ -1199,6 +1199,7 @@ def add_report(
             "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
+            "management_number": -task_id,
             "offline": True
         }
     except Exception as e:

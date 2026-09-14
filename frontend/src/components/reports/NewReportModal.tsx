@@ -681,7 +681,16 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
             setSaveStatus('success');
             succeeded = true;
             
-            toast.success(`日報を保存しました (No. ${responseData.management_number})`, { duration: 3000 });
+            if (responseData.offline || (typeof responseData.management_number === 'number' && responseData.management_number < 0)) {
+                toast.success('社外作業のためローカルに一時退避しました（社内LAN復帰時に自動反映）', {
+                    duration: 4000,
+                    icon: '☁️'
+                });
+            } else if (responseData.management_number) {
+                toast.success(`日報を保存しました (No. ${responseData.management_number})`, { duration: 3000 });
+            } else {
+                toast.success('日報を保存しました', { duration: 3000 });
+            }
             // 送信成功時に下書きをクリア
             clearDraft();
             

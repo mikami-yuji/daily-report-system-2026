@@ -1,6 +1,6 @@
 # 営業日報システム (Daily Report System)
 
-![Version](https://img.shields.io/badge/version-2.4.2-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.5-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.13-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.122-green.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-16.0%20(App%20Router)-black.svg)
@@ -281,8 +281,7 @@ daily-report-system-2026/
 │   ├── config.py                  # 設定ファイル（config.json）ローダー
 │   ├── excel_schema.py            # Excel列定義・マッピング一元管理層
 │   ├── excel_io.py                # アトミック保存・ファイルロック再試行機構
-│   ├── cache.py                   # キャッシュ＆バックアップ30日世代管理
-│   ├── sqlite_cache.py            # 高速SQLiteローカルキャッシュエンジン
+│   ├── cache.py                   # 高速SQLiteキャッシュ＆バックアップ30日世代管理
 │   ├── sync_queue.py              # 回線瞬断時の一時退避キュー＆自動再同期ワーカー
 │   ├── updater.py                 # 自動アップデート検知・ダウンロード・再起動機構
 │   ├── version.py                 # システムバージョン定義

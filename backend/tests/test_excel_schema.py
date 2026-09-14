@@ -39,10 +39,11 @@ def test_daily_report_columns_unique():
         excel_schema.DailyReportColumns.APPROVAL_OKAMOTO,
         excel_schema.DailyReportColumns.APPROVAL_NAKANO,
         excel_schema.DailyReportColumns.READ_CHECK,
+        excel_schema.DailyReportColumns.SYSTEM_DESIGN_NO,
     ]
     assert len(cols) == len(set(cols)), "DailyReportColumns contains duplicate column indices"
     assert min(cols) == 1
-    assert max(cols) == 29
+    assert max(cols) == 30
 
 def test_approval_and_comment_column_mappings():
     """承認とコメントのマッピング整合性テスト"""

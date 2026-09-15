@@ -1,14 +1,14 @@
 {
-  "version": "2.5.9",
+  "version": "2.5.10",
   "releaseDate": "2026-09-15",
-  "fileName": "DailyReportServer_v2.5.9.exe",
-  "fileSize": 49180077,
-  "sha256": "45266d3cb49096206761d9822f091bbf2f6cdc44cd61846455e4cab5f55839cd",
+  "fileName": "DailyReportServer_v2.5.10.exe",
+  "fileSize": 49180141,
+  "sha256": "57ce7a87e0a5b239fe3bd0b8f4cab9611108f9c106dcb99963a06f7c3e59df32",
   "forceUpdate": false,
   "releaseNotes": [
-    "一括保存高速化",
-    "デザイン直送先自動反映",
-    "キーボードTab/矢印操作対応",
-    "月別タブ管理(年月別ワンクリック切替)"
+    "日報一括入力の操作性向上",
+    "得意先サジェストのキーボード操作対応",
+    "重要意匠導線改善",
+    "システム全体の安定性向上"
   ]
 }

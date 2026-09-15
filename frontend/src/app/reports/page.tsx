@@ -524,14 +524,40 @@ export default function ReportsPage(): React.JSX.Element {
         <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col animate-fadeIn">
             {/* 上部コントロールバー */}
             <div className="flex flex-wrap justify-between items-center bg-white p-3.5 rounded border border-sf-border shadow-sm gap-3">
-                <div className="flex items-center gap-3">
-                    <div className="bg-sf-light-blue p-2 rounded text-white shadow-sm">
-                        <FileText size={20} />
+                <div className="flex items-center gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-sf-light-blue p-2 rounded text-white shadow-sm">
+                            <FileText size={20} />
+                        </div>
+                        <div>
+                            <p className="text-xs text-sf-text-weak font-medium">オブジェクト</p>
+                            <h1 className="text-xl font-bold text-sf-text leading-tight">営業日報</h1>
+                        </div>
                     </div>
-                    <div>
-                        <p className="text-xs text-sf-text-weak font-medium">オブジェクト</p>
-                        <h1 className="text-xl font-bold text-sf-text">営業日報</h1>
-                    </div>
+
+                    {/* 月別セレクター（ドロップダウン） */}
+                    {reports.length > 0 && monthOptions.length > 0 && (
+                        <div className="flex items-center gap-1.5 bg-blue-50/70 border border-blue-200/80 rounded-md px-2.5 py-1 text-xs shadow-2xs">
+                            <Calendar size={14} className="text-sf-light-blue shrink-0" />
+                            <span className="text-sf-text-weak text-[11px] font-medium whitespace-nowrap">対象月:</span>
+                            <select
+                                value={selectedMonth}
+                                onChange={(e) => {
+                                    setSelectedMonth(e.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className="bg-transparent text-sf-text font-bold text-xs focus:outline-none cursor-pointer pr-1 hover:text-blue-700 transition-colors"
+                                title="表示する日報の対象月を選択"
+                            >
+                                <option value="all">全期間 ({reports.length}件)</option>
+                                {monthOptions.map((m) => (
+                                    <option key={m.key} value={m.key}>
+                                        {m.label} ({m.count}件)
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex flex-wrap gap-2 items-center">
@@ -631,63 +657,6 @@ export default function ReportsPage(): React.JSX.Element {
                     </button>
                 </div>
             </div>
-
-            {/* 月別切り替えタブバー */}
-            {reports.length > 0 && monthOptions.length > 0 && (
-                <div className="bg-white border border-sf-border rounded p-1.5 shadow-sm flex items-center gap-1.5 overflow-x-auto text-xs">
-                    <div className="flex items-center gap-1 text-sf-text-weak pl-2 pr-1 flex-shrink-0 font-medium">
-                        <Calendar size={13} className="text-sf-light-blue" />
-                        <span className="hidden sm:inline">月別:</span>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setSelectedMonth('all');
-                            setCurrentPage(1);
-                        }}
-                        className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
-                            selectedMonth === 'all'
-                                ? 'bg-sf-light-blue text-white shadow-sm font-bold'
-                                : 'text-sf-text hover:bg-gray-100 hover:text-sf-navy'
-                        }`}
-                        title="全期間の日報を表示"
-                    >
-                        <span>全期間</span>
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                            selectedMonth === 'all' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'
-                        }`}>
-                            {reports.length}
-                        </span>
-                    </button>
-                    <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
-                    {monthOptions.map((m) => {
-                        const isSelected = selectedMonth === m.key;
-                        return (
-                            <button
-                                key={m.key}
-                                type="button"
-                                onClick={() => {
-                                    setSelectedMonth(m.key);
-                                    setCurrentPage(1);
-                                }}
-                                className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
-                                    isSelected
-                                        ? 'bg-sf-light-blue text-white shadow-sm font-bold'
-                                        : 'text-sf-text hover:bg-gray-100 hover:text-sf-navy'
-                                }`}
-                                title={`${m.label}の日報を表示`}
-                            >
-                                <span>{m.label}</span>
-                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                                    isSelected ? 'bg-white/25 text-white' : 'bg-blue-50 text-blue-700 font-semibold'
-                                }`}>
-                                    {m.count}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
 
             {/* メインコンテンツ領域 */}
             <div className="bg-white border border-sf-border shadow-sm flex-1 overflow-auto rounded">

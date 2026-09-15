@@ -1,14 +1,13 @@
 {
-  "version": "2.5.10",
+  "version": "2.5.11",
   "releaseDate": "2026-09-15",
-  "fileName": "DailyReportServer_v2.5.10.exe",
-  "fileSize": 49180141,
-  "sha256": "57ce7a87e0a5b239fe3bd0b8f4cab9611108f9c106dcb99963a06f7c3e59df32",
+  "fileName": "DailyReportServer_v2.5.11.exe",
+  "fileSize": 49179434,
+  "sha256": "c613e6bf1dbeacf249dab512d11ac5e4f822c85e5ecaa4e7b8d94fe0c0a83a55",
   "forceUpdate": false,
   "releaseNotes": [
-    "日報一括入力の操作性向上",
-    "得意先サジェストのキーボード操作対応",
-    "重要意匠導線改善",
+    "月別フィルターのヘッダー統合（縦表示領域の拡大・スクロールバー排除）",
+    "日報一覧の視認性・一覧性向上",
     "システム全体の安定性向上"
   ]
 }

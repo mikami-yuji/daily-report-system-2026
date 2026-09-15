@@ -1,12 +1,11 @@
 {
-  "version": "2.5.11",
-  "releaseDate": "2026-09-15",
-  "fileName": "DailyReportServer_v2.5.11.exe",
-  "fileSize": 49180321,
-  "sha256": "e529f86253c4c99d91d2daba374b185f7f47d5e013d7af441e7504c97b4287fe",
+  "version": "2.5.12",
+  "releaseDate": "2026-09-16",
+  "fileName": "DailyReportServer_v2.5.12.exe",
+  "fileSize": 49184872,
+  "sha256": "abca559b5c659a1fc674811af8c604d4bd5d2ba0ff5e96db6e2fcdcc6e866c73",
   "forceUpdate": false,
   "releaseNotes": [
-    "月別フィルターヘッダー統合",
-    "システム安定性向上"
+    "\\"
   ]
 }

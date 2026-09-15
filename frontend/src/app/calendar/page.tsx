@@ -5,19 +5,43 @@ import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
 import { generateMonthCalendar, getDayName, getMonthName } from '@/lib/calendar';
 import { MonthData, CalendarDay } from '@/types/calendar';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Printer, Users, MapPin, Truck } from 'lucide-react';
+import { 
+    ChevronLeft, 
+    ChevronRight, 
+    Calendar as CalendarIcon, 
+    Printer, 
+    Users, 
+    MapPin, 
+    Truck, 
+    ChevronDown, 
+    ChevronUp, 
+    ChevronsUpDown, 
+    ExternalLink, 
+    FileText, 
+    X 
+} from 'lucide-react';
 import { useReactToPrint } from 'react-to-print';
 import toast from 'react-hot-toast';
+import ReportDetailModal from '@/components/reports/ReportDetailModal';
+import EditReportModal from '@/components/reports/EditReportModal';
+import { Report } from '@/types/report';
 
 export default function CalendarPage(): React.JSX.Element {
     const { selectedFile } = useFile();
 
     // React Queryでデータ取得（自動キャッシュ）
-    const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
+    const { data: reports = [], isLoading, error, refetch } = useReports(selectedFile || undefined);
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
     const printRef = useRef<HTMLDivElement>(null);
+
+    // 案1: 商談内容の展開状態（管理番号 -> boolean）
+    const [expandedVisits, setExpandedVisits] = useState<Record<number, boolean>>({});
+
+    // 案3: 日報詳細モーダル・編集モーダルの状態
+    const [selectedDetailIndex, setSelectedDetailIndex] = useState<number | null>(null);
+    const [editingReport, setEditingReport] = useState<Report | null>(null);
 
     // エラー時のtoast表示
     useEffect(() => {
@@ -33,13 +57,59 @@ export default function CalendarPage(): React.JSX.Element {
         return generateMonthCalendar(year, month, reports);
     }, [reports, currentDate]);
 
+    // 商談内容が長文（3行以上または90文字以上）か判定
+    const isLongContent = (text?: string): boolean => {
+        if (!text) return false;
+        const lines = text.trim().split('\n');
+        return lines.length > 3 || text.length > 90;
+    };
+
+    // 選択中の日付における長文訪問記録
+    const longVisits = useMemo(() => {
+        if (!selectedDay) return [];
+        return selectedDay.visits.filter(v => isLongContent(v.commercialContent));
+    }, [selectedDay]);
+
+    // すべて展開されているか
+    const isAllExpanded = useMemo(() => {
+        if (longVisits.length === 0) return false;
+        return longVisits.every(v => !!expandedVisits[v.managementNumber]);
+    }, [longVisits, expandedVisits]);
+
+    // 個別の商談内容の展開・折りたたみ
+    const handleToggleVisit = (mgmtNo: number) => {
+        setExpandedVisits(prev => ({
+            ...prev,
+            [mgmtNo]: !prev[mgmtNo]
+        }));
+    };
+
+    // すべて展開 / 折りたたみの切り替え
+    const handleToggleAll = () => {
+        if (isAllExpanded) {
+            setExpandedVisits({});
+        } else {
+            const nextState: Record<number, boolean> = {};
+            longVisits.forEach(v => {
+                nextState[v.managementNumber] = true;
+            });
+            setExpandedVisits(nextState);
+        }
+    };
+
+    const handleCloseDayModal = () => {
+        setSelectedDay(null);
+        setExpandedVisits({});
+        setSelectedDetailIndex(null);
+    };
+
     const handlePreviousMonth = () => {
         setCurrentDate(prev => {
             const newDate = new Date(prev);
             newDate.setMonth(prev.getMonth() - 1);
             return newDate;
         });
-        setSelectedDay(null);
+        handleCloseDayModal();
     };
 
     const handleNextMonth = () => {
@@ -48,12 +118,12 @@ export default function CalendarPage(): React.JSX.Element {
             newDate.setMonth(prev.getMonth() + 1);
             return newDate;
         });
-        setSelectedDay(null);
+        handleCloseDayModal();
     };
 
     const handleToday = () => {
         setCurrentDate(new Date());
-        setSelectedDay(null);
+        handleCloseDayModal();
     };
 
     const handlePrint = useReactToPrint({
@@ -245,97 +315,229 @@ export default function CalendarPage(): React.JSX.Element {
             {selectedDay && (
                 <div
                     className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-                    onClick={() => setSelectedDay(null)}
+                    onClick={handleCloseDayModal}
                 >
                     <div
-                        className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+                        className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="p-6">
-                            <div className="flex items-center justify-between mb-4">
+                        {/* ヘッダー */}
+                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0">
+                            <div>
                                 <h3 className="text-xl font-bold text-gray-900">
                                     {selectedDay.dateString} の訪問先
                                 </h3>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    全 {selectedDay.visits.length} 件の訪問記録
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {longVisits.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleToggleAll}
+                                        className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors font-medium shadow-2xs"
+                                        title={isAllExpanded ? "すべての商談内容を折りたたむ" : "すべての商談内容を展開する"}
+                                    >
+                                        <ChevronsUpDown size={13} className="text-gray-500" />
+                                        <span>{isAllExpanded ? "すべて折りたたむ" : "すべて展開"}</span>
+                                    </button>
+                                )}
                                 <button
-                                    onClick={() => setSelectedDay(null)}
-                                    className="text-gray-400 hover:text-gray-600"
+                                    onClick={handleCloseDayModal}
+                                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                    title="閉じる"
                                 >
-                                    ✕
+                                    <X size={18} />
                                 </button>
                             </div>
-                            <div className="space-y-3">
-                                {selectedDay.visits.map((visit, index) => (
+                        </div>
+
+                        {/* 本文（スクロール領域） */}
+                        <div className="p-6 overflow-y-auto space-y-4">
+                            {selectedDay.visits.map((visit, index) => {
+                                const isLong = isLongContent(visit.commercialContent);
+                                const isExpanded = !!expandedVisits[visit.managementNumber];
+
+                                return (
                                     <div
                                         key={index}
-                                        className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                                        className="border border-gray-200 rounded-xl p-4 bg-white hover:border-blue-200 hover:shadow-xs transition-all"
                                     >
                                         <div className="flex items-start justify-between mb-3">
                                             <div>
-                                                <h4 className="font-semibold text-gray-900 mb-1">
-                                                    {visit.customerName}
-                                                </h4>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h4
+                                                        className="font-bold text-gray-900 text-base hover:text-sf-light-blue transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                                                        onClick={() => setSelectedDetailIndex(index)}
+                                                        title="クリックして日報詳細を表示"
+                                                    >
+                                                        {visit.customerName}
+                                                        <ExternalLink size={13} className="text-gray-400 hover:text-sf-light-blue" />
+                                                    </h4>
+                                                </div>
                                                 {visit.directDeliveryName && (
-                                                    <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mb-1.5 w-fit">
+                                                    <div className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1 mb-1.5 w-fit">
                                                         <Truck size={13} className="text-blue-500" />
                                                         <span>直送先: {visit.directDeliveryName}</span>
                                                     </div>
                                                 )}
-                                                <p className="text-sm text-gray-600">{visit.action}</p>
+                                                <p className="text-xs font-medium text-gray-500 mt-0.5">{visit.action}</p>
                                             </div>
-                                            <span className="text-xs text-gray-500">
+                                            <span className="text-xs font-mono text-gray-400 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
                                                 No. {visit.managementNumber}
                                             </span>
                                         </div>
 
-                                        {/* 詳細情報 */}
-                                        <div className="grid grid-cols-2 gap-2 text-sm mb-3">
-                                            {visit.interviewer && (
-                                                <div className="flex items-center gap-1 text-gray-600">
-                                                    <Users size={14} className="text-gray-400" />
-                                                    <span>面談者: {visit.interviewer}</span>
-                                                </div>
-                                            )}
-                                            {visit.stayTime && (
-                                                <div className="text-gray-600">
-                                                    滞在時間: {visit.stayTime}
-                                                </div>
-                                            )}
-                                        </div>
+                                        {/* 詳細情報（面談者・滞在時間） */}
+                                        {(visit.interviewer || visit.stayTime) && (
+                                            <div className="grid grid-cols-2 gap-2 text-sm mb-3 bg-gray-50/70 px-3 py-2 rounded-lg">
+                                                {visit.interviewer ? (
+                                                    <div className="flex items-center gap-1.5 text-gray-600 truncate">
+                                                        <Users size={14} className="text-gray-400 flex-shrink-0" />
+                                                        <span className="truncate">面談者: {visit.interviewer}</span>
+                                                    </div>
+                                                ) : <div />}
+                                                {visit.stayTime && (
+                                                    <div className="text-gray-600 text-right">
+                                                        滞在時間: <span className="font-medium text-gray-700">{visit.stayTime}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
-                                        {/* 商談内容 */}
+                                        {/* 商談内容（案1） */}
                                         {visit.commercialContent && (
-                                            <div className="bg-gray-50 p-3 rounded text-sm text-gray-700 mb-3">
-                                                <div className="font-medium text-gray-600 mb-1 text-xs">商談内容:</div>
-                                                <div className="whitespace-pre-wrap line-clamp-3">
+                                            <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700 mb-3 border border-gray-100">
+                                                <div className="flex items-center justify-between font-medium text-gray-600 mb-1.5 text-xs">
+                                                    <span>商談内容:</span>
+                                                    {isLong && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleVisit(visit.managementNumber);
+                                                            }}
+                                                            className="text-xs text-sf-light-blue hover:text-blue-700 flex items-center gap-0.5 font-medium transition-colors"
+                                                        >
+                                                            {isExpanded ? (
+                                                                <>折りたたむ <ChevronUp size={13} /></>
+                                                            ) : (
+                                                                <>続きを読む <ChevronDown size={13} /></>
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className={`whitespace-pre-wrap break-words text-gray-800 leading-relaxed ${!isExpanded && isLong ? 'line-clamp-3' : ''}`}>
                                                     {visit.commercialContent}
                                                 </div>
+                                                {isLong && !isExpanded && (
+                                                    <div className="mt-1.5 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleVisit(visit.managementNumber);
+                                                            }}
+                                                            className="text-xs text-sf-light-blue hover:text-blue-700 font-medium inline-flex items-center gap-0.5 hover:underline"
+                                                        >
+                                                            続きを読む <ChevronDown size={13} />
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
                                         {/* デザイン情報 */}
                                         {visit.hasDesign && (
-                                            <div className="flex flex-wrap gap-2">
-                                                <span className="inline-block text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                            <div className="flex flex-wrap gap-1.5 mb-3">
+                                                <span className="inline-block text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded font-medium">
                                                     デザイン提案あり
                                                 </span>
                                                 {visit.designType && (
-                                                    <span className="inline-block text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                                    <span className="inline-block text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
                                                         {visit.designType}
                                                     </span>
                                                 )}
                                                 {visit.designName && (
-                                                    <span className="inline-block text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
+                                                    <span className="inline-block text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded truncate max-w-xs">
                                                         {visit.designName}
                                                     </span>
                                                 )}
                                             </div>
                                         )}
+
+                                        {/* 日報詳細を開くアクションバー（案3） */}
+                                        {visit.report && (
+                                            <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
+                                                <span className="text-xs text-gray-400">
+                                                    {visit.report.提案物 || visit.report.次回プラン ? '提案物・次回プランあり' : ''}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedDetailIndex(index);
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 text-xs text-sf-light-blue hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1 rounded-md transition-colors font-medium ml-auto"
+                                                    title="日報の全項目・コメント・画像・承認状況を確認"
+                                                >
+                                                    <FileText size={13} />
+                                                    <span>日報詳細を確認</span>
+                                                    <ExternalLink size={12} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
-                                ))}
-                            </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* 日報詳細モーダル (案3) */}
+            {selectedDetailIndex !== null && selectedDay && selectedDay.visits[selectedDetailIndex]?.report && (
+                <ReportDetailModal
+                    report={selectedDay.visits[selectedDetailIndex].report!}
+                    onClose={() => setSelectedDetailIndex(null)}
+                    onNext={() => {
+                        if (selectedDetailIndex > 0) {
+                            setSelectedDetailIndex(selectedDetailIndex - 1);
+                        }
+                    }}
+                    onPrev={() => {
+                        if (selectedDetailIndex < selectedDay.visits.length - 1) {
+                            setSelectedDetailIndex(selectedDetailIndex + 1);
+                        }
+                    }}
+                    hasNext={selectedDetailIndex > 0}
+                    hasPrev={selectedDetailIndex < selectedDay.visits.length - 1}
+                    onEdit={() => {
+                        const rep = selectedDay.visits[selectedDetailIndex].report!;
+                        setSelectedDetailIndex(null);
+                        setEditingReport(rep);
+                    }}
+                    onUpdate={() => {
+                        refetch();
+                    }}
+                    allReports={reports}
+                />
+            )}
+
+            {/* 日報編集モーダル */}
+            {editingReport && (
+                <EditReportModal
+                    report={editingReport}
+                    onClose={() => setEditingReport(null)}
+                    onSuccess={() => {
+                        setEditingReport(null);
+                        refetch();
+                        toast.success('日報を更新しました');
+                    }}
+                    selectedFile={selectedFile || ''}
+                    reports={reports}
+                />
             )}
         </div>
     );

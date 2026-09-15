@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Report, Customer, Design, getCustomers, getInterviewers, getDesigns, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { useOffline } from '@/context/OfflineContext';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
-import { X, Truck, Loader2, Check, ExternalLink } from 'lucide-react';
+import { X, Loader2, Check, ExternalLink, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, isSalesPersonMatch } from '@/lib/reportUtils';
 
@@ -115,6 +115,12 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [activeCustomerIndex, setActiveCustomerIndex] = useState<number>(-1);
     const [interviewers, setInterviewers] = useState<string[]>([]);
+
+    // 直送先検索・選択用ステート
+    const [deliverySearchTerm, setDeliverySearchTerm] = useState('');
+    const [showDeliverySuggestions, setShowDeliverySuggestions] = useState(false);
+    const justSelectedDeliveryRef = React.useRef(false);
+    const justSelectedCustomerRef = React.useRef(false);
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(
         initialDesignData?.designMode || 
         (initialReportData?.['デザイン依頼No.'] ? 'existing' : (initialDesignData ? 'existing' : (initialDraft?.designMode || 'none')))
@@ -270,13 +276,15 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 }
 
                 if (customer) {
+                    const targetDeliveryName = initialDesignData.直送先名 || customer.直送先名 || '';
+                    const targetDeliveryCode = initialDesignData.直送先CD || customer.直送先CD || '';
                     setFormData(prev => ({
                         ...prev,
-                        訪問先名: customer.直送先名 ? `${customer.得意先名}　${customer.直送先名}` : (customer.得意先名 || ''),
-                        直送先名: customer.直送先名 || '',
-                        得意先CD: customer.得意先CD || '',
-                        直送先CD: customer.直送先CD || '',
-                        エリア: customer.エリア || '',
+                        訪問先名: customer.得意先名 || initialDesignData.得意先名 || '',
+                        直送先名: targetDeliveryName,
+                        得意先CD: customer.得意先CD || initialDesignData.得意先CD || '',
+                        直送先CD: targetDeliveryCode,
+                        エリア: customer.エリア || prev.エリア || '',
                         重点顧客: customer.重点顧客 || '',
                         ランク: customer.ランク || ''
                     }));
@@ -284,7 +292,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                     // Fetch interviewers and designs for this customer
                     const cCd = customer.得意先CD;
                     const cName = customer.得意先名;
-                    const cDeli = customer.直送先名 || undefined;
+                    const cDeli = targetDeliveryName || undefined;
                     getInterviewers(cCd, selectedFile, cName, cDeli).then(d => setInterviewers(d)).catch(() => setInterviewers([]));
                     getDesigns(cCd, selectedFile, cDeli).then(d => setDesigns(d)).catch(() => setDesigns([]));
                 }
@@ -364,15 +372,18 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const selectCustomer = (customer: Customer) => {
         setFormData(prev => ({
             ...prev,
-            訪問先名: customer.直送先名 ? `${customer.得意先名}　${customer.直送先名}` : (customer.得意先名 || ''),
+            訪問先名: customer.得意先名 || '',
             直送先名: customer.直送先名 || '',
             得意先CD: customer.得意先CD || '',
             直送先CD: customer.直送先CD || '',
-            エリア: customer.エリア || '',
+            エリア: customer.エリア || prev.エリア || '',
             重点顧客: customer.重点顧客 || '',
             ランク: customer.ランク || ''
         }));
+        justSelectedCustomerRef.current = true;
         setShowSuggestions(false);
+        setDeliverySearchTerm('');
+        setShowDeliverySuggestions(false);
 
         // Fetch interviewers for this customer
         if (customer.得意先CD) {
@@ -740,8 +751,94 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         setFormData(prev => ({
             ...prev,
             訪問先名: '',
+            得意先CD: '',
+            直送先名: '',
+            直送先CD: '',
+            重点顧客: '',
+            ランク: ''
         }));
+        setShowSuggestions(false);
+        setDeliverySearchTerm('');
+        setShowDeliverySuggestions(false);
+        setInterviewers([]);
+        setDesigns([]);
         filterCustomers('');
+    };
+
+    // 直送先候補フィルタ
+    const filterDeliveries = (term: string): Customer[] => {
+        const lowerTerm = term.toLowerCase().trim();
+
+        // 得意先が選択されている場合: その得意先CDに紐づく直送先レコードを抽出
+        if (formData.得意先CD) {
+            const related = customers.filter(c => c.得意先CD === formData.得意先CD && c.直送先名);
+            if (!lowerTerm) return related;
+            return related.filter(c =>
+                (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerTerm)) ||
+                (c.直送先名 && String(c.直送先名).toLowerCase().includes(lowerTerm))
+            );
+        }
+
+        // 得意先が未選択の場合: 直送先名が存在するレコードから検索
+        if (!lowerTerm) return [];
+        return customers.filter(c =>
+            c.直送先名 && (
+                (c.直送先CD && String(c.直送先CD).toLowerCase().includes(lowerTerm)) ||
+                (c.直送先名 && String(c.直送先名).toLowerCase().includes(lowerTerm)) ||
+                (c.得意先名 && String(c.得意先名).toLowerCase().includes(lowerTerm))
+            )
+        ).slice(0, 20);
+    };
+
+    // 直送先選択
+    const selectDelivery = (item: Customer) => {
+        const willSetCustomer = !formData.得意先CD && !formData.訪問先名 && item.得意先CD;
+        setFormData(prev => ({
+            ...prev,
+            直送先名: item.直送先名 || '',
+            直送先CD: item.直送先CD || '',
+            ...(willSetCustomer ? {
+                得意先CD: item.得意先CD || '',
+                訪問先名: item.得意先名 || '',
+                エリア: item.エリア || prev.エリア,
+                ランク: item.ランク || prev.ランク,
+                重点顧客: item.重点顧客 || prev.重点顧客
+            } : {})
+        }));
+
+        justSelectedDeliveryRef.current = true;
+        setShowDeliverySuggestions(false);
+        setDeliverySearchTerm('');
+
+        const targetCd = formData.得意先CD || item.得意先CD;
+        const targetName = formData.訪問先名 || item.得意先名;
+        if (targetCd) {
+            getDesigns(targetCd, selectedFile, item.直送先名 || undefined)
+                .then(setDesigns)
+                .catch(() => setDesigns([]));
+            getInterviewers(targetCd, selectedFile, targetName, item.直送先名)
+                .then(setInterviewers)
+                .catch(() => setInterviewers([]));
+        }
+    };
+
+    // 直送先クリア
+    const clearDelivery = () => {
+        setFormData(prev => ({
+            ...prev,
+            直送先名: '',
+            直送先CD: ''
+        }));
+        setDeliverySearchTerm('');
+        setShowDeliverySuggestions(false);
+        if (formData.得意先CD) {
+            getDesigns(formData.得意先CD, selectedFile, undefined)
+                .then(setDesigns)
+                .catch(() => setDesigns([]));
+            getInterviewers(formData.得意先CD, selectedFile, formData.訪問先名, undefined)
+                .then(setInterviewers)
+                .catch(() => setInterviewers([]));
+        }
     };
 
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
@@ -954,7 +1051,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                         )}
 
                         {!isMinimalUI && (
-                            <div className="md:col-span-2 relative">
+                            <div className="relative">
                                 <label className="block text-sm font-medium text-sf-text mb-1">訪問先名（得意先名） *</label>
                                 <div className="relative">
                                     <input
@@ -970,6 +1067,11 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                         onBlur={(): void => {
                                             // 少し遅延させてクリックやTab確定との競合を防止
                                             setTimeout(() => {
+                                                if (justSelectedCustomerRef.current) {
+                                                    justSelectedCustomerRef.current = false;
+                                                    setShowSuggestions(false);
+                                                    return;
+                                                }
                                                 setShowSuggestions(false);
                                                 loadDesignsForTypedCustomer();
                                                 loadSuggestedAreaForTypedCustomer();
@@ -1022,13 +1124,6 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                         </button>
                                     )}
                                 </div>
-                                {formData.直送先名 && (
-                                    <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1 font-medium bg-blue-50/70 border border-blue-200/60 rounded px-2 py-1 w-fit">
-                                        <Truck size={14} className="text-blue-600 shrink-0" />
-                                        <span>直送先: {formData.直送先名}</span>
-                                        {formData.直送先CD && <span className="text-xs text-gray-500">(CD: {formData.直送先CD})</span>}
-                                    </div>
-                                )}
                                 {showSuggestions && (
                                     <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg divide-y divide-gray-100">
                                         {filteredCustomers.map((customer, index) => {
@@ -1056,6 +1151,124 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                             );
                                         })}
                                     </ul>
+                                )}
+                            </div>
+                        )}
+
+                        {!isMinimalUI && (
+                            <div className="relative">
+                                <label className="block text-sm font-medium text-sf-text mb-1 flex items-center justify-between">
+                                    <span>直送先CD / 直送先名 <span className="text-gray-400 font-normal">（任意）</span></span>
+                                    {formData.直送先CD && (
+                                        <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                            CD: {formData.直送先CD}
+                                        </span>
+                                    )}
+                                </label>
+                                {formData.直送先CD || formData.直送先名 ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50/70 border border-blue-200 rounded min-h-[38px]">
+                                        <MapPin size={16} className="text-blue-500 flex-shrink-0" />
+                                        {formData.直送先CD && (
+                                            <span className="font-mono text-xs text-blue-700 font-semibold flex-shrink-0">
+                                                {formData.直送先CD}
+                                            </span>
+                                        )}
+                                        <span className="text-sm text-sf-text font-medium truncate">
+                                            {formData.直送先名 || '（直送先名なし）'}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={clearDelivery}
+                                            className="ml-auto text-gray-400 hover:text-red-500 p-1 rounded hover:bg-white/80 transition-colors flex-shrink-0"
+                                            title="直送先を解除"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                        <input
+                                            type="text"
+                                            value={deliverySearchTerm}
+                                            onChange={(e) => {
+                                                setDeliverySearchTerm(e.target.value);
+                                                setShowDeliverySuggestions(true);
+                                            }}
+                                            onFocus={() => setShowDeliverySuggestions(true)}
+                                            onBlur={() => {
+                                                setTimeout(() => {
+                                                    if (justSelectedDeliveryRef.current) {
+                                                        justSelectedDeliveryRef.current = false;
+                                                        setShowDeliverySuggestions(false);
+                                                        return;
+                                                    }
+                                                    const term = deliverySearchTerm.trim();
+                                                    if (term) {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            直送先名: term,
+                                                            直送先CD: ''
+                                                        }));
+                                                        setDeliverySearchTerm('');
+                                                    }
+                                                    setShowDeliverySuggestions(false);
+                                                }, 200);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    const term = deliverySearchTerm.trim();
+                                                    if (term) {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            直送先名: term,
+                                                            直送先CD: ''
+                                                        }));
+                                                        setDeliverySearchTerm('');
+                                                        setShowDeliverySuggestions(false);
+                                                    }
+                                                }
+                                            }}
+                                            placeholder={formData.得意先CD ? "直送先を選択または直接入力..." : "直送先を検索または直接入力..."}
+                                            className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue text-sm"
+                                        />
+                                        {showDeliverySuggestions && (
+                                            <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-48 overflow-y-auto shadow-lg divide-y divide-gray-100 text-sm">
+                                                {filterDeliveries(deliverySearchTerm).map((delivery, idx) => (
+                                                    <li
+                                                        key={idx}
+                                                        className="px-3 py-2 hover:bg-blue-50 cursor-pointer"
+                                                        onMouseDown={() => selectDelivery(delivery)}
+                                                    >
+                                                        <div className="font-medium text-sf-text">
+                                                            {delivery.直送先名}
+                                                        </div>
+                                                        <div className="text-xs text-sf-text-weak">
+                                                            {delivery.直送先CD && <span className="font-mono mr-2">CD: {delivery.直送先CD}</span>}
+                                                            {delivery.得意先名 && <span>（{delivery.得意先名}）</span>}
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                                {filterDeliveries(deliverySearchTerm).length === 0 && deliverySearchTerm.trim() && (
+                                                    <li
+                                                        className="px-3 py-2 text-xs text-blue-600 hover:bg-blue-50 cursor-pointer"
+                                                        onMouseDown={() => {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                直送先名: deliverySearchTerm.trim(),
+                                                                直送先CD: ''
+                                                            }));
+                                                            setDeliverySearchTerm('');
+                                                            setShowDeliverySuggestions(false);
+                                                        }}
+                                                    >
+                                                        「{deliverySearchTerm.trim()}」を新規直送先として設定（Enter）
+                                                    </li>
+                                                )}
+                                            </ul>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         )}

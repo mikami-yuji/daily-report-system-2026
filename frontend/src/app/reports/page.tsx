@@ -697,20 +697,16 @@ export default function ReportsPage(): React.JSX.Element {
                                                         <div className={`text-[11px] whitespace-pre-wrap break-words leading-relaxed mt-1 flex items-start gap-1 p-1.5 rounded border ${
                                                             isKidoku 
                                                                 ? 'bg-blue-50/70 border-blue-200/90 border-l-3 border-l-emerald-500 text-blue-950' 
-                                                                : 'bg-blue-50/80 border-blue-200/80 border-l-3 border-l-blue-400 text-blue-900'
+                                                                : 'bg-blue-50/80 border-blue-200/80 text-blue-900'
                                                         }`}>
                                                             <MessageSquare size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />
                                                             <div className="flex-1">
                                                                 <div className="flex items-center justify-between gap-1 mb-0.5 flex-wrap">
                                                                     <span className="font-semibold text-blue-800">上長コメント:</span>
-                                                                    {isKidoku ? (
+                                                                    {isKidoku && (
                                                                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded shadow-2xs">
                                                                             <CheckCheck size={11} className="stroke-[2.5] text-emerald-600" />
                                                                             既読チェック済
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded">
-                                                                            未読
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -856,20 +852,16 @@ export default function ReportsPage(): React.JSX.Element {
                                                             <div className={`text-[11px] border rounded px-2 py-1 text-blue-950 flex items-start gap-1.5 ${
                                                                 isKidoku
                                                                     ? 'bg-blue-50/70 border-blue-200/90 border-l-3 border-l-emerald-500'
-                                                                    : 'bg-blue-50/80 border-blue-200/80 border-l-3 border-l-blue-400'
+                                                                    : 'bg-blue-50/80 border-blue-200/80'
                                                             }`}>
                                                                 <MessageSquare size={12} className="text-blue-600 flex-shrink-0 mt-0.5" />
                                                                 <div className="flex-1 whitespace-pre-wrap break-words leading-relaxed">
                                                                     <div className="flex items-center justify-between gap-1.5 mb-0.5 flex-wrap">
                                                                         <span className="font-semibold text-blue-800">上長コメント:</span>
-                                                                        {isKidoku ? (
+                                                                        {isKidoku && (
                                                                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded shadow-2xs">
                                                                                 <CheckCheck size={11} className="stroke-[2.5] text-emerald-600" />
                                                                                 既読チェック済
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="inline-flex items-center px-1.5 py-0.2 text-[9px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded">
-                                                                                未読
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -984,20 +976,16 @@ export default function ReportsPage(): React.JSX.Element {
                                                             <div className={`text-xs border rounded px-3 py-2 text-blue-950 flex items-start gap-2 ${
                                                                 isKidoku
                                                                     ? 'bg-blue-50/70 border-blue-200/90 border-l-4 border-l-emerald-500'
-                                                                    : 'bg-blue-50/80 border-blue-200 border-l-4 border-l-blue-400'
+                                                                    : 'bg-blue-50/80 border-blue-200'
                                                             }`}>
                                                                 <MessageSquare size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
                                                                 <div className="flex-1 whitespace-pre-wrap break-words leading-relaxed">
                                                                     <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
                                                                         <span className="font-semibold text-blue-800">上長コメント:</span>
-                                                                        {isKidoku ? (
+                                                                        {isKidoku && (
                                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-full shadow-2xs">
                                                                                 <CheckCheck size={12} className="stroke-[2.5] text-emerald-600" />
                                                                                 既読チェック済
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded">
-                                                                                未読
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -1119,21 +1107,17 @@ export default function ReportsPage(): React.JSX.Element {
                                                                         <h4 className="text-xs font-semibold text-blue-800 flex items-center gap-1">
                                                                             <MessageSquare size={12} /> 上長コメント
                                                                         </h4>
-                                                                        {isKidoku ? (
+                                                                        {isKidoku && (
                                                                             <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 rounded-full shadow-2xs">
                                                                                 <CheckCheck size={12} className="stroke-[2.5] text-emerald-600" />
                                                                                 既読チェック済
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded">
-                                                                                未読
                                                                             </span>
                                                                         )}
                                                                     </div>
                                                                     <p className={`text-sm text-sf-text whitespace-pre-wrap p-3 rounded border ${
                                                                         isKidoku
                                                                             ? 'bg-blue-50/70 border-blue-200 border-l-4 border-l-emerald-500'
-                                                                            : 'bg-blue-50 border-blue-100 border-l-4 border-l-blue-400'
+                                                                            : 'bg-blue-50 border-blue-100'
                                                                     }`}>
                                                                         {cleanText(report.上長コメント)}
                                                                     </p>

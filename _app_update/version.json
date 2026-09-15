@@ -1,11 +1,11 @@
 {
-  "version": "2.5.7",
+  "version": "2.5.8",
   "releaseDate": "2026-09-15",
-  "fileName": "DailyReportServer_v2.5.7.exe",
-  "fileSize": 49171616,
-  "sha256": "59653a300b16d726f0834118e615973417e54d01ea62be01fa682165a1d81221",
+  "fileName": "DailyReportServer_v2.5.8.exe",
+  "fileSize": 49170910,
+  "sha256": "7172bb470f1fe5be7128535ce2bf89e83e4925539ea3579ebafd0f8f7f3a47be",
   "forceUpdate": false,
   "releaseNotes": [
-    "上長コメント枠内での既読チェック状態表示対応"
+    "上長コメント枠の未読表示抑止および既読表示の最適化"
   ]
 }

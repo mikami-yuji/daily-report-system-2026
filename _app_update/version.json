@@ -2,12 +2,11 @@
   "version": "2.5.11",
   "releaseDate": "2026-09-15",
   "fileName": "DailyReportServer_v2.5.11.exe",
-  "fileSize": 49179434,
-  "sha256": "c613e6bf1dbeacf249dab512d11ac5e4f822c85e5ecaa4e7b8d94fe0c0a83a55",
+  "fileSize": 49180321,
+  "sha256": "e529f86253c4c99d91d2daba374b185f7f47d5e013d7af441e7504c97b4287fe",
   "forceUpdate": false,
   "releaseNotes": [
-    "月別フィルターのヘッダー統合（縦表示領域の拡大・スクロールバー排除）",
-    "日報一覧の視認性・一覧性向上",
-    "システム全体の安定性向上"
+    "月別フィルターヘッダー統合",
+    "システム安定性向上"
   ]
 }

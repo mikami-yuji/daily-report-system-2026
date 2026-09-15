@@ -953,6 +953,91 @@ def _apply_add_report_to_excel(excel_file: str, report_data: Any) -> int:
     finally:
         wb.close()
 
+def _apply_batch_add_reports_to_excel(excel_file: str, reports_data: List[Any]) -> List[int]:
+    """複数件の日報追加を1回のExcelロード・保存で適用"""
+    parsed_reports: List[models.ReportInput] = []
+    for r in reports_data:
+        if isinstance(r, dict):
+            parsed_reports.append(models.ReportInput(**r))
+        else:
+            parsed_reports.append(r)
+
+    if not parsed_reports:
+        return []
+
+    wb = openpyxl.load_workbook(excel_file, keep_vba=True)
+    try:
+        ws = wb['営業日報']
+        
+        # 得意先_List から現目標のマッピングを一括ロード（メモリ上で高速化）
+        target_map = {}
+        if '得意先_List' in wb.sheetnames:
+            customer_ws = wb['得意先_List']
+            for row in range(2, customer_ws.max_row + 1):
+                c_cd = customer_ws.cell(row=row, column=1).value
+                d_cd = customer_ws.cell(row=row, column=2).value
+                if c_cd is not None:
+                    c_cd_str = str(int(c_cd)) if isinstance(c_cd, float) else str(c_cd).strip()
+                    d_cd_str = (str(int(d_cd)) if isinstance(d_cd, float) else str(d_cd).strip()) if d_cd is not None else ""
+                    val = customer_ws.cell(row=row, column=10).value
+                    target_val = str(val).strip() if val else ""
+                    target_map[(c_cd_str, d_cd_str)] = target_val
+                    if not d_cd_str and (c_cd_str, "") not in target_map:
+                        target_map[(c_cd_str, "")] = target_val
+
+        # 最大管理番号と最大行番号の特定
+        max_mgmt_num = 0
+        max_mgmt_row = 1
+        for row in range(2, ws.max_row + 1):
+            mgmt_num = ws.cell(row=row, column=1).value
+            try:
+                if mgmt_num is not None:
+                    val = int(mgmt_num)
+                    if val > max_mgmt_num:
+                        max_mgmt_num = val
+                    if row > max_mgmt_row:
+                        max_mgmt_row = row
+            except (ValueError, TypeError):
+                continue
+
+        def copy_style(source_cell, target_cell):
+            if source_cell.has_style:
+                target_cell.font = copy(source_cell.font)
+                target_cell.border = copy(source_cell.border)
+                target_cell.fill = copy(source_cell.fill)
+                target_cell.number_format = copy(source_cell.number_format)
+                target_cell.protection = copy(source_cell.protection)
+                target_cell.alignment = copy(source_cell.alignment)
+
+        new_mgmt_nums = []
+        style_source_row = max_mgmt_row if max_mgmt_row >= 2 else 2
+
+        for report in parsed_reports:
+            max_mgmt_num += 1
+            max_mgmt_row += 1
+            new_mgmt_num = max_mgmt_num
+            new_mgmt_nums.append(new_mgmt_num)
+            next_row = max_mgmt_row
+
+            c_cd = str(report.得意先CD).strip() if report.得意先CD else ""
+            d_cd = str(report.直送先CD).strip() if report.直送先CD else ""
+            current_target = target_map.get((c_cd, d_cd)) or target_map.get((c_cd, ""), "")
+
+            columns_to_write = excel_schema.get_new_report_column_data(report, new_mgmt_num, current_target)
+
+            for col_idx, value in columns_to_write.items():
+                target_cell = ws.cell(row=next_row, column=col_idx)
+                target_cell.value = value
+                if style_source_row >= 2 and ws.max_row >= style_source_row:
+                    source_cell = ws.cell(row=style_source_row, column=col_idx)
+                    copy_style(source_cell, target_cell)
+            style_source_row = next_row
+
+        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+        return new_mgmt_nums
+    finally:
+        wb.close()
+
 def _apply_update_report_to_excel(excel_file: str, management_number: int, report_data: Any):
     """日報更新をExcelファイルに適用（楽観的排他制御チェック付き）"""
     if isinstance(report_data, dict):
@@ -1206,7 +1291,78 @@ def add_report(
         logging.error(f"Error in add_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.post("/api/reports/batch")
+def add_batch_reports(
+    batch_input: models.BatchReportCreateInput,
+    background_tasks: BackgroundTasks,
+    filename: str = config.DEFAULT_EXCEL_FILE
+) -> Dict[str, Any]:
+    """複数件の日報を1回のExcelファイル操作で一括追加（高速化・排他競合防止・オフライン安全退避付き）"""
+    filename = os.path.basename(filename)
+    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    reports = batch_input.reports
+
+    if not reports:
+        return {"message": "No reports provided", "count": 0, "management_numbers": [], "offline": False}
+
+    # 1. ファイルサーバー接続チェック（オフライン・瞬断時は安全キューに一括退避）
+    if not os.path.exists(excel_file):
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing {len(reports)} batch sync tasks.")
+        task_ids = []
+        for r in reports:
+            t_id = sync_queue.enqueue_sync_task(
+                task_type="create",
+                filename=filename,
+                payload=r.model_dump()
+            )
+            task_ids.append(t_id)
+        return {
+            "message": f"社内ファイルサーバーが一時的にオフラインのため、{len(reports)}件の日報をローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "count": len(reports),
+            "task_ids": task_ids,
+            "management_numbers": [-t for t in task_ids],
+            "offline": True
+        }
+
+    # 2. オンライン一括書き込み
+    try:
+        with excel_io.get_file_write_lock(excel_file):
+            new_mgmt_nums = _apply_batch_add_reports_to_excel(excel_file, reports)
+            cache.invalidate_cache(filename, '営業日報')
+            return {
+                "message": f"{len(new_mgmt_nums)}件の日報を正常に一括保存しました",
+                "count": len(new_mgmt_nums),
+                "management_numbers": new_mgmt_nums,
+                "file_path": os.path.abspath(excel_file),
+                "offline": False
+            }
+    except HTTPException:
+        raise
+    except (PermissionError, OSError) as e:
+        logging.warning(f"Network error during batch write to {excel_file}: {e}. Enqueueing to sync queue.")
+        task_ids = []
+        for r in reports:
+            t_id = sync_queue.enqueue_sync_task(
+                task_type="create",
+                filename=filename,
+                payload=r.model_dump()
+            )
+            task_ids.append(t_id)
+        return {
+            "message": f"社内ファイルサーバーへの書き込み中に通信が途切れたため、{len(reports)}件の日報をローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "status": "queued",
+            "count": len(reports),
+            "task_ids": task_ids,
+            "management_numbers": [-t for t in task_ids],
+            "offline": True
+        }
+    except Exception as e:
+        logging.error(f"Error in add_batch_reports: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error during batch save")
+
 # コメント更新専用エンドポイント
+
 
 
 @router.patch("/api/reports/{management_number}/reply")

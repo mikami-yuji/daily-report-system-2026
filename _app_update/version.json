@@ -1,11 +1,14 @@
 {
-  "version": "2.5.8",
+  "version": "2.5.9",
   "releaseDate": "2026-09-15",
-  "fileName": "DailyReportServer_v2.5.8.exe",
-  "fileSize": 49170910,
-  "sha256": "7172bb470f1fe5be7128535ce2bf89e83e4925539ea3579ebafd0f8f7f3a47be",
+  "fileName": "DailyReportServer_v2.5.9.exe",
+  "fileSize": 49180077,
+  "sha256": "45266d3cb49096206761d9822f091bbf2f6cdc44cd61846455e4cab5f55839cd",
   "forceUpdate": false,
   "releaseNotes": [
-    "上長コメント枠の未読表示抑止および既読表示の最適化"
+    "一括保存高速化",
+    "デザイン直送先自動反映",
+    "キーボードTab/矢印操作対応",
+    "月別タブ管理(年月別ワンクリック切替)"
   ]
 }

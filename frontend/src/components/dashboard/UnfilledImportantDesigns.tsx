@@ -14,6 +14,28 @@ type UnfilledImportantDesignsProps = {
 };
 
 /**
+ * デザイン依頼No.の表記揺れ（全角半角、ハイフン種別、余分な空白）を正規化
+ */
+function normalizeDesignNo(val: unknown): string {
+    if (val === null || val === undefined) return '';
+    let s = String(val).trim();
+    // 全角英数字・記号を半角に変換
+    s = s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    // 各種ハイフン（ー、ｰ、–、—、−）を半角ハイフン - に統一
+    s = s.replace(/[ーｰ–—−]/g, '-');
+    return s.trim();
+}
+
+/**
+ * デザイン依頼No.から枝番（-1, -01等）を除いた基幹番号を取り出す
+ */
+function extractBaseDesignNo(val: unknown): string {
+    const s = normalizeDesignNo(val);
+    if (!s) return '';
+    return s.split('-')[0].trim();
+}
+
+/**
  * 企画課ビューワーから取得した重要デザイン（ＳＰ（ロール印刷）／フルオーダー）で、
  * 日報への登録がまだされていない案件をホーム画面で検知し、ワンクリックで作成を促すコンポーネント
  */
@@ -27,12 +49,17 @@ export default function UnfilledImportantDesigns({
     const unfilledDesigns = useMemo((): ViewerDesignRequest[] => {
         if (!viewerData || !viewerData.documents || !selectedFile) return [];
 
-        // 既存の日報に登録されているデザイン依頼No.のSetを作成 (比較高速化のため)
+        // 既存の日報に登録されているデザイン依頼No.のSetを作成 (表記揺れ・枝番対応のため複数キーで登録)
         const filledDesignNos = new Set<string>();
         reports.forEach((r: Report): void => {
-            const designNo = r['デザイン依頼No.'];
-            if (designNo && designNo !== '-') {
-                filledDesignNos.add(String(designNo).trim());
+            const rawDesignNo = r['デザイン依頼No.'] || (r as unknown as Record<string, unknown>)['デザイン依頼No'];
+            if (rawDesignNo && rawDesignNo !== '-') {
+                const norm = normalizeDesignNo(rawDesignNo);
+                const base = extractBaseDesignNo(rawDesignNo);
+                const digits = norm.replace(/[^0-9a-zA-Z]/g, '');
+                if (norm) filledDesignNos.add(norm.toLowerCase());
+                if (base) filledDesignNos.add(base.toLowerCase());
+                if (digits) filledDesignNos.add(digits.toLowerCase());
             }
         });
 
@@ -59,11 +86,22 @@ export default function UnfilledImportantDesigns({
                 return;
             }
 
-            // 3. 日報に一度も登録されていないか
-            const shortId = doc.requestId.split('-')[0].trim();
-            if (filledDesignNos.has(shortId)) return;
+            // 3. 日報に一度も登録されていないか（枝番あり・なし・英数字の全パターンで突合）
+            const normDocId = normalizeDesignNo(doc.requestId);
+            const baseDocId = extractBaseDesignNo(doc.requestId);
+            const digitsDocId = normDocId.replace(/[^0-9a-zA-Z]/g, '');
+
+            if (
+                filledDesignNos.has(normDocId.toLowerCase()) ||
+                filledDesignNos.has(baseDocId.toLowerCase()) ||
+                (digitsDocId && filledDesignNos.has(digitsDocId.toLowerCase()))
+            ) {
+                // すでに日報に起票済み
+                return;
+            }
 
             // 同じデザイン依頼No.が複数ある場合は最新日付のものを1つに統合
+            const shortId = baseDocId || doc.requestId.split('-')[0].trim();
             if (uniqueMap.has(shortId)) {
                 const existing = uniqueMap.get(shortId)!;
                 const dateExisting = existing.deliveryDate || existing.requestedAt || '';

@@ -113,6 +113,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [activeCustomerIndex, setActiveCustomerIndex] = useState<number>(-1);
     const [interviewers, setInterviewers] = useState<string[]>([]);
     const [designMode, setDesignMode] = useState<'none' | 'new' | 'existing'>(
         initialDesignData?.designMode || 
@@ -357,6 +358,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         }).slice(0, 50); // Limit to 50 results
         setFilteredCustomers(filtered);
         setShowSuggestions(filtered.length > 0);
+        setActiveCustomerIndex(filtered.length > 0 ? 0 : -1);
     };
 
     const selectCustomer = (customer: Customer) => {
@@ -518,6 +520,8 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 });
             }
 
+            const viewerShippingAddress = (req.shippingAddress || '').trim();
+
             setFormData(prev => {
                 const baseUpdate = {
                     ...prev,
@@ -526,12 +530,28 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 };
 
                 if (matchedCustomer) {
+                    // ビューア側に直送先があれば最優先反映。なければマスタの直送先
+                    const finalDeliveryName = viewerShippingAddress || matchedCustomer.直送先名 || '';
+                    let finalDeliveryCd = matchedCustomer.直送先CD || '';
+
+                    // ビューア直送先名があり、マスタ顧客リスト内に該当直送先CDがあれば自動補完
+                    if (viewerShippingAddress) {
+                        const matchingDelivery = customers.find(c =>
+                            c.得意先CD === matchedCustomer?.得意先CD &&
+                            c.直送先名 &&
+                            (c.直送先名 === viewerShippingAddress || viewerShippingAddress.includes(c.直送先名))
+                        );
+                        if (matchingDelivery?.直送先CD) {
+                            finalDeliveryCd = matchingDelivery.直送先CD;
+                        }
+                    }
+
                     return {
                         ...baseUpdate,
                         訪問先名: matchedCustomer.得意先名 || '',
-                        直送先名: matchedCustomer.直送先名 || '',
+                        直送先名: finalDeliveryName,
                         得意先CD: matchedCustomer.得意先CD || '',
-                        直送先CD: matchedCustomer.直送先CD || '',
+                        直送先CD: finalDeliveryCd,
                         エリア: matchedCustomer.エリア || '',
                         重点顧客: matchedCustomer.重点顧客 || '',
                         ランク: matchedCustomer.ランク || ''
@@ -541,7 +561,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                         ...baseUpdate,
                         訪問先名: req.customer || '',
                         得意先CD: '',
-                        直送先名: '',
+                        直送先名: viewerShippingAddress,
                         直送先CD: '',
                         重点顧客: '',
                         ランク: ''
@@ -942,12 +962,53 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                         name="訪問先名"
                                         value={formData.訪問先名}
                                         onChange={handleCustomerNameChange}
+                                        onFocus={() => {
+                                            if (formData.訪問先名 && filteredCustomers.length > 0) {
+                                                setShowSuggestions(true);
+                                            }
+                                        }}
                                         onBlur={(): void => {
-                                            loadDesignsForTypedCustomer();
-                                            loadSuggestedAreaForTypedCustomer();
+                                            // 少し遅延させてクリックやTab確定との競合を防止
+                                            setTimeout(() => {
+                                                setShowSuggestions(false);
+                                                loadDesignsForTypedCustomer();
+                                                loadSuggestedAreaForTypedCustomer();
+                                            }, 200);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (!showSuggestions || filteredCustomers.length === 0) return;
+
+                                            if (e.key === 'ArrowDown') {
+                                                e.preventDefault();
+                                                setActiveCustomerIndex(prev => 
+                                                    prev < filteredCustomers.length - 1 ? prev + 1 : 0
+                                                );
+                                            } else if (e.key === 'ArrowUp') {
+                                                e.preventDefault();
+                                                setActiveCustomerIndex(prev => 
+                                                    prev > 0 ? prev - 1 : filteredCustomers.length - 1
+                                                );
+                                            } else if (e.key === 'Enter') {
+                                                if (activeCustomerIndex >= 0 && filteredCustomers[activeCustomerIndex]) {
+                                                    e.preventDefault();
+                                                    selectCustomer(filteredCustomers[activeCustomerIndex]);
+                                                    setShowSuggestions(false);
+                                                }
+                                            } else if (e.key === 'Tab') {
+                                                const target = activeCustomerIndex >= 0 
+                                                    ? filteredCustomers[activeCustomerIndex] 
+                                                    : filteredCustomers[0];
+                                                if (target) {
+                                                    selectCustomer(target);
+                                                    setShowSuggestions(false);
+                                                }
+                                            } else if (e.key === 'Escape') {
+                                                setShowSuggestions(false);
+                                            }
                                         }}
                                         required={!isMinimalUI}
                                         autoComplete="off"
+                                        placeholder="得意先名を入力または矢印/Tabで選択..."
                                         className="w-full pl-3 pr-10 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue"
                                     />
                                     {formData.訪問先名 && (
@@ -962,28 +1023,38 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                                     )}
                                 </div>
                                 {formData.直送先名 && (
-                                    <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1">
-                                        <Truck size={12} />
-                                        直送先: {formData.直送先名} (CD: {formData.直送先CD})
+                                    <div className="mt-1 text-sm text-sf-light-blue flex items-center gap-1 font-medium bg-blue-50/70 border border-blue-200/60 rounded px-2 py-1 w-fit">
+                                        <Truck size={14} className="text-blue-600 shrink-0" />
+                                        <span>直送先: {formData.直送先名}</span>
+                                        {formData.直送先CD && <span className="text-xs text-gray-500">(CD: {formData.直送先CD})</span>}
                                     </div>
                                 )}
                                 {showSuggestions && (
-                                    <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg">
-                                        {filteredCustomers.map((customer, index) => (
-                                            <li
-                                                key={index}
-                                                className="px-3 py-2 hover:bg-sf-bg-light cursor-pointer"
-                                                onClick={() => selectCustomer(customer)}
-                                            >
-                                                <div className="font-medium">
-                                                    {customer.得意先名}
-                                                    {customer.直送先名 && <span className="text-sm font-normal ml-2 text-sf-text-weak">(直送先: {customer.直送先名})</span>}
-                                                </div>
-                                                <div className="text-xs text-sf-text-weak">
-                                                    {customer.得意先CD} - {customer.エリア}
-                                                </div>
-                                            </li>
-                                        ))}
+                                    <ul className="absolute z-20 w-full bg-white border border-sf-border rounded mt-1 max-h-60 overflow-y-auto shadow-lg divide-y divide-gray-100">
+                                        {filteredCustomers.map((customer, index) => {
+                                            const isSelected = index === activeCustomerIndex;
+                                            return (
+                                                <li
+                                                    key={index}
+                                                    className={`px-3 py-2 cursor-pointer transition-colors ${
+                                                        isSelected ? 'bg-sf-light-blue/15 border-l-4 border-sf-light-blue font-semibold' : 'hover:bg-sf-bg-light'
+                                                    }`}
+                                                    onMouseDown={() => selectCustomer(customer)}
+                                                >
+                                                    <div className="font-medium text-sf-text flex items-center justify-between">
+                                                        <span>{customer.得意先名}</span>
+                                                        {customer.直送先名 && (
+                                                            <span className="text-xs font-normal text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                                                直送: {customer.直送先名}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-sf-text-weak mt-0.5">
+                                                        {customer.得意先CD} - {customer.エリア}
+                                                    </div>
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                 )}
                             </div>

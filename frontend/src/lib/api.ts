@@ -49,12 +49,13 @@ const apiLong = axios.create({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleResponseError = (error: any): Promise<never> => {
     const isProxy = error.config?.url?.includes('/proxy/');
+    const isBatchReport = error.config?.url?.includes('/reports/batch');
     const isConflict409 = error.response?.status === 409;
     const message = error.response?.data?.detail || error.response?.data?.message || error.message || '通信エラーが発生しました';
     console.error('API Error:', error);
-    if (isProxy) {
-        // 企画課ビューアとの通信エラー（未認証・出先未接続・オフライン時等）は画面全体への12秒エラートーストを抑止
-        console.warn(`[Viewer Proxy Notice] ${message}`);
+    if (isProxy || isBatchReport) {
+        // 企画課ビューア通信や一括保存時は、呼び出し元で安全退避＆明確な安心メッセージを通知するため、共通の赤色通信エラートーストを抑止
+        console.warn(`[Suppressed Toast Notice: ${isBatchReport ? 'Batch' : 'Viewer Proxy'}] ${message}`);
     } else if (isConflict409) {
         toast.error(`⚠️ ${message}`, {
             id: 'concurrency-conflict',
@@ -100,6 +101,20 @@ export const getReports = async (filename?: string): Promise<Report[]> => {
 export const addReport = async (report: Omit<Report, '管理番号'>, filename?: string) => {
     const params = filename ? { filename } : {};
     const response = await apiLong.post(`${API_URL}/reports`, report, { params });
+    return response.data;
+};
+
+export const addBatchReports = async (
+    reports: Omit<Report, '管理番号'>[],
+    filename?: string
+): Promise<{
+    message: string;
+    count: number;
+    management_numbers: number[];
+    offline: boolean;
+}> => {
+    const params = filename ? { filename } : {};
+    const response = await apiLong.post(`${API_URL}/reports/batch`, { reports }, { params });
     return response.data;
 };
 

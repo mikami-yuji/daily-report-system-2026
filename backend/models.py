@@ -80,3 +80,7 @@ class BatchApprovalInput(BaseModel):
     management_numbers: list[int]
     field_name: str = "上長"
     value: str = "✓"
+
+class BatchReportCreateInput(BaseModel):
+    reports: list[ReportInput]
+

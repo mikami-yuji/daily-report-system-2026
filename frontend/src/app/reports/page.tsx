@@ -180,8 +180,61 @@ export default function ReportsPage(): React.JSX.Element {
         });
     }, [rawReports, offlineReports, selectedFile, sortOrder]);
 
-    const totalPages = Math.ceil(reports.length / itemsPerPage);
-    const paginatedReports = reports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+    // 月別フィルタ用ステート
+    const [selectedMonth, setSelectedMonth] = useState<string>('all');
+
+    // ファイル変更時に選択月を'all'にリセット
+    useEffect(() => {
+        setSelectedMonth('all');
+        setCurrentPage(1);
+    }, [selectedFile]);
+
+    // 年月（YYYY/MM）抽出ヘルパー
+    const getYearMonth = (dateStr?: string): string => {
+        if (!dateStr) return '';
+        const parts = dateStr.includes('/') ? dateStr.split('/') : dateStr.split('-');
+        if (parts.length >= 2) {
+            let yearPart = parseInt(parts[0], 10);
+            if (!isNaN(yearPart)) {
+                if (yearPart < 100) yearPart += 2000;
+                const m = parseInt(parts[1], 10);
+                if (!isNaN(m)) {
+                    return `${yearPart}/${String(m).padStart(2, '0')}`;
+                }
+            }
+        }
+        return '';
+    };
+
+    // 月別集計（年月降順）
+    const monthOptions = useMemo(() => {
+        const counts: { [key: string]: number } = {};
+        for (const r of reports) {
+            const ym = getYearMonth(r.日付);
+            if (ym) {
+                counts[ym] = (counts[ym] || 0) + 1;
+            }
+        }
+        const sortedMonths = Object.keys(counts).sort((a, b) => b.localeCompare(a));
+        return sortedMonths.map(ym => {
+            const [y, m] = ym.split('/');
+            return {
+                key: ym,
+                label: `${y}年${parseInt(m, 10)}月`,
+                shortLabel: `${parseInt(m, 10)}月`,
+                count: counts[ym]
+            };
+        });
+    }, [reports]);
+
+    // 月別フィルタ適用後のレポート一覧
+    const filteredReports = useMemo(() => {
+        if (selectedMonth === 'all') return reports;
+        return reports.filter(r => getYearMonth(r.日付) === selectedMonth);
+    }, [reports, selectedMonth]);
+
+    const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
+    const paginatedReports = filteredReports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     // 日付フォーマットと曜日算出
     const formatGroupDate = (dateStr: string) => {
@@ -454,7 +507,7 @@ export default function ReportsPage(): React.JSX.Element {
     };
 
     const handlePrevReport = () => {
-        if (selectedReportIndex !== null && selectedReportIndex < reports.length - 1) {
+        if (selectedReportIndex !== null && selectedReportIndex < filteredReports.length - 1) {
             setSelectedReportIndex(selectedReportIndex + 1);
         }
     };
@@ -579,6 +632,63 @@ export default function ReportsPage(): React.JSX.Element {
                 </div>
             </div>
 
+            {/* 月別切り替えタブバー */}
+            {reports.length > 0 && monthOptions.length > 0 && (
+                <div className="bg-white border border-sf-border rounded p-1.5 shadow-sm flex items-center gap-1.5 overflow-x-auto text-xs">
+                    <div className="flex items-center gap-1 text-sf-text-weak pl-2 pr-1 flex-shrink-0 font-medium">
+                        <Calendar size={13} className="text-sf-light-blue" />
+                        <span className="hidden sm:inline">月別:</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedMonth('all');
+                            setCurrentPage(1);
+                        }}
+                        className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
+                            selectedMonth === 'all'
+                                ? 'bg-sf-light-blue text-white shadow-sm font-bold'
+                                : 'text-sf-text hover:bg-gray-100 hover:text-sf-navy'
+                        }`}
+                        title="全期間の日報を表示"
+                    >
+                        <span>全期間</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                            selectedMonth === 'all' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                            {reports.length}
+                        </span>
+                    </button>
+                    <div className="h-4 w-px bg-gray-200 flex-shrink-0" />
+                    {monthOptions.map((m) => {
+                        const isSelected = selectedMonth === m.key;
+                        return (
+                            <button
+                                key={m.key}
+                                type="button"
+                                onClick={() => {
+                                    setSelectedMonth(m.key);
+                                    setCurrentPage(1);
+                                }}
+                                className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer ${
+                                    isSelected
+                                        ? 'bg-sf-light-blue text-white shadow-sm font-bold'
+                                        : 'text-sf-text hover:bg-gray-100 hover:text-sf-navy'
+                                }`}
+                                title={`${m.label}の日報を表示`}
+                            >
+                                <span>{m.label}</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                                    isSelected ? 'bg-white/25 text-white' : 'bg-blue-50 text-blue-700 font-semibold'
+                                }`}>
+                                    {m.count}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             {/* メインコンテンツ領域 */}
             <div className="bg-white border border-sf-border shadow-sm flex-1 overflow-auto rounded">
                 {isLoading ? (
@@ -586,8 +696,10 @@ export default function ReportsPage(): React.JSX.Element {
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sf-light-blue"></div>
                         <span>日報を読み込み中...</span>
                     </div>
-                ) : reports.length === 0 ? (
-                    <div className="p-10 text-center text-sf-text-weak">日報が見つかりません</div>
+                ) : filteredReports.length === 0 ? (
+                    <div className="p-10 text-center text-sf-text-weak">
+                        {selectedMonth === 'all' ? '日報が見つかりません' : `${selectedMonth.replace('/', '年')}月の日報データはありません`}
+                    </div>
                 ) : viewMode === 'table' ? (
                     /* 強化版テーブル表示（Excel風） */
                     <div className="overflow-x-auto">
@@ -1146,7 +1258,11 @@ export default function ReportsPage(): React.JSX.Element {
 
             {/* フッター + ページネーション */}
             <div className="p-2.5 bg-white border border-sf-border rounded text-xs text-sf-text-weak flex flex-wrap justify-between items-center gap-2">
-                <span>{reports.length} 件 • {selectedFile}</span>
+                <span>
+                    {selectedMonth === 'all'
+                        ? `${filteredReports.length} 件 • ${selectedFile}`
+                        : `${filteredReports.length} 件（全 ${reports.length} 件中） • ${selectedFile}`}
+                </span>
                 {totalPages > 1 && (
                     <div className="flex items-center gap-1.5">
                         <button
@@ -1279,14 +1395,14 @@ export default function ReportsPage(): React.JSX.Element {
             {/* 日報詳細モーダル */}
             {selectedReportIndex !== null && (
                 <ReportDetailModal
-                    report={reports[selectedReportIndex]}
+                    report={filteredReports[selectedReportIndex]}
                     onClose={() => setSelectedReportIndex(null)}
                     onNext={handleNextReport}
                     onPrev={handlePrevReport}
                     hasNext={selectedReportIndex > 0}
-                    hasPrev={selectedReportIndex < reports.length - 1}
+                    hasPrev={selectedReportIndex < filteredReports.length - 1}
                     onEdit={() => {
-                        setEditingReport(reports[selectedReportIndex]);
+                        setEditingReport(filteredReports[selectedReportIndex]);
                         setSelectedReportIndex(null);
                         setShowEditReportModal(true);
                     }}
@@ -1296,7 +1412,7 @@ export default function ReportsPage(): React.JSX.Element {
                         setDuplicateReport(rep);
                         setShowNewReportModal(true);
                     }}
-                    allReports={reports}
+                    allReports={filteredReports}
                 />
             )}
 

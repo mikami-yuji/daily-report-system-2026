@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useOffline } from '@/context/OfflineContext';
-import { Customer, Design, getCustomers, getInterviewers, getDesigns, addReport, Report, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
+import { Customer, Design, getCustomers, getInterviewers, getDesigns, addBatchReports, Report, getSuggestedArea, getLatestDesignRequests, ViewerDesignRequest } from '@/lib/api';
 import { queryKeys, useReports } from '@/hooks/useQueryHooks';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useQueryClient } from '@tanstack/react-query';
@@ -145,6 +145,12 @@ export default function BatchReportPage() {
     // エリア検索用state
     const [areaSearchTerms, setAreaSearchTerms] = useState<{ [key: string]: string }>({});
     const [showAreaSuggestions, setShowAreaSuggestions] = useState<{ [key: string]: boolean }>({});
+
+    // サジェストのキーボード選択中インデックス
+    const [activeCustomerIndices, setActiveCustomerIndices] = useState<{ [key: string]: number }>({});
+    const [activeDeliveryIndices, setActiveDeliveryIndices] = useState<{ [key: string]: number }>({});
+    const [activeRetailerIndices, setActiveRetailerIndices] = useState<{ [key: string]: number }>({});
+    const [activeAreaIndices, setActiveAreaIndices] = useState<{ [key: string]: number }>({});
 
     // クライアント側でのみ初期訪問ブロックを作成、または下書きを復元
     useEffect(() => {
@@ -344,6 +350,8 @@ export default function BatchReportPage() {
                 });
             }
 
+            const viewerShippingAddress = (req.shippingAddress || '').trim();
+
             setVisits(prev => prev.map(v => {
                 if (v.id === visitId) {
                     const baseUpdate = {
@@ -353,12 +361,26 @@ export default function BatchReportPage() {
                     };
 
                     if (matchedCustomer) {
+                        const finalDeliveryName = viewerShippingAddress || matchedCustomer.直送先名 || '';
+                        let finalDeliveryCd = matchedCustomer.直送先CD || '';
+
+                        if (viewerShippingAddress) {
+                            const matchingDelivery = customers.find(c =>
+                                c.得意先CD === matchedCustomer?.得意先CD &&
+                                c.直送先名 &&
+                                (c.直送先名 === viewerShippingAddress || viewerShippingAddress.includes(c.直送先名))
+                            );
+                            if (matchingDelivery?.直送先CD) {
+                                finalDeliveryCd = matchingDelivery.直送先CD;
+                            }
+                        }
+
                         return {
                             ...baseUpdate,
                             訪問先名: matchedCustomer.得意先名 || '',
-                            直送先名: matchedCustomer.直送先名 || '',
+                            直送先名: finalDeliveryName,
                             得意先CD: matchedCustomer.得意先CD || '',
-                            直送先CD: matchedCustomer.直送先CD || '',
+                            直送先CD: finalDeliveryCd,
                             エリア: matchedCustomer.エリア || '',
                             重点顧客: matchedCustomer.重点顧客 || '',
                             ランク: matchedCustomer.ランク || ''
@@ -368,7 +390,7 @@ export default function BatchReportPage() {
                             ...baseUpdate,
                             訪問先名: req.customer || '',
                             得意先CD: '',
-                            直送先名: '',
+                            直送先名: viewerShippingAddress,
                             直送先CD: '',
                             重点顧客: '',
                             ランク: ''
@@ -792,8 +814,10 @@ export default function BatchReportPage() {
             await new Promise(resolve => setTimeout(resolve, 400));
         })();
 
-        // 実際のAPI保存処理
+        // 実際のAPI保存処理（一括APIで1回のトランザクションで書き込み）
         const savePromise = (async (): Promise<void> => {
+            const batchPayload: Omit<Report, '管理番号'>[] = [];
+
             for (const visit of validVisits) {
                 // 未確定の入力がある場合、ここで自動確定させる
                 let finalVisitName = visit.訪問先名 || '';
@@ -823,7 +847,6 @@ export default function BatchReportPage() {
                         timeString += `【満足度】${visit.ランク}\n`;
                     }
                     finalCommercialContent = timeString + finalCommercialContent;
-                    // ランクは保存しない（ユーザー要望により、商談内容に含めるのみとする場合）
                     finalRank = '';
                 }
 
@@ -850,26 +873,33 @@ export default function BatchReportPage() {
                     'デザイン依頼No.': visit['デザイン依頼No.'],
                 };
 
-                try {
-                    if (!isOnline) {
-                        saveOfflineReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
-                        savedOfflineCount++;
-                        successCount++;
-                    } else {
-                        const res = await addReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
-                        if (res && (res as { offline?: boolean }).offline) {
-                            savedOfflineCount++;
-                        }
-                        successCount++;
-                    }
-                } catch (error) {
-                    console.warn('Network save failed, falling back to browser offline storage:', error);
+                batchPayload.push(reportData as unknown as Omit<Report, '管理番号'>);
+            }
+
+            if (!isOnline) {
+                for (const r of batchPayload) {
+                    saveOfflineReport(r, selectedFile);
+                    savedOfflineCount++;
+                    successCount++;
+                }
+                return;
+            }
+
+            try {
+                const res = await addBatchReports(batchPayload, selectedFile);
+                if (res && res.offline) {
+                    savedOfflineCount = res.count;
+                }
+                successCount = res.count || batchPayload.length;
+            } catch (networkError) {
+                console.warn('Batch network save failed, safely falling back to browser offline storage:', networkError);
+                for (const r of batchPayload) {
                     try {
-                        saveOfflineReport(reportData as unknown as Omit<Report, '管理番号'>, selectedFile);
+                        saveOfflineReport(r, selectedFile);
                         savedOfflineCount++;
                         successCount++;
                     } catch (offlineErr) {
-                        console.error('Failed to create report even offline:', offlineErr);
+                        console.error('Failed to create report offline:', offlineErr);
                         errorCount++;
                     }
                 }
@@ -883,14 +913,14 @@ export default function BatchReportPage() {
             if (successCount > 0) {
                 setSaveStatus('success');
                 if (savedOfflineCount > 0) {
-                    toast.success(`${successCount}件の日報を一時保存しました（オンライン復帰時に自動反映されます）`, { icon: '☁️' });
+                    toast.success(`${successCount}件の日報をローカルに安全退避しました（オンライン接続時に原本Excelへ自動反映されます）`, { icon: '☁️', duration: 5000 });
                 } else {
-                    toast.success(`${successCount}件の日報を保存しました`);
+                    toast.success(`${successCount}件の日報を一括保存しました`, { icon: '✅', duration: 3000 });
                 }
                 queryClient.invalidateQueries({ queryKey: queryKeys.reports(selectedFile || undefined) });
                 
                 // 成功演出をしっかり見せてからリセット
-                await new Promise(resolve => setTimeout(resolve, 1200));
+                await new Promise(resolve => setTimeout(resolve, 1000));
 
                 setVisits([createEmptyVisit()]);
                 setSearchTerms({});
@@ -904,7 +934,7 @@ export default function BatchReportPage() {
             }
         } catch (error) {
             console.error('Error during batch save:', error);
-            toast.error('保存処理中に予期しないエラーが発生しました');
+            toast.error('保存処理中にエラーが発生しました');
         } finally {
             setSaveStatus('idle');
             setSubmitting(false);
@@ -1093,10 +1123,15 @@ export default function BatchReportPage() {
                                                             type="text"
                                                             value={searchTerms[visit.id] || ''}
                                                             onChange={(e) => {
-                                                                setSearchTerms({ ...searchTerms, [visit.id]: e.target.value });
+                                                                const val = e.target.value;
+                                                                setSearchTerms({ ...searchTerms, [visit.id]: val });
                                                                 setShowSuggestions({ ...showSuggestions, [visit.id]: true });
+                                                                setActiveCustomerIndices(prev => ({ ...prev, [visit.id]: 0 }));
                                                             }}
-                                                            onFocus={() => setShowSuggestions({ ...showSuggestions, [visit.id]: true })}
+                                                            onFocus={() => {
+                                                                setShowSuggestions({ ...showSuggestions, [visit.id]: true });
+                                                                setActiveCustomerIndices(prev => ({ ...prev, [visit.id]: 0 }));
+                                                            }}
                                                             onBlur={() => {
                                                                 // 候補選択のクリックを待つため遅延
                                                                 setTimeout(() => {
@@ -1126,6 +1161,50 @@ export default function BatchReportPage() {
                                                                 }, 250);
                                                             }}
                                                             onKeyDown={(e) => {
+                                                                const suggestions = filterCustomers(searchTerms[visit.id] || '');
+                                                                const activeIdx = activeCustomerIndices[visit.id] ?? 0;
+
+                                                                if (showSuggestions[visit.id] && suggestions.length > 0) {
+                                                                    if (e.key === 'ArrowDown') {
+                                                                        e.preventDefault();
+                                                                        setActiveCustomerIndices(prev => ({
+                                                                            ...prev,
+                                                                            [visit.id]: activeIdx < suggestions.length - 1 ? activeIdx + 1 : 0
+                                                                        }));
+                                                                        return;
+                                                                    }
+                                                                    if (e.key === 'ArrowUp') {
+                                                                        e.preventDefault();
+                                                                        setActiveCustomerIndices(prev => ({
+                                                                            ...prev,
+                                                                            [visit.id]: activeIdx > 0 ? activeIdx - 1 : suggestions.length - 1
+                                                                        }));
+                                                                        return;
+                                                                    }
+                                                                    if (e.key === 'Enter') {
+                                                                        if (activeIdx >= 0 && suggestions[activeIdx]) {
+                                                                            e.preventDefault();
+                                                                            justSelectedCustomerRef.current = true;
+                                                                            selectCustomer(visit.id, suggestions[activeIdx]);
+                                                                            setShowSuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                            return;
+                                                                        }
+                                                                    }
+                                                                    if (e.key === 'Tab') {
+                                                                        const target = activeIdx >= 0 ? suggestions[activeIdx] : suggestions[0];
+                                                                        if (target) {
+                                                                            justSelectedCustomerRef.current = true;
+                                                                            selectCustomer(visit.id, target);
+                                                                            setShowSuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                        }
+                                                                        return;
+                                                                    }
+                                                                    if (e.key === 'Escape') {
+                                                                        setShowSuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                        return;
+                                                                    }
+                                                                }
+
                                                                 if (e.key === 'Enter') {
                                                                     e.preventDefault();
                                                                     const term = searchTerms[visit.id]?.trim();
@@ -1147,35 +1226,40 @@ export default function BatchReportPage() {
                                                                     }
                                                                 }
                                                             }}
-                                                            placeholder="得意先を検索 or 自由記載してEnter..."
+                                                            placeholder="得意先を検索（矢印/Tabで選択、Enterで確定）..."
                                                             className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent text-sm"
                                                         />
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-1">
-                                                        得意先リストから選択、または名前を入力してEnterで自由記載
+                                                        リストから矢印/Tabで選択、または名前を入力してEnterで自由記載
                                                     </p>
                                                 </>
                                             )}
                                             {showSuggestions[visit.id] && searchTerms[visit.id] && (
-                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
-                                                    {filterCustomers(searchTerms[visit.id]).map(c => (
-                                                        <div
-                                                            key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
-                                                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex items-center justify-between border-b border-gray-100 last:border-b-0"
-                                                            onMouseDown={() => selectCustomer(visit.id, c)}
-                                                        >
-                                                            <div className="flex items-center gap-2 overflow-hidden">
-                                                                <span className="font-mono text-xs text-gray-500 flex-shrink-0">{c.得意先CD}</span>
-                                                                <span className="text-sf-text font-medium truncate">{c.得意先名}</span>
-                                                            </div>
-                                                            {c.直送先名 && (
-                                                                <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 flex-shrink-0 ml-2">
-                                                                    <MapPin size={12} />
-                                                                    <span className="truncate max-w-[150px]">直送: {c.直送先名}</span>
+                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
+                                                    {filterCustomers(searchTerms[visit.id]).map((c, cIdx) => {
+                                                        const isSelected = (activeCustomerIndices[visit.id] ?? 0) === cIdx;
+                                                        return (
+                                                            <div
+                                                                key={`${c.得意先CD}-${c.直送先CD || 'main'}`}
+                                                                className={`px-3 py-2 cursor-pointer text-sm flex items-center justify-between transition-colors ${
+                                                                    isSelected ? 'bg-blue-100 border-l-4 border-sf-light-blue font-semibold' : 'hover:bg-blue-50'
+                                                                }`}
+                                                                onMouseDown={() => selectCustomer(visit.id, c)}
+                                                            >
+                                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                                    <span className="font-mono text-xs text-gray-500 flex-shrink-0">{c.得意先CD}</span>
+                                                                    <span className="text-sf-text font-medium truncate">{c.得意先名}</span>
                                                                 </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
+                                                                {c.直送先名 && (
+                                                                    <div className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 flex-shrink-0 ml-2">
+                                                                        <MapPin size={12} />
+                                                                        <span className="truncate max-w-[150px]">直送: {c.直送先名}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
                                                     {filterCustomers(searchTerms[visit.id]).length === 0 && (
                                                         <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
                                                             該当する得意先がありません — Enterで「{searchTerms[visit.id]}」を自由記載
@@ -1227,10 +1311,15 @@ export default function BatchReportPage() {
                                                             type="text"
                                                             value={deliverySearchTerms[visit.id] || ''}
                                                             onChange={(e) => {
-                                                                setDeliverySearchTerms({ ...deliverySearchTerms, [visit.id]: e.target.value });
+                                                                const val = e.target.value;
+                                                                setDeliverySearchTerms({ ...deliverySearchTerms, [visit.id]: val });
                                                                 setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: true });
+                                                                setActiveDeliveryIndices(prev => ({ ...prev, [visit.id]: 0 }));
                                                             }}
-                                                            onFocus={() => setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: true })}
+                                                            onFocus={() => {
+                                                                setShowDeliverySuggestions({ ...showDeliverySuggestions, [visit.id]: true });
+                                                                setActiveDeliveryIndices(prev => ({ ...prev, [visit.id]: 0 }));
+                                                            }}
                                                             onBlur={() => {
                                                                 setTimeout(() => {
                                                                     if (justSelectedDeliveryRef.current) {
@@ -1249,6 +1338,50 @@ export default function BatchReportPage() {
                                                                 }, 250);
                                                             }}
                                                             onKeyDown={(e) => {
+                                                                const deliveryOptions = filterDeliveries(visit.id, deliverySearchTerms[visit.id] || '');
+                                                                const activeIdx = activeDeliveryIndices[visit.id] ?? 0;
+
+                                                                if (showDeliverySuggestions[visit.id] && deliveryOptions.length > 0) {
+                                                                    if (e.key === 'ArrowDown') {
+                                                                        e.preventDefault();
+                                                                        setActiveDeliveryIndices(prev => ({
+                                                                            ...prev,
+                                                                            [visit.id]: activeIdx < deliveryOptions.length - 1 ? activeIdx + 1 : 0
+                                                                        }));
+                                                                        return;
+                                                                    }
+                                                                    if (e.key === 'ArrowUp') {
+                                                                        e.preventDefault();
+                                                                        setActiveDeliveryIndices(prev => ({
+                                                                            ...prev,
+                                                                            [visit.id]: activeIdx > 0 ? activeIdx - 1 : deliveryOptions.length - 1
+                                                                        }));
+                                                                        return;
+                                                                    }
+                                                                    if (e.key === 'Enter') {
+                                                                        if (activeIdx >= 0 && deliveryOptions[activeIdx]) {
+                                                                            e.preventDefault();
+                                                                            justSelectedDeliveryRef.current = true;
+                                                                            selectDelivery(visit.id, deliveryOptions[activeIdx]);
+                                                                            setShowDeliverySuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                            return;
+                                                                        }
+                                                                    }
+                                                                    if (e.key === 'Tab') {
+                                                                        const target = activeIdx >= 0 ? deliveryOptions[activeIdx] : deliveryOptions[0];
+                                                                        if (target) {
+                                                                            justSelectedDeliveryRef.current = true;
+                                                                            selectDelivery(visit.id, target);
+                                                                            setShowDeliverySuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                        }
+                                                                        return;
+                                                                    }
+                                                                    if (e.key === 'Escape') {
+                                                                        setShowDeliverySuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                        return;
+                                                                    }
+                                                                }
+
                                                                 if (e.key === 'Enter') {
                                                                     e.preventDefault();
                                                                     const term = deliverySearchTerms[visit.id]?.trim();
@@ -1261,12 +1394,12 @@ export default function BatchReportPage() {
                                                                     }
                                                                 }
                                                             }}
-                                                            placeholder={visit.得意先CD ? "直送先を選択 or 自由記載してEnter..." : "直送先を検索 or 自由記載してEnter..."}
+                                                            placeholder={visit.得意先CD ? "直送先を選択（矢印/Tabで選択、Enterで確定）..." : "直送先を検索（矢印/Tabで選択、Enterで確定）..."}
                                                             className="w-full pl-9 pr-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent text-sm"
                                                         />
                                                     </div>
                                                     <p className="text-xs text-gray-400 mt-1">
-                                                        {visit.得意先CD ? "この得意先の直送先から選択、または自由記載" : "直送先リストから検索、または自由記載"}
+                                                        {visit.得意先CD ? "この得意先の直送先から矢印/Tabで選択、または自由記載" : "直送先リストから矢印/Tabで選択、または自由記載"}
                                                     </p>
                                                 </>
                                             )}
@@ -1289,25 +1422,30 @@ export default function BatchReportPage() {
                                                     }
 
                                                     return (
-                                                        <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
-                                                            {deliveryOptions.map(c => (
-                                                                <div
-                                                                    key={`${c.得意先CD}-${c.直送先CD}`}
-                                                                    className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex items-center justify-between border-b border-gray-100 last:border-b-0"
-                                                                    onMouseDown={() => selectDelivery(visit.id, c)}
-                                                                >
-                                                                    <div className="flex items-center gap-2">
-                                                                        <MapPin size={14} className="text-blue-500 flex-shrink-0" />
-                                                                        {c.直送先CD && <span className="font-mono text-xs text-gray-500 mr-1">{c.直送先CD}</span>}
-                                                                        <span className="font-medium text-sf-text">{c.直送先名}</span>
+                                                        <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
+                                                            {deliveryOptions.map((c, dIdx) => {
+                                                                const isSelected = (activeDeliveryIndices[visit.id] ?? 0) === dIdx;
+                                                                return (
+                                                                    <div
+                                                                        key={`${c.得意先CD}-${c.直送先CD}`}
+                                                                        className={`px-3 py-2 cursor-pointer text-sm flex items-center justify-between transition-colors ${
+                                                                            isSelected ? 'bg-blue-100 border-l-4 border-sf-light-blue font-semibold' : 'hover:bg-blue-50'
+                                                                        }`}
+                                                                        onMouseDown={() => selectDelivery(visit.id, c)}
+                                                                    >
+                                                                        <div className="flex items-center gap-2">
+                                                                            <MapPin size={14} className="text-blue-500 flex-shrink-0" />
+                                                                            {c.直送先CD && <span className="font-mono text-xs text-gray-500 mr-1">{c.直送先CD}</span>}
+                                                                            <span className="font-medium text-sf-text">{c.直送先名}</span>
+                                                                        </div>
+                                                                        {!visit.得意先CD && c.得意先名 && (
+                                                                            <span className="text-xs text-gray-400 truncate max-w-[120px]">
+                                                                                {c.得意先名}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
-                                                                    {!visit.得意先CD && c.得意先名 && (
-                                                                        <span className="text-xs text-gray-400 truncate max-w-[120px]">
-                                                                            {c.得意先名}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                             {hasSearchTerm && (
                                                                 <div
                                                                     className="px-3 py-2 text-xs text-amber-600 bg-amber-50 cursor-pointer hover:bg-amber-100 border-t border-amber-200"
@@ -1344,34 +1482,83 @@ export default function BatchReportPage() {
                                                 type="text"
                                                 value={retailerSearchTerms[visit.id] || visit.訪問先名 || ''}
                                                 onChange={(e) => {
-                                                    setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: e.target.value });
-                                                    updateVisit(visit.id, '訪問先名', e.target.value);
+                                                    const val = e.target.value;
+                                                    setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: val });
+                                                    updateVisit(visit.id, '訪問先名', val);
                                                     setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: true });
+                                                    setActiveRetailerIndices(prev => ({ ...prev, [visit.id]: 0 }));
                                                 }}
-                                                onFocus={() => setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: true })}
+                                                onFocus={() => {
+                                                    setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: true });
+                                                    setActiveRetailerIndices(prev => ({ ...prev, [visit.id]: 0 }));
+                                                }}
                                                 onBlur={() => setTimeout(() => setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false }), 200)}
-                                                placeholder="店舗名を入力（過去履歴から検索可）..."
-                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                                                onKeyDown={(e) => {
+                                                    const historyList = retailerHistory
+                                                        .filter(name => name.toLowerCase().includes((retailerSearchTerms[visit.id] || visit.訪問先名 || '').toLowerCase()))
+                                                        .slice(0, 10);
+                                                    const activeIdx = activeRetailerIndices[visit.id] ?? 0;
+
+                                                    if (showRetailerSuggestions[visit.id] && historyList.length > 0) {
+                                                        if (e.key === 'ArrowDown') {
+                                                            e.preventDefault();
+                                                            setActiveRetailerIndices(prev => ({
+                                                                ...prev,
+                                                                [visit.id]: activeIdx < historyList.length - 1 ? activeIdx + 1 : 0
+                                                            }));
+                                                            return;
+                                                        }
+                                                        if (e.key === 'ArrowUp') {
+                                                            e.preventDefault();
+                                                            setActiveRetailerIndices(prev => ({
+                                                                ...prev,
+                                                                [visit.id]: activeIdx > 0 ? activeIdx - 1 : historyList.length - 1
+                                                            }));
+                                                            return;
+                                                        }
+                                                        if (e.key === 'Enter' || e.key === 'Tab') {
+                                                            const target = activeIdx >= 0 ? historyList[activeIdx] : historyList[0];
+                                                            if (target) {
+                                                                if (e.key === 'Enter') e.preventDefault();
+                                                                updateVisit(visit.id, '訪問先名', target);
+                                                                setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: target });
+                                                                setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false });
+                                                                return;
+                                                            }
+                                                        }
+                                                        if (e.key === 'Escape') {
+                                                            setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false });
+                                                            return;
+                                                        }
+                                                    }
+                                                }}
+                                                placeholder="店舗名を入力（矢印/Tabで過去履歴から選択可）..."
+                                                className="w-full px-3 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent text-sm"
                                             />
                                             {/* 履歴サジェスト */}
                                             {showRetailerSuggestions[visit.id] && (retailerSearchTerms[visit.id] || visit.訪問先名) && (
-                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                <div className="absolute z-10 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
                                                     {retailerHistory
                                                         .filter(name => name.toLowerCase().includes((retailerSearchTerms[visit.id] || visit.訪問先名 || '').toLowerCase()))
                                                         .slice(0, 10)
-                                                        .map(name => (
-                                                            <div
-                                                                key={name}
-                                                                className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                                                                onMouseDown={() => {
-                                                                    updateVisit(visit.id, '訪問先名', name);
-                                                                    setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: name });
-                                                                    setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false });
-                                                                }}
-                                                            >
-                                                                {name}
-                                                            </div>
-                                                        ))
+                                                        .map((name, rIdx) => {
+                                                            const isSelected = (activeRetailerIndices[visit.id] ?? 0) === rIdx;
+                                                            return (
+                                                                <div
+                                                                    key={name}
+                                                                    className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                                                                        isSelected ? 'bg-blue-100 border-l-4 border-sf-light-blue font-semibold text-sf-text' : 'hover:bg-gray-50'
+                                                                    }`}
+                                                                    onMouseDown={() => {
+                                                                        updateVisit(visit.id, '訪問先名', name);
+                                                                        setRetailerSearchTerms({ ...retailerSearchTerms, [visit.id]: name });
+                                                                        setShowRetailerSuggestions({ ...showRetailerSuggestions, [visit.id]: false });
+                                                                    }}
+                                                                >
+                                                                    {name}
+                                                                </div>
+                                                            );
+                                                        })
                                                     }
                                                     {retailerHistory.filter(name => name.toLowerCase().includes((retailerSearchTerms[visit.id] || visit.訪問先名 || '').toLowerCase())).length === 0 && (
                                                         <div className="px-3 py-2 text-sm text-gray-400">
@@ -1444,8 +1631,12 @@ export default function BatchReportPage() {
                                                 onChange={(e) => {
                                                     setAreaSearchTerms({ ...areaSearchTerms, [visit.id]: e.target.value });
                                                     setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: true });
+                                                    setActiveAreaIndices(prev => ({ ...prev, [visit.id]: 0 }));
                                                 }}
-                                                onFocus={() => setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: true })}
+                                                onFocus={() => {
+                                                    setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: true });
+                                                    setActiveAreaIndices(prev => ({ ...prev, [visit.id]: 0 }));
+                                                }}
                                                 onBlur={() => {
                                                     // 少し遅延させてクリックイベントが間に合うようにする
                                                     setTimeout(() => {
@@ -1457,31 +1648,92 @@ export default function BatchReportPage() {
                                                         });
                                                     }, 200);
                                                 }}
+                                                onKeyDown={(e) => {
+                                                    const filteredAreas = areaOptions.filter(area => 
+                                                        !areaSearchTerms[visit.id] || area.toLowerCase().includes(areaSearchTerms[visit.id].toLowerCase())
+                                                    );
+                                                    const activeIdx = activeAreaIndices[visit.id] ?? 0;
+
+                                                    if (showAreaSuggestions[visit.id] && filteredAreas.length > 0) {
+                                                        if (e.key === 'ArrowDown') {
+                                                            e.preventDefault();
+                                                            setActiveAreaIndices(prev => ({
+                                                                ...prev,
+                                                                [visit.id]: activeIdx < filteredAreas.length - 1 ? activeIdx + 1 : 0
+                                                            }));
+                                                            return;
+                                                        }
+                                                        if (e.key === 'ArrowUp') {
+                                                            e.preventDefault();
+                                                            setActiveAreaIndices(prev => ({
+                                                                ...prev,
+                                                                [visit.id]: activeIdx > 0 ? activeIdx - 1 : filteredAreas.length - 1
+                                                            }));
+                                                            return;
+                                                        }
+                                                        if (e.key === 'Enter') {
+                                                            if (activeIdx >= 0 && filteredAreas[activeIdx]) {
+                                                                e.preventDefault();
+                                                                updateVisit(visit.id, 'エリア', filteredAreas[activeIdx]);
+                                                                setAreaSearchTerms(prev => {
+                                                                    const next = { ...prev };
+                                                                    delete next[visit.id];
+                                                                    return next;
+                                                                });
+                                                                setShowAreaSuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                                return;
+                                                            }
+                                                        }
+                                                        if (e.key === 'Tab') {
+                                                            const target = activeIdx >= 0 ? filteredAreas[activeIdx] : filteredAreas[0];
+                                                            if (target) {
+                                                                updateVisit(visit.id, 'エリア', target);
+                                                                setAreaSearchTerms(prev => {
+                                                                    const next = { ...prev };
+                                                                    delete next[visit.id];
+                                                                    return next;
+                                                                });
+                                                                setShowAreaSuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                            }
+                                                            return;
+                                                        }
+                                                        if (e.key === 'Escape') {
+                                                            setShowAreaSuggestions(prev => ({ ...prev, [visit.id]: false }));
+                                                            return;
+                                                        }
+                                                    }
+                                                }}
                                                 placeholder="エリアを検索..."
                                                 className={`w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent ${!visit.エリア && visit.訪問先名 ? 'border-amber-300 bg-amber-50' : 'border-sf-border'
                                                     }`}
                                             />
                                             {showAreaSuggestions[visit.id] && (
-                                                <div className="absolute z-20 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto">
+                                                <div className="absolute z-20 w-full mt-1 bg-white border border-sf-border rounded shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100">
                                                     {areaOptions
                                                         .filter(area => !areaSearchTerms[visit.id] || area.toLowerCase().includes(areaSearchTerms[visit.id].toLowerCase()))
-                                                        .map(area => (
-                                                            <div
-                                                                key={area}
-                                                                className="px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm"
-                                                                onMouseDown={() => {
-                                                                    updateVisit(visit.id, 'エリア', area);
-                                                                    setAreaSearchTerms(prev => {
-                                                                        const next = { ...prev };
-                                                                        delete next[visit.id];
-                                                                        return next;
-                                                                    });
-                                                                    setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: false });
-                                                                }}
-                                                            >
-                                                                {area}
-                                                            </div>
-                                                        ))}
+                                                        .map((area, aIdx) => {
+                                                            const isSelected = (activeAreaIndices[visit.id] ?? 0) === aIdx;
+                                                            return (
+                                                                <div
+                                                                    key={area}
+                                                                    ref={isSelected ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                                                                    className={`px-3 py-2 cursor-pointer text-sm transition-colors ${
+                                                                        isSelected ? 'bg-blue-100 border-l-4 border-sf-light-blue font-semibold text-sf-text' : 'hover:bg-gray-50'
+                                                                    }`}
+                                                                    onMouseDown={() => {
+                                                                        updateVisit(visit.id, 'エリア', area);
+                                                                        setAreaSearchTerms(prev => {
+                                                                            const next = { ...prev };
+                                                                            delete next[visit.id];
+                                                                            return next;
+                                                                        });
+                                                                        setShowAreaSuggestions({ ...showAreaSuggestions, [visit.id]: false });
+                                                                    }}
+                                                                >
+                                                                    {area}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     {areaOptions.filter(area => !areaSearchTerms[visit.id] || area.toLowerCase().includes(areaSearchTerms[visit.id].toLowerCase())).length === 0 && (
                                                         <div className="px-3 py-2 text-sm text-gray-400">
                                                             該当するエリアがありません

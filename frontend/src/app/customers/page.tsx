@@ -3,11 +3,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports, useCustomers } from '@/hooks/useQueryHooks';
-import CustomerFilters from '@/components/customers/CustomerFilters';
+import CustomerFilters, { CustomerSortKey, InactiveFilterType } from '@/components/customers/CustomerFilters';
 import CustomerList from '@/components/customers/CustomerList';
 import CustomerStats from '@/components/customers/CustomerStats';
 import { CustomerSummary } from '@/components/customers/types';
 import { processCustomers, createCustomerTargetMap } from '@/components/customers/utils';
+import { normalizeSearchText, getDaysSinceDate, compareDates } from '@/lib/reportUtils';
 import toast from 'react-hot-toast';
 
 export default function CustomersPage() {
@@ -37,6 +38,9 @@ export default function CustomersPage() {
     const [selectedArea, setSelectedArea] = useState('');
     const [selectedRank, setSelectedRank] = useState('');
     const [isPriorityOnly, setIsPriorityOnly] = useState(false);
+    const [sortKey, setSortKey] = useState<CustomerSortKey>('lastActivity');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+    const [inactiveFilter, setInactiveFilter] = useState<InactiveFilterType>('all');
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -46,11 +50,6 @@ export default function CustomersPage() {
             toast.error('得意先データの読み込みに失敗しました');
         }
     }, [error]);
-
-    // 顧客データが変わったらフィルタリングをリセット
-    useEffect(() => {
-        setFilteredCustomers(customers);
-    }, [customers]);
 
     const toggleRow = (id: string) => {
         const newExpanded = new Set(expandedRows);
@@ -62,86 +61,157 @@ export default function CustomersPage() {
         setExpandedRows(newExpanded);
     };
 
+    const handleSortChange = (key: CustomerSortKey, order?: 'asc' | 'desc') => {
+        if (order) {
+            setSortKey(key);
+            setSortOrder(order);
+        } else {
+            if (sortKey === key) {
+                setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+            } else {
+                setSortKey(key);
+                const defaultOrder = (key === 'lastActivity' || key === 'visits' || key === 'totalActivities') ? 'desc' : 'asc';
+                setSortOrder(defaultOrder);
+            }
+        }
+    };
+
+    const hasActiveFilters = Boolean(
+        searchTerm.trim() ||
+        selectedArea ||
+        selectedRank ||
+        isPriorityOnly ||
+        inactiveFilter !== 'all' ||
+        sortKey !== 'lastActivity' ||
+        sortOrder !== 'desc'
+    );
+
+    const handleClearAllFilters = () => {
+        setSearchTerm('');
+        setSelectedArea('');
+        setSelectedRank('');
+        setIsPriorityOnly(false);
+        setInactiveFilter('all');
+        setSortKey('lastActivity');
+        setSortOrder('desc');
+        setCurrentPage(1);
+    };
+
+    // ご無沙汰件数の集計
+    const inactiveCounts = useMemo(() => {
+        let in30 = 0;
+        let in60 = 0;
+        let pUnvisited = 0;
+        customers.forEach(c => {
+            const days = getDaysSinceDate(c.lastActivity);
+            if (days !== null && days >= 30) in30++;
+            if (days !== null && days >= 60) in60++;
+            if (c.isPriority && (days === null || days >= 30)) pUnvisited++;
+        });
+        return { inactive30: in30, inactive60: in60, priorityUnvisited: pUnvisited };
+    }, [customers]);
+
     useEffect(() => {
         let result = customers;
 
-        // Filter Logic
-        if (searchTerm.trim() || selectedArea || selectedRank || isPriorityOnly) {
-            const term = searchTerm.toLowerCase().trim();
-            const autoExpandIds = new Set<string>();
+        const hasSearch = searchTerm.trim() !== '';
+        const terms = hasSearch
+            ? searchTerm.trim().split(/\s+/).filter(Boolean).map(normalizeSearchText)
+            : [];
 
-            const checkMatch = (c: CustomerSummary) => {
-                const nameMatch = c.name.toLowerCase().includes(term);
-                const codeMatch = c.code.toLowerCase().includes(term);
-                const ddNameMatch = c.directDeliveryName?.toLowerCase().includes(term);
-                const ddCodeMatch = c.directDeliveryCode?.toLowerCase().includes(term);
+        const autoExpandIds = new Set<string>();
 
-                return nameMatch || codeMatch || ddNameMatch || ddCodeMatch;
-            };
+        const checkMatch = (c: CustomerSummary) => {
+            if (terms.length === 0) return true;
+            const targetValues = [
+                c.name,
+                c.code,
+                c.directDeliveryName || '',
+                c.directDeliveryCode || '',
+                c.area || '',
+                c.rank || ''
+            ].map(normalizeSearchText);
+            return terms.every(term => targetValues.some(val => val.includes(term)));
+        };
 
-            result = result.map(parent => {
-                // 親（得意先）のフィルターチェック（エリア、ランク）
-                if (selectedArea && parent.area !== selectedArea) return null;
-                if (selectedRank && parent.rank !== selectedRank) return null;
-
-                // 重点フィルターの場合は、親か子のどちらかが重点であればOK
-                const parentIsPriority = parent.isPriority;
-                const prioritySubItems = parent.subItems?.filter(sub => sub.isPriority) || [];
-
-                if (isPriorityOnly) {
-                    // 親も子も重点でなければ除外
-                    if (!parentIsPriority && prioritySubItems.length === 0) return null;
-
-                    // 重点の子だけをフィルタリング
-                    const filteredSubs = prioritySubItems;
-
-                    // 検索条件もチェック
-                    if (term) {
-                        const parentMatches = checkMatch(parent);
-                        const matchingSubs = filteredSubs.filter(sub => checkMatch(sub));
-
-                        if (parentMatches || matchingSubs.length > 0) {
-                            if (matchingSubs.length > 0) {
-                                autoExpandIds.add(parent.id);
-                            }
-                            return { ...parent, subItems: parentIsPriority ? filteredSubs : matchingSubs };
-                        }
-                        return null;
-                    }
-
-                    return { ...parent, subItems: filteredSubs };
-                }
-
-                // 重点フィルターなしの場合
-                const parentMatches = term ? checkMatch(parent) : true;
-                let filteredSubs = parent.subItems || [];
-                if (term) {
-                    filteredSubs = filteredSubs.filter(sub => checkMatch(sub));
-                }
-
-                if (parentMatches || filteredSubs.length > 0) {
-                    if (term && filteredSubs.length > 0) {
-                        autoExpandIds.add(parent.id);
-                        if (!parentMatches) {
-                            return { ...parent, subItems: filteredSubs };
-                        }
-                    }
-                    if (parentMatches) {
-                        return { ...parent };
-                    }
-                    return { ...parent, subItems: filteredSubs };
-                }
-                return null;
-            }).filter((c): c is CustomerSummary => c !== null);
-
-            if (term) {
-                setExpandedRows(autoExpandIds);
+        const checkInactive = (c: CustomerSummary) => {
+            if (inactiveFilter === 'all') return true;
+            const days = getDaysSinceDate(c.lastActivity);
+            if (inactiveFilter === 'inactive30') {
+                return days !== null && days >= 30;
             }
+            if (inactiveFilter === 'inactive60') {
+                return days !== null && days >= 60;
+            }
+            if (inactiveFilter === 'priority_unvisited') {
+                return c.isPriority && (days === null || days >= 30);
+            }
+            return true;
+        };
+
+        // フィルタリング処理
+        const filteredList: CustomerSummary[] = [];
+
+        result.forEach(parent => {
+            // エリア・ランクフィルター
+            if (selectedArea && parent.area !== selectedArea) return;
+            if (selectedRank && parent.rank !== selectedRank) return;
+
+            // 重点フィルター
+            const parentIsPriority = parent.isPriority;
+            const prioritySubItems = parent.subItems?.filter(sub => sub.isPriority) || [];
+            if (isPriorityOnly && !parentIsPriority && prioritySubItems.length === 0) {
+                return;
+            }
+
+            // ご無沙汰フィルター
+            const parentInactive = checkInactive(parent);
+            const matchingSubsByInactive = parent.subItems?.filter(sub => checkInactive(sub)) || [];
+            if (inactiveFilter !== 'all' && !parentInactive && matchingSubsByInactive.length === 0) {
+                return;
+            }
+
+            // 検索ワードチェック
+            const parentMatches = checkMatch(parent);
+            let filteredSubs = parent.subItems;
+            if (hasSearch && filteredSubs) {
+                filteredSubs = filteredSubs.filter(sub => checkMatch(sub));
+            }
+
+            if (parentMatches || (filteredSubs && filteredSubs.length > 0)) {
+                if (hasSearch && filteredSubs && filteredSubs.length > 0) {
+                    autoExpandIds.add(parent.id);
+                }
+                filteredList.push({ ...parent, subItems: filteredSubs });
+            }
+        });
+
+        result = filteredList;
+
+        if (hasSearch) {
+            setExpandedRows(autoExpandIds);
         }
+
+        // ソート処理
+        result.sort((a, b) => {
+            let cmp = 0;
+            if (sortKey === 'lastActivity') {
+                cmp = compareDates(String(a.lastActivity || ''), String(b.lastActivity || ''));
+            } else if (sortKey === 'visits') {
+                cmp = a.visits - b.visits;
+            } else if (sortKey === 'totalActivities') {
+                cmp = a.totalActivities - b.totalActivities;
+            } else if (sortKey === 'code') {
+                cmp = a.code.localeCompare(b.code, undefined, { numeric: true });
+            } else if (sortKey === 'name') {
+                cmp = a.name.localeCompare(b.name);
+            }
+            return sortOrder === 'asc' ? cmp : -cmp;
+        });
 
         setFilteredCustomers(result);
         setCurrentPage(1);
-    }, [searchTerm, selectedArea, selectedRank, isPriorityOnly, customers]);
+    }, [searchTerm, selectedArea, selectedRank, isPriorityOnly, inactiveFilter, sortKey, sortOrder, customers]);
 
     // Unique Areas and Ranks for dropdowns
     const areas = Array.from(new Set(customers.map(c => c.area).filter(Boolean))).sort();
@@ -184,6 +254,14 @@ export default function CustomersPage() {
                         setIsPriorityOnly={setIsPriorityOnly}
                         areas={areas}
                         ranks={ranks}
+                        sortKey={sortKey}
+                        sortOrder={sortOrder}
+                        onSortChange={handleSortChange}
+                        inactiveFilter={inactiveFilter}
+                        setInactiveFilter={setInactiveFilter}
+                        counts={inactiveCounts}
+                        onClearFilters={handleClearAllFilters}
+                        hasActiveFilters={hasActiveFilters}
                     />
 
                     {/* 統計サマリー */}
@@ -197,7 +275,7 @@ export default function CustomersPage() {
                         <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex justify-between items-center">
                             <h2 className="font-semibold text-sm text-sf-text">得意先一覧 ({filteredCustomers.length}件)</h2>
                             <span className="text-xs text-gray-500">
-                                {Math.min((currentPage - 1) * 50 + 1, filteredCustomers.length)} - {Math.min(currentPage * 50, filteredCustomers.length)} 表示中
+                                {filteredCustomers.length === 0 ? '0件' : `${Math.min((currentPage - 1) * 50 + 1, filteredCustomers.length)} - ${Math.min(currentPage * 50, filteredCustomers.length)} 表示中`}
                             </span>
                         </div>
 
@@ -206,6 +284,10 @@ export default function CustomersPage() {
                             loading={isLoading}
                             expandedRows={expandedRows}
                             toggleRow={toggleRow}
+                            sortKey={sortKey}
+                            sortOrder={sortOrder}
+                            onSort={(key) => handleSortChange(key)}
+                            emptyMessage={hasActiveFilters ? "条件に一致する得意先が見つかりませんでした。「条件クリア」で全件表示に戻せます。" : "得意先データがありません"}
                         />
 
                         {/* Pagination Controls */}

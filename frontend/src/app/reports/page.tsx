@@ -23,21 +23,44 @@ import {
     AlignJustify,
     Loader2,
     CheckSquare,
-    UserCheck
+    UserCheck,
+    Search,
+    X,
+    AlertCircle,
+    Star,
+    Zap,
+    RotateCcw,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NewReportModal from '@/components/reports/NewReportModal';
 import EditReportModal from '@/components/reports/EditReportModal';
 import ReportDetailModal from '@/components/reports/ReportDetailModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
-import DesignImageHoverButton from '@/components/reports/DesignImageHoverButton';
-import { cleanText, compareDates, isKidokuChecked } from '@/lib/reportUtils';
+import DesignImageHoverButton, { prefetchDesignImagePresence } from '@/components/reports/DesignImageHoverButton';
+import { cleanText, compareDates, isKidokuChecked, deduplicateReports } from '@/lib/reportUtils';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 
 // 承認者役職定数
 const APPROVER_ROLES = ['上長', '山澄常務', '岡本常務', '中野次長'] as const;
 type ApproverRole = typeof APPROVER_ROLES[number];
+
+// 表記ゆれ吸収（NFKC正規化、大文字小文字無視、ひらがな->カタカナ統一）
+const normalizeSearchText = (text: string | number | undefined | null): string => {
+    if (text === undefined || text === null) return '';
+    let normalized = String(text).normalize('NFKC').toLowerCase();
+    // ひらがなをカタカナに変換して比較
+    normalized = normalized.replace(/[\u3041-\u3096]/g, (ch) =>
+        String.fromCharCode(ch.charCodeAt(0) + 0x60)
+    );
+    return normalized;
+};
+
+// クレーム・要注意検知キーワード
+const ATTENTION_KEYWORDS = ['クレーム', '不具合', '至急', 'トラブル', '事故', '返品', '誤納', '破損', 'ミス', 'NG', '緊急'];
+const NORMALIZED_ATTENTION_KEYWORDS = ATTENTION_KEYWORDS.map(normalizeSearchText);
 
 export default function ReportsPage(): React.JSX.Element {
     const router = useRouter();
@@ -112,6 +135,40 @@ export default function ReportsPage(): React.JSX.Element {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 50;
 
+    // 検索・クイックフィルター用ステート
+    const [searchKeyword, setSearchKeyword] = useState<string>('');
+    const [searchAllPeriods, setSearchAllPeriods] = useState<boolean>(true); // 検索入力時は全期間から探す
+    const [filterUnapproved, setFilterUnapproved] = useState<boolean>(false); // 未承認のみ（選択中役職）
+    const [filterPriority, setFilterPriority] = useState<boolean>(false); // 重点顧客のみ
+    const [filterDesign, setFilterDesign] = useState<boolean>(false); // デザイン案件のみ
+    const [filterAttention, setFilterAttention] = useState<boolean>(false); // クレーム・要注意
+    const [filterComment, setFilterComment] = useState<boolean>(false); // コメントあり
+    const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(true); // 検索バーの展開・折りたたみ（本文エリア最大化用）
+
+    const hasActiveFilters = Boolean(
+        searchKeyword.trim() ||
+        filterUnapproved ||
+        filterPriority ||
+        filterDesign ||
+        filterAttention ||
+        filterComment
+    );
+
+    const handleClearAllFilters = () => {
+        setSearchKeyword('');
+        setFilterUnapproved(false);
+        setFilterPriority(false);
+        setFilterDesign(false);
+        setFilterAttention(false);
+        setFilterComment(false);
+        setCurrentPage(1);
+    };
+
+    // 検索・フィルター条件変更時にページを先頭に戻す
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchKeyword, searchAllPeriods, filterUnapproved, filterPriority, filterDesign, filterAttention, filterComment]);
+
     // エラー時のtoast表示
     useEffect(() => {
         if (error) {
@@ -159,7 +216,8 @@ export default function ReportsPage(): React.JSX.Element {
                 _is_pending_sync: true
             }));
 
-        const combined = [...browserPendingReports, ...rawReports];
+        // 未送信データと原本データをマージし、同一管理番号の重複を完全排除
+        const combined = deduplicateReports([...browserPendingReports, ...rawReports]);
         const validData = combined.filter(report => report.日付 && report.日付.trim() !== '');
         // ソート
         return [...validData].sort((a, b) => {
@@ -188,6 +246,17 @@ export default function ReportsPage(): React.JSX.Element {
         setSelectedMonth('all');
         setCurrentPage(1);
     }, [selectedFile]);
+
+    // 日報データ取得時に含まれるデザインNoの画像有無を一括プリフェッチ
+    useEffect(() => {
+        if (!reports || reports.length === 0) return;
+        const nos = reports
+            .map(r => r['デザイン依頼No.'] || r['システム確認用デザインNo.'])
+            .filter(Boolean) as string[];
+        if (nos.length > 0) {
+            prefetchDesignImagePresence(nos, selectedFile || undefined);
+        }
+    }, [reports, selectedFile]);
 
     // 年月（YYYY/MM）抽出ヘルパー
     const getYearMonth = (dateStr?: string): string => {
@@ -227,11 +296,142 @@ export default function ReportsPage(): React.JSX.Element {
         });
     }, [reports]);
 
-    // 月別フィルタ適用後のレポート一覧
+    // 有効データ有無判定（ゼロ・ウェイスト用）
+    const hasContent = (val?: string | null): boolean => {
+        if (!val) return false;
+        const cleaned = cleanText(val).trim();
+        return cleaned !== '' && cleaned !== 'なし' && cleaned !== '-' && cleaned !== '無' && cleaned !== '特になし';
+    };
+
+    // デザイン情報有無判定
+    const hasDesignInfo = (r: Report) => {
+        return !!(r.デザイン進捗状況 || r['デザイン依頼No.'] || r.デザイン種別 || r.デザイン名 || r.デザイン提案有無);
+    };
+
+    // 現在の対象範囲での各クイックフィルター件数（リアルタイムバッジ用）
+    const quickFilterCounts = useMemo(() => {
+        let baseReports = reports;
+        const isPeriodOverridden = Boolean(searchKeyword.trim() && searchAllPeriods);
+        if (!isPeriodOverridden && selectedMonth !== 'all') {
+            baseReports = baseReports.filter(r => getYearMonth(r.日付) === selectedMonth);
+        }
+
+        let unapproved = 0;
+        let priority = 0;
+        let design = 0;
+        let attention = 0;
+        let comment = 0;
+
+        baseReports.forEach(r => {
+            if (!r[selectedApproverRole]) unapproved++;
+            const p = String(r.重点顧客 || '').trim();
+            if (p !== '' && p !== '-' && p !== '無' && p !== 'なし') priority++;
+            if (hasDesignInfo(r)) design++;
+            const combined = normalizeSearchText(
+                `${r.商談内容 || ''} ${r.行動内容 || ''} ${r.次回プラン || ''} ${r.提案物 || ''} ${r.上長コメント || ''}`
+            );
+            if (NORMALIZED_ATTENTION_KEYWORDS.some(kw => combined.includes(kw))) attention++;
+            if (hasContent(r.上長コメント) || hasContent(r.コメント返信欄)) comment++;
+        });
+
+        return { unapproved, priority, design, attention, comment };
+    }, [reports, selectedMonth, selectedApproverRole, searchKeyword, searchAllPeriods]);
+
+    // フィルタ適用後のレポート一覧
     const filteredReports = useMemo(() => {
-        if (selectedMonth === 'all') return reports;
-        return reports.filter(r => getYearMonth(r.日付) === selectedMonth);
-    }, [reports, selectedMonth]);
+        let result = reports;
+
+        // 1. 月別フィルタ（検索キーワード入力時かつ全期間検索ONならスキップ）
+        const isPeriodOverridden = Boolean(searchKeyword.trim() && searchAllPeriods);
+        if (!isPeriodOverridden && selectedMonth !== 'all') {
+            result = result.filter(r => getYearMonth(r.日付) === selectedMonth);
+        }
+
+        // 2. クイックフィルター: 未承認のみ（現在選択中の承認者役職）
+        if (filterUnapproved) {
+            result = result.filter(r => !r[selectedApproverRole]);
+        }
+
+        // 3. クイックフィルター: 重点顧客のみ
+        if (filterPriority) {
+            result = result.filter(r => {
+                const p = String(r.重点顧客 || '').trim();
+                return p !== '' && p !== '-' && p !== '無' && p !== 'なし';
+            });
+        }
+
+        // 4. クイックフィルター: デザイン案件のみ
+        if (filterDesign) {
+            result = result.filter(r => hasDesignInfo(r));
+        }
+
+        // 5. クイックフィルター: クレーム・要注意
+        if (filterAttention) {
+            result = result.filter(r => {
+                const combined = normalizeSearchText(
+                    `${r.商談内容 || ''} ${r.行動内容 || ''} ${r.次回プラン || ''} ${r.提案物 || ''} ${r.上長コメント || ''}`
+                );
+                return NORMALIZED_ATTENTION_KEYWORDS.some(kw => combined.includes(kw));
+            });
+        }
+
+        // 6. クイックフィルター: コメントあり
+        if (filterComment) {
+            result = result.filter(r => hasContent(r.上長コメント) || hasContent(r.コメント返信欄));
+        }
+
+        // 7. 全文キーワードAND検索（スペース区切り・表記ゆれ吸収）
+        if (searchKeyword.trim()) {
+            const terms = searchKeyword
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map(normalizeSearchText);
+
+            result = result.filter(r => {
+                const targetValues = [
+                    r.日付,
+                    r.得意先CD,
+                    r.訪問先名,
+                    r.直送先CD,
+                    r.直送先名,
+                    r.行動内容,
+                    r.面談者,
+                    r.滞在時間,
+                    r.商談内容,
+                    r.提案物,
+                    r.次回プラン,
+                    r.競合他社情報,
+                    r.エリア,
+                    r.ランク,
+                    r.デザイン名,
+                    r['デザイン依頼No.'],
+                    r['システム確認用デザインNo.'],
+                    r.デザイン進捗状況,
+                    r.デザイン種別,
+                    r.上長コメント,
+                    r.コメント返信欄
+                ].map(normalizeSearchText);
+
+                return terms.every(term =>
+                    targetValues.some(val => val.includes(term))
+                );
+            });
+        }
+
+        return result;
+    }, [
+        reports,
+        selectedMonth,
+        searchKeyword,
+        searchAllPeriods,
+        filterUnapproved,
+        filterPriority,
+        filterDesign,
+        filterAttention,
+        filterComment,
+        selectedApproverRole
+    ]);
 
     const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
     const paginatedReports = filteredReports.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -260,18 +460,6 @@ export default function ReportsPage(): React.JSX.Element {
             };
         }
         return { formatted: dateStr, dayOfWeek: '', display: dateStr };
-    };
-
-    // 有効データ有無判定（ゼロ・ウェイスト用）
-    const hasContent = (val?: string | null): boolean => {
-        if (!val) return false;
-        const cleaned = cleanText(val).trim();
-        return cleaned !== '' && cleaned !== 'なし' && cleaned !== '-' && cleaned !== '無' && cleaned !== '特になし';
-    };
-
-    // デザイン情報有無判定
-    const hasDesignInfo = (r: Report) => {
-        return !!(r.デザイン進捗状況 || r['デザイン依頼No.'] || r.デザイン種別 || r.デザイン名 || r.デザイン提案有無);
     };
 
     // 行動種別のバッジ色
@@ -521,24 +709,23 @@ export default function ReportsPage(): React.JSX.Element {
     }
 
     return (
-        <div className="space-y-4 h-[calc(100vh-8rem)] flex flex-col animate-fadeIn">
+        <div className="flex-1 min-h-0 flex flex-col gap-2 animate-fadeIn">
             {/* 上部コントロールバー */}
-            <div className="flex flex-wrap justify-between items-center bg-white p-3.5 rounded border border-sf-border shadow-sm gap-3">
-                <div className="flex items-center gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-sf-light-blue p-2 rounded text-white shadow-sm">
-                            <FileText size={20} />
+            <div className="flex flex-wrap justify-between items-center bg-white px-3.5 py-2 rounded border border-sf-border shadow-2xs gap-2 shrink-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                        <div className="bg-sf-light-blue p-1.5 rounded text-white shadow-xs">
+                            <FileText size={18} />
                         </div>
                         <div>
-                            <p className="text-xs text-sf-text-weak font-medium">オブジェクト</p>
-                            <h1 className="text-xl font-bold text-sf-text leading-tight">営業日報</h1>
+                            <h1 className="text-base font-bold text-sf-text leading-tight">営業日報</h1>
                         </div>
                     </div>
 
                     {/* 月別セレクター（ドロップダウン） */}
                     {reports.length > 0 && monthOptions.length > 0 && (
-                        <div className="flex items-center gap-1.5 bg-blue-50/70 border border-blue-200/80 rounded-md px-2.5 py-1 text-xs shadow-2xs">
-                            <Calendar size={14} className="text-sf-light-blue shrink-0" />
+                        <div className="flex items-center gap-1.5 bg-blue-50/70 border border-blue-200/80 rounded px-2 py-0.5 text-xs shadow-2xs">
+                            <Calendar size={13} className="text-sf-light-blue shrink-0" />
                             <span className="text-sf-text-weak text-[11px] font-medium whitespace-nowrap">対象月:</span>
                             <select
                                 value={selectedMonth}
@@ -560,23 +747,42 @@ export default function ReportsPage(): React.JSX.Element {
                     )}
                 </div>
 
-                <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex flex-wrap gap-1.5 items-center">
+                    {/* 検索バー開閉トグルボタン（本文スペース最大化） */}
+                    <button
+                        type="button"
+                        onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+                        className={`px-2.5 py-1 rounded border text-xs font-medium transition-colors flex items-center gap-1 ${
+                            isSearchExpanded 
+                                ? 'bg-gray-50 hover:bg-gray-100 border-sf-border text-gray-600' 
+                                : 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 font-bold'
+                        }`}
+                        title={isSearchExpanded ? "検索バーをたたんで本文表示スペースを広げる" : "検索・フィルターを展開"}
+                    >
+                        <Search size={13} className={isSearchExpanded ? "text-gray-500" : "text-blue-600"} />
+                        <span>{isSearchExpanded ? "検索をたたむ" : "検索を開く"}</span>
+                        {isSearchExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        {!isSearchExpanded && hasActiveFilters && (
+                            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse ml-0.5" title="条件適用中" />
+                        )}
+                    </button>
+
                     {/* ビュー切替（テーブル / タイムライン） */}
-                    <div className="flex bg-gray-100 p-1 rounded border border-sf-border">
+                    <div className="flex bg-gray-100 p-0.5 rounded border border-sf-border">
                         <button
                             onClick={() => handleViewModeChange('timeline')}
-                            className={`p-1.5 rounded transition-all flex items-center gap-1 text-xs ${viewMode === 'timeline' ? 'bg-white shadow-sm text-sf-light-blue font-semibold' : 'text-gray-500 hover:text-gray-800'}`}
+                            className={`px-2 py-1 rounded transition-all flex items-center gap-1 text-xs ${viewMode === 'timeline' ? 'bg-white shadow-xs text-sf-light-blue font-semibold' : 'text-gray-500 hover:text-gray-800'}`}
                             title="タイムライン表示（日別カード形式）"
                         >
-                            <LayoutList size={16} />
+                            <LayoutList size={14} />
                             <span className="hidden sm:inline">タイムライン</span>
                         </button>
                         <button
                             onClick={() => handleViewModeChange('table')}
-                            className={`p-1.5 rounded transition-all flex items-center gap-1 text-xs ${viewMode === 'table' ? 'bg-white shadow-sm text-sf-light-blue font-semibold' : 'text-gray-500 hover:text-gray-800'}`}
+                            className={`px-2 py-1 rounded transition-all flex items-center gap-1 text-xs ${viewMode === 'table' ? 'bg-white shadow-xs text-sf-light-blue font-semibold' : 'text-gray-500 hover:text-gray-800'}`}
                             title="テーブル表示（表形式）"
                         >
-                            <Table size={16} />
+                            <Table size={14} />
                             <span className="hidden sm:inline">テーブル</span>
                         </button>
                     </div>
@@ -586,23 +792,23 @@ export default function ReportsPage(): React.JSX.Element {
                         <div className="flex items-center bg-gray-100 p-0.5 rounded border border-sf-border text-xs">
                             <button
                                 onClick={() => handleDensityChange('compact')}
-                                className={`px-2 py-1 rounded transition-all flex items-center gap-1 ${density === 'compact' ? 'bg-white shadow-sm font-semibold text-sf-light-blue' : 'text-gray-500 hover:text-gray-800'}`}
+                                className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${density === 'compact' ? 'bg-white shadow-xs font-semibold text-sf-light-blue' : 'text-gray-500 hover:text-gray-800'}`}
                                 title="高密度表示（Excel同等のコンパクト行形式、1画面に多数表示）"
                             >
-                                <AlignJustify size={14} />
+                                <AlignJustify size={13} />
                                 <span>高密度</span>
                             </button>
                             <button
                                 onClick={() => handleDensityChange('normal')}
-                                className={`px-2 py-1 rounded transition-all flex items-center gap-1 ${density === 'normal' ? 'bg-white shadow-sm font-semibold text-sf-light-blue' : 'text-gray-500 hover:text-gray-800'}`}
+                                className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${density === 'normal' ? 'bg-white shadow-xs font-semibold text-sf-light-blue' : 'text-gray-500 hover:text-gray-800'}`}
                                 title="標準表示（スマートカード・おすすめ）"
                             >
-                                <Layers size={14} />
+                                <Layers size={13} />
                                 <span>標準</span>
                             </button>
                             <button
                                 onClick={() => handleDensityChange('detailed')}
-                                className={`px-2 py-1 rounded transition-all flex items-center gap-1 ${density === 'detailed' ? 'bg-white shadow-sm font-semibold text-sf-light-blue' : 'text-gray-500 hover:text-gray-800'}`}
+                                className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 ${density === 'detailed' ? 'bg-white shadow-xs font-semibold text-sf-light-blue' : 'text-gray-500 hover:text-gray-800'}`}
                                 title="詳細表示（余白広め）"
                             >
                                 <span>詳細</span>
@@ -612,10 +818,10 @@ export default function ReportsPage(): React.JSX.Element {
 
                     <button
                         onClick={toggleSortOrder}
-                        className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors flex items-center gap-1.5 text-xs font-medium"
+                        className="px-2 py-1 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors flex items-center gap-1 text-xs font-medium"
                         title={sortOrder === 'asc' ? "古い順" : "新しい順"}
                     >
-                        <Filter size={15} />
+                        <Filter size={13} />
                         <span className="hidden md:inline">
                             {sortOrder === 'asc' ? '昇順' : '降順'}
                         </span>
@@ -623,16 +829,16 @@ export default function ReportsPage(): React.JSX.Element {
 
                     <button
                         onClick={handleRefresh}
-                        className="p-2 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors"
+                        className="p-1.5 border border-sf-border rounded hover:bg-gray-50 text-sf-text-weak transition-colors"
                         title="再読み込み"
                         aria-label="再読み込み"
                     >
-                        <RefreshCw size={15} />
+                        <RefreshCw size={14} />
                     </button>
 
                     {/* 操作・承認者役職セレクター */}
-                    <div className="flex items-center gap-1.5 bg-gray-50 border border-sf-border rounded px-2.5 py-1.5 text-xs">
-                        <UserCheck size={14} className="text-blue-600 flex-shrink-0" />
+                    <div className="flex items-center gap-1.5 bg-gray-50 border border-sf-border rounded px-2 py-1 text-xs">
+                        <UserCheck size={13} className="text-blue-600 flex-shrink-0" />
                         <span className="text-sf-text-weak text-[11px] font-medium whitespace-nowrap">承認役職:</span>
                         <select
                             value={selectedApproverRole}
@@ -650,24 +856,287 @@ export default function ReportsPage(): React.JSX.Element {
 
                     <button
                         onClick={() => router.push('/reports/batch')}
-                        className="bg-sf-light-blue text-white px-3.5 py-1.5 rounded text-xs font-medium hover:bg-blue-700 shadow-sm flex items-center gap-1 transition-colors"
+                        className="bg-sf-light-blue text-white px-3 py-1 rounded text-xs font-medium hover:bg-blue-700 shadow-xs flex items-center gap-1 transition-colors"
                     >
-                        <Plus size={15} />
+                        <Plus size={14} />
                         新規作成
                     </button>
                 </div>
             </div>
 
+            {/* 検索 ＆ クイックフィルターバー */}
+            {isSearchExpanded ? (
+                <div className="bg-white px-3.5 py-2 rounded border border-sf-border shadow-2xs space-y-1.5 shrink-0 animate-in fade-in duration-150">
+                    {/* 1段目: 全文キーワード検索バー + 全期間検索トグル + 該当件数 + クリアボタン */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* 検索入力欄 */}
+                        <div className="relative flex-1 min-w-[260px]">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                            <input
+                                type="text"
+                                placeholder="訪問先・商談・面談者・次回プラン・デザイン名等で検索（スペース区切りAND検索）..."
+                                value={searchKeyword}
+                                onChange={(e) => setSearchKeyword(e.target.value)}
+                                className="w-full pl-8 pr-7 py-1 text-xs border border-sf-border rounded bg-gray-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-1 focus:ring-sf-light-blue focus:border-sf-light-blue placeholder-gray-400 text-sf-text transition-colors"
+                            />
+                            {searchKeyword && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchKeyword('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+                                    title="検索キーワードをクリア"
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* 全期間検索トグル（キーワード入力時用） */}
+                        <label 
+                            className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border cursor-pointer select-none transition-colors ${
+                                searchAllPeriods 
+                                    ? 'bg-blue-50/90 border-blue-200 text-blue-800 font-medium' 
+                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                            }`}
+                            title="チェックを入れると、選択中の対象月に関係なく全期間から横断検索します"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={searchAllPeriods}
+                                onChange={(e) => setSearchAllPeriods(e.target.checked)}
+                                className="rounded border-gray-300 text-sf-light-blue focus:ring-sf-light-blue h-3.5 w-3.5 cursor-pointer"
+                            />
+                            <span>全期間から検索</span>
+                        </label>
+
+                        {/* 該当件数表示 */}
+                        <div className="text-xs text-sf-text-weak whitespace-nowrap px-1 font-medium">
+                            {hasActiveFilters ? (
+                                <span>
+                                    表示: <strong className="text-sf-light-blue font-bold text-xs">{filteredReports.length}</strong> / {reports.length} 件
+                                </span>
+                            ) : (
+                                <span>
+                                    表示: <strong className="text-sf-text font-bold text-xs">{filteredReports.length}</strong> 件
+                                </span>
+                            )}
+                        </div>
+
+                        {/* 条件クリアボタン */}
+                        {hasActiveFilters && (
+                            <button
+                                type="button"
+                                onClick={handleClearAllFilters}
+                                className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 px-2 py-1 rounded transition-colors font-medium cursor-pointer"
+                                title="検索キーワードとクイックフィルターをすべて解除"
+                            >
+                                <RotateCcw size={12} />
+                                <span>条件クリア</span>
+                            </button>
+                        )}
+                    </div>
+
+                    {/* 2段目: 業務特化型クイックフィルターチップ */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-gray-100 text-xs">
+                        <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1 shrink-0 mr-0.5">
+                            <Filter size={11} />
+                            <span>クイック抽出:</span>
+                        </span>
+
+                        {/* ⚠️ 未承認のみ */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterUnapproved(!filterUnapproved)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterUnapproved
+                                    ? 'bg-amber-100 border-amber-400 text-amber-950 ring-1 ring-amber-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-amber-50/60 border-gray-200 text-gray-700 hover:border-amber-300'
+                            }`}
+                            title={`現在選択中の承認役職「${selectedApproverRole}」が未承認の日報のみを抽出`}
+                        >
+                            <AlertCircle size={11} className={filterUnapproved ? 'text-amber-700' : 'text-amber-500'} />
+                            <span>未承認（{selectedApproverRole}）</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterUnapproved ? 'bg-amber-200 text-amber-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.unapproved}
+                            </span>
+                        </button>
+
+                        {/* ★ 重点顧客のみ */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterPriority(!filterPriority)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterPriority
+                                    ? 'bg-yellow-100 border-yellow-400 text-yellow-950 ring-1 ring-yellow-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-yellow-50/60 border-gray-200 text-gray-700 hover:border-yellow-300'
+                            }`}
+                            title="重点顧客フラグがある日報のみを抽出"
+                        >
+                            <Star size={11} className={filterPriority ? 'text-yellow-700 fill-yellow-500' : 'text-yellow-500'} />
+                            <span>重点顧客</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterPriority ? 'bg-yellow-200 text-yellow-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.priority}
+                            </span>
+                        </button>
+
+                        {/* 🎨 デザインあり */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterDesign(!filterDesign)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterDesign
+                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-950 ring-1 ring-indigo-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-indigo-50/60 border-gray-200 text-gray-700 hover:border-indigo-300'
+                            }`}
+                            title="デザイン提案・進捗・依頼情報が含まれる日報のみを抽出"
+                        >
+                            <Palette size={11} className={filterDesign ? 'text-indigo-700' : 'text-indigo-500'} />
+                            <span>デザイン案件</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterDesign ? 'bg-indigo-200 text-indigo-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.design}
+                            </span>
+                        </button>
+
+                        {/* ⚡ クレーム・要注意 */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterAttention(!filterAttention)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterAttention
+                                    ? 'bg-rose-100 border-rose-400 text-rose-950 ring-1 ring-rose-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-rose-50/60 border-gray-200 text-gray-700 hover:border-rose-300'
+                            }`}
+                            title="クレーム、トラブル、不具合、至急、事故等の文言が含まれる要注意日報を抽出"
+                        >
+                            <Zap size={11} className={filterAttention ? 'text-rose-700' : 'text-rose-500'} />
+                            <span>クレーム・要注意</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterAttention ? 'bg-rose-200 text-rose-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.attention}
+                            </span>
+                        </button>
+
+                        {/* 💬 コメントあり */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterComment(!filterComment)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterComment
+                                    ? 'bg-emerald-100 border-emerald-400 text-emerald-950 ring-1 ring-emerald-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-emerald-50/60 border-gray-200 text-gray-700 hover:border-emerald-300'
+                            }`}
+                            title="上長コメントまたはコメント返信が記載されている日報を抽出"
+                        >
+                            <MessageSquare size={11} className={filterComment ? 'text-emerald-700' : 'text-emerald-500'} />
+                            <span>コメントあり</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterComment ? 'bg-emerald-200 text-emerald-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.comment}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                /* 折りたたみ時の極小ステータスバー（本文スペース最大化） */
+                <div className="bg-white px-3 py-1 rounded border border-sf-border shadow-2xs flex items-center justify-between gap-2 text-xs shrink-0 animate-in fade-in duration-150">
+                    <div className="flex items-center gap-2 overflow-x-auto py-0.5">
+                        <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1 shrink-0">
+                            <Search size={12} />
+                            <span>検索:</span>
+                        </span>
+                        {searchKeyword ? (
+                            <span className="bg-blue-50 text-blue-800 px-2 py-0.5 rounded border border-blue-200 font-medium text-[11px]">
+                                &ldquo;{searchKeyword}&rdquo;
+                            </span>
+                        ) : (
+                            <span className="text-gray-400 text-[11px]">全件対象</span>
+                        )}
+                        {filterUnapproved && (
+                            <span className="bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300 text-[10px] font-bold">
+                                未承認
+                            </span>
+                        )}
+                        {filterPriority && (
+                            <span className="bg-yellow-100 text-yellow-900 px-1.5 py-0.5 rounded border border-yellow-300 text-[10px] font-bold">
+                                ★重点
+                            </span>
+                        )}
+                        {filterDesign && (
+                            <span className="bg-indigo-100 text-indigo-900 px-1.5 py-0.5 rounded border border-indigo-300 text-[10px] font-bold">
+                                🎨デザイン
+                            </span>
+                        )}
+                        {filterAttention && (
+                            <span className="bg-rose-100 text-rose-900 px-1.5 py-0.5 rounded border border-rose-300 text-[10px] font-bold">
+                                ⚡要注意
+                            </span>
+                        )}
+                        {filterComment && (
+                            <span className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-300 text-[10px] font-bold">
+                                💬コメント
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-sf-text-weak text-xs">
+                            表示: <strong className="text-sf-text font-bold">{filteredReports.length}</strong> 件
+                        </span>
+                        {hasActiveFilters && (
+                            <button
+                                type="button"
+                                onClick={handleClearAllFilters}
+                                className="text-rose-600 hover:text-rose-700 text-xs font-medium cursor-pointer"
+                            >
+                                クリア
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setIsSearchExpanded(true)}
+                            className="text-sf-light-blue hover:text-blue-700 font-medium text-xs flex items-center gap-0.5 cursor-pointer bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
+                        >
+                            <span>展開</span>
+                            <ChevronDown size={12} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* メインコンテンツ領域 */}
-            <div className="bg-white border border-sf-border shadow-sm flex-1 overflow-auto rounded">
+            <div className="bg-white border border-sf-border shadow-2xs flex-1 min-h-0 overflow-auto rounded">
                 {isLoading ? (
                     <div className="p-10 text-center text-sf-text-weak flex flex-col items-center gap-2">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sf-light-blue"></div>
                         <span>日報を読み込み中...</span>
                     </div>
                 ) : filteredReports.length === 0 ? (
-                    <div className="p-10 text-center text-sf-text-weak">
-                        {selectedMonth === 'all' ? '日報が見つかりません' : `${selectedMonth.replace('/', '年')}月の日報データはありません`}
+                    <div className="p-10 text-center text-sf-text-weak space-y-2">
+                        <p className="text-base font-semibold text-gray-700">該当する営業日報が見つかりませんでした</p>
+                        {hasActiveFilters ? (
+                            <div className="space-y-2">
+                                <p className="text-xs text-gray-500">検索キーワードやクイックフィルターを変更するか、条件をリセットしてください。</p>
+                                <button
+                                    type="button"
+                                    onClick={handleClearAllFilters}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded text-xs font-medium transition cursor-pointer"
+                                >
+                                    <RotateCcw size={13} />
+                                    <span>条件をリセットして全件表示</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-500">
+                                {selectedMonth === 'all' ? '日報データが登録されていません' : `${selectedMonth.replace('/', '年')}月の日報データはありません`}
+                            </p>
+                        )}
                     </div>
                 ) : viewMode === 'table' ? (
                     /* 強化版テーブル表示（Excel風） */
@@ -818,7 +1287,7 @@ export default function ReportsPage(): React.JSX.Element {
                     </div>
                 ) : (
                     /* 案A：スマート・タイムライン（日別グループ化 ＋ 密度切り替え対応） */
-                    <div className="p-4 space-y-6 bg-gray-50/50 min-h-full">
+                    <div className="p-3 sm:p-3.5 space-y-3.5 bg-gray-50/50 min-h-full">
                         {groupedReports.map((group) => (
                             <div key={group.dateKey} className="space-y-2.5">
                                 {/* デイリーヘッダー */}
@@ -1226,7 +1695,7 @@ export default function ReportsPage(): React.JSX.Element {
             </div>
 
             {/* フッター + ページネーション */}
-            <div className="p-2.5 bg-white border border-sf-border rounded text-xs text-sf-text-weak flex flex-wrap justify-between items-center gap-2">
+            <div className="px-3 py-1.5 bg-white border border-sf-border rounded text-xs text-sf-text-weak flex flex-wrap justify-between items-center gap-2 shrink-0">
                 <span>
                     {selectedMonth === 'all'
                         ? `${filteredReports.length} 件 • ${selectedFile}`

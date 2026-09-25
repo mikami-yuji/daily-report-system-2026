@@ -321,14 +321,57 @@ def get_interviewers_by_query(customer_code: str, filename: str = config.DEFAULT
 
 
 
+def _deduplicate_report_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """日報レコードリストの重複を完全排除。同一管理番号（正の整数）は最初の1件のみ採用"""
+    if not records or len(records) <= 1:
+        return records
+
+    seen_mgmt = set()
+    seen_content = set()
+    unique_records = []
+
+    for r in records:
+        mgmt = r.get("管理番号")
+        # 正の整数管理番号の場合
+        if mgmt is not None:
+            try:
+                mgmt_int = int(mgmt)
+                if mgmt_int > 0:
+                    if mgmt_int in seen_mgmt:
+                        continue
+                    seen_mgmt.add(mgmt_int)
+                    unique_records.append(r)
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+        # 仮管理番号（負数）または管理番号なしの場合
+        c_key = (
+            str(r.get("日付") or "").strip(),
+            str(r.get("得意先CD") or "").strip(),
+            str(r.get("訪問先名") or "").strip(),
+            str(r.get("行動内容") or "").strip(),
+            str(r.get("商談内容") or "").strip(),
+            str(r.get("滞在時間") or "").strip(),
+        )
+        if c_key in seen_content:
+            continue
+        seen_content.add(c_key)
+        unique_records.append(r)
+
+    return unique_records
+
+
 def _merge_pending_sync_tasks(records: List[Dict[str, Any]], filename: str) -> List[Dict[str, Any]]:
     """未同期タスク（sync_queue）を日報レコード一覧へ合成（オーバーレイ）"""
     try:
+        # 入力レコード自体の重複をまず排除
+        cleaned_in = _deduplicate_report_records(records)
         pending = sync_queue.get_pending_tasks_for_file(filename)
         if not pending:
-            return records
+            return cleaned_in
 
-        records_map = {r["管理番号"]: r for r in records if "管理番号" in r and r["管理番号"] is not None}
+        records_map = {r["管理番号"]: r for r in cleaned_in if "管理番号" in r and r["管理番号"] is not None}
         new_pending_records = []
         new_pending_map = {}
         deleted_ids = set()
@@ -408,14 +451,14 @@ def _merge_pending_sync_tasks(records: List[Dict[str, Any]], filename: str) -> L
                             elif f"{role_col}確認" in payload and payload[f"{role_col}確認"] is not None:
                                 target_rec[role_col] = payload[f"{role_col}確認"]
 
-        filtered_records = [r for r in records if r.get("管理番号") not in deleted_ids]
+        filtered_records = [r for r in cleaned_in if r.get("管理番号") not in deleted_ids]
         filtered_new_pending = [r for r in new_pending_records if r.get("管理番号") not in deleted_ids]
-        merged = filtered_new_pending + filtered_records
-        logging.info(f"Overlayed {len(pending)} pending sync tasks onto reports for {filename} ({len(filtered_new_pending)} new pending)")
+        merged = _deduplicate_report_records(filtered_new_pending + filtered_records)
+        logging.info(f"Overlayed {len(pending)} pending sync tasks onto reports for {filename} ({len(filtered_new_pending)} new pending, total {len(merged)})")
         return merged
     except Exception as e:
         logging.warning(f"Failed to overlay pending sync tasks: {e}")
-        return records
+        return _deduplicate_report_records(records)
 
 
 @router.get("/api/reports/{management_number}")
@@ -585,7 +628,8 @@ def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any
                 cleaned_records.append(cleaned_record)
 
             logging.info(f"Successfully fetched {len(cleaned_records)} reports for {filename}")
-            return _merge_pending_sync_tasks(cleaned_records, filename)
+            merged_records = _merge_pending_sync_tasks(cleaned_records, filename)
+            return _deduplicate_report_records(merged_records)
             
         except HTTPException:
             # HTTPException（404など）はそのまま再送出
@@ -617,6 +661,29 @@ def get_reports(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Dict[str, Any
                 status_code=500, 
                 detail=f"日報データの読み込みに失敗しました: {type(e).__name__}: {str(e)}"
             )
+
+
+@router.post("/api/cache/clear")
+def clear_cache_endpoint(filename: Optional[str] = None) -> Dict[str, Any]:
+    """インメモリキャッシュおよびローカルSQLiteシャドウキャッシュを安全に消去し、原本再読込を強制"""
+    try:
+        if filename:
+            cache.invalidate_cache(filename, sheet_name=None, clear_sqlite=True)
+            logging.info(f"Explicitly cleared SQLite cache for {filename}")
+        else:
+            # 全キャッシュクリア
+            with cache._get_sqlite_conn() as conn:
+                cursor = conn.execute("SELECT cache_id FROM _cache_meta")
+                for (cid,) in cursor.fetchall():
+                    conn.execute(f"DROP TABLE IF EXISTS [sheet_{cid}]")
+                conn.execute("DELETE FROM _cache_meta")
+                conn.commit()
+            cache.CACHE.clear()
+            logging.info("Explicitly cleared all cache tables and in-memory cache")
+        return {"status": "success", "message": "Cache successfully cleared"}
+    except Exception as e:
+        logging.warning(f"Error clearing cache: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 
@@ -1270,23 +1337,23 @@ def add_report(
                 "management_number": new_mgmt_num,
                 "file_path": os.path.abspath(excel_file)
             }
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        # 書き込み中にUNC瞬断が発生した場合も安全に退避
-        logging.warning(f"Network error during write to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        # 書き込み中にUNC瞬断やExcelファイルロックが発生した場合も安全に退避
+        logging.warning(f"Network error or file lock during write to {excel_file}: {e}. Enqueueing to sync queue.")
         task_id = sync_queue.enqueue_sync_task(
             task_type="create",
             filename=filename,
             payload=report.model_dump()
         )
         return {
-            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
             "management_number": -task_id,
             "offline": True
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in add_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1337,10 +1404,8 @@ def add_batch_reports(
                 "file_path": os.path.abspath(excel_file),
                 "offline": False
             }
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        logging.warning(f"Network error during batch write to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"Network error or file lock during batch write to {excel_file}: {e}. Enqueueing to sync queue.")
         task_ids = []
         for r in reports:
             t_id = sync_queue.enqueue_sync_task(
@@ -1350,13 +1415,15 @@ def add_batch_reports(
             )
             task_ids.append(t_id)
         return {
-            "message": f"社内ファイルサーバーへの書き込み中に通信が途切れたため、{len(reports)}件の日報をローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": f"Excelファイルが他で開かれているか通信が途切れたため、{len(reports)}件の日報をローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "count": len(reports),
             "task_ids": task_ids,
             "management_numbers": [-t for t in task_ids],
             "offline": True
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in add_batch_reports: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error during batch save")
@@ -1405,10 +1472,8 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
             _apply_reply_to_excel(excel_file, management_number, reply)
             cache.invalidate_cache(filename, '営業日報')
             return {"success": True, "management_number": management_number}
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        logging.warning(f"Network error during reply to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"Network error or file lock during reply to {excel_file}: {e}. Enqueueing to sync queue.")
         task_id = sync_queue.enqueue_sync_task(
             task_type="reply",
             filename=filename,
@@ -1416,13 +1481,15 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
             management_number=management_number
         )
         return {
-            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
             "offline": True,
             "success": True,
             "management_number": management_number
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in update_report_reply: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1472,10 +1539,8 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
             _apply_comment_to_excel(excel_file, management_number, comment)
             cache.invalidate_cache(filename, '営業日報')
             return {"success": True, "management_number": management_number}
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        logging.warning(f"Network error during comment to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"Network error or file lock during comment to {excel_file}: {e}. Enqueueing to sync queue.")
         task_id = sync_queue.enqueue_sync_task(
             task_type="comment",
             filename=filename,
@@ -1483,13 +1548,15 @@ def update_report_comment(management_number: int, comment: models.CommentInput, 
             management_number=management_number
         )
         return {
-            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
             "offline": True,
             "success": True,
             "management_number": management_number
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in update_report_comment: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1547,10 +1614,8 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
             _apply_approval_to_excel(excel_file, management_number, approval)
             cache.invalidate_cache(filename, '営業日報')
             return {"success": True, "management_number": management_number}
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        logging.warning(f"Network error during approval to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"Network error or file lock during approval to {excel_file}: {e}. Enqueueing to sync queue.")
         task_id = sync_queue.enqueue_sync_task(
             task_type="approval",
             filename=filename,
@@ -1558,13 +1623,15 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
             management_number=management_number
         )
         return {
-            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
             "offline": True,
             "success": True,
             "management_number": management_number
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in update_report_approval: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1576,7 +1643,21 @@ def batch_update_report_approval(batch_input: models.BatchApprovalInput, filenam
     excel_file = os.path.join(config.EXCEL_DIR, filename)
 
     if not os.path.exists(excel_file):
-        raise HTTPException(status_code=503, detail="Excel file is not accessible")
+        logging.warning(f"File server inaccessible for {excel_file}. Enqueueing batch approval tasks.")
+        for mgmt_num in batch_input.management_numbers:
+            sync_queue.enqueue_sync_task(
+                task_type="approval",
+                filename=filename,
+                payload={batch_input.field_name: batch_input.value},
+                management_number=mgmt_num
+            )
+        return {
+            "success": True, 
+            "updated_count": len(batch_input.management_numbers), 
+            "total_requested": len(batch_input.management_numbers),
+            "offline": True,
+            "message": "社内ファイルサーバーが一時的にオフラインのため、承認リクエストをローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。"
+        }
 
     try:
         with excel_io.get_file_write_lock(excel_file):
@@ -1588,6 +1669,22 @@ def batch_update_report_approval(batch_input: models.BatchApprovalInput, filenam
             )
             cache.invalidate_cache(filename, '営業日報')
             return {"success": True, "updated_count": count, "total_requested": len(batch_input.management_numbers)}
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"File lock or network error during batch approval: {e}. Enqueueing individual approvals.")
+        for mgmt_num in batch_input.management_numbers:
+            sync_queue.enqueue_sync_task(
+                task_type="approval",
+                filename=filename,
+                payload={batch_input.field_name: batch_input.value},
+                management_number=mgmt_num
+            )
+        return {
+            "success": True, 
+            "updated_count": len(batch_input.management_numbers), 
+            "total_requested": len(batch_input.management_numbers),
+            "offline": True,
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。"
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1641,10 +1738,8 @@ def update_report(management_number: int, report: models.ReportInput, background
             _apply_update_report_to_excel(excel_file, management_number, report)
             cache.invalidate_cache(filename, '営業日報')
             return {"message": "Report updated successfully", "management_number": management_number}
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        logging.warning(f"Network error during update_report to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"Network error or file lock during update_report to {excel_file}: {e}. Enqueueing to sync queue.")
         task_id = sync_queue.enqueue_sync_task(
             task_type="update",
             filename=filename,
@@ -1652,12 +1747,14 @@ def update_report(management_number: int, report: models.ReportInput, background
             management_number=management_number
         )
         return {
-            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
             "offline": True,
             "management_number": management_number
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in update_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1705,10 +1802,8 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
             _apply_delete_to_excel(excel_file, management_number)
             cache.invalidate_cache(filename, '営業日報')
             return {"message": "Report deleted successfully", "management_number": management_number}
-    except HTTPException:
-        raise
-    except (PermissionError, OSError) as e:
-        logging.warning(f"Network error during delete_report to {excel_file}: {e}. Enqueueing to sync queue.")
+    except (PermissionError, OSError, excel_io.ExcelFileLockedError) as e:
+        logging.warning(f"Network error or file lock during delete_report to {excel_file}: {e}. Enqueueing to sync queue.")
         task_id = sync_queue.enqueue_sync_task(
             task_type="delete",
             filename=filename,
@@ -1716,12 +1811,14 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
             management_number=management_number
         )
         return {
-            "message": "社内ファイルサーバーへの書き込み中に通信が途切れたため、ローカルに安全に一時退避しました。接続復旧時に自動で原本Excelへ反映されます。",
+            "message": "Excelファイルが他で開かれているか通信が途切れたため、ローカルに安全に一時退避しました。ファイルが閉じられ次第、自動で原本Excelへ反映されます。",
             "status": "queued",
             "task_id": task_id,
             "offline": True,
             "management_number": management_number
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Error in delete_report: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

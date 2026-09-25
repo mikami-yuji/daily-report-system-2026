@@ -3,9 +3,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports } from '@/hooks/useQueryHooks';
-import { Search, User, Building2, AlertCircle, TrendingDown, Truck } from 'lucide-react';
+import { Search, User, Building2, AlertCircle, TrendingDown, Truck, Tag, Calendar, RotateCcw, X } from 'lucide-react';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
+import { normalizeSearchText, getDaysSinceDate, deduplicateReports } from '@/lib/reportUtils';
+
+// 主要な競合候補リスト
+const COMMON_COMPETITORS = [
+    'トーヨー', '東洋', '三和', 'レンゴー', '朋和', '大日本', '凸版', 'トッパン',
+    'ダイパック', '吉村', 'カナエ', '大森', '精華', '旭化成', 'クラレ', '丸紅'
+];
 
 export default function CompetitorInfoPage(): React.JSX.Element {
     const { selectedFile } = useFile();
@@ -13,9 +20,10 @@ export default function CompetitorInfoPage(): React.JSX.Element {
     // React Queryでデータ取得（自動キャッシュ）
     const { data: allReports = [], isLoading, error } = useReports(selectedFile || undefined);
 
-    // 競合他社情報があるレポートを抽出
+    // 競合他社情報があるレポートを抽出（重複排除）
     const reports = useMemo(() => {
-        const competitorReports = allReports.filter(r =>
+        const uniqueReports = deduplicateReports(allReports);
+        const competitorReports = uniqueReports.filter(r =>
             r.競合他社情報 &&
             String(r.競合他社情報).trim() !== '' &&
             String(r.競合他社情報) !== '-'
@@ -29,7 +37,26 @@ export default function CompetitorInfoPage(): React.JSX.Element {
     }, [allReports]);
 
     const [searchTerm, setSearchTerm] = useState('');
-    const [filteredReports, setFilteredReports] = useState(reports);
+    const [selectedTag, setSelectedTag] = useState<string>('');
+    const [periodFilter, setPeriodFilter] = useState<'all' | '3m' | '6m' | 'year'>('all');
+
+    // 頻出競合タグの自動集計
+    const competitorTags = useMemo(() => {
+        const counts: { [key: string]: number } = {};
+        reports.forEach(r => {
+            const text = normalizeSearchText(r.競合他社情報);
+            COMMON_COMPETITORS.forEach(comp => {
+                const normComp = normalizeSearchText(comp);
+                if (text.includes(normComp)) {
+                    counts[comp] = (counts[comp] || 0) + 1;
+                }
+            });
+        });
+        return Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([name, count]) => ({ name, count }));
+    }, [reports]);
 
     // エラー時のtoast表示
     useEffect(() => {
@@ -38,29 +65,54 @@ export default function CompetitorInfoPage(): React.JSX.Element {
         }
     }, [error]);
 
-    // レポートが変わったらフィルタリングをリセット
-    useEffect(() => {
-        setFilteredReports(reports);
-    }, [reports]);
+    const filteredReports = useMemo(() => {
+        let result = reports;
 
-    useEffect(() => {
-        if (searchTerm.trim() === '') {
-            setFilteredReports(reports);
-            return;
+        // 1. 期間フィルター
+        if (periodFilter !== 'all') {
+            result = result.filter(r => {
+                const days = getDaysSinceDate(r.日付);
+                if (days === null) return false;
+                if (periodFilter === '3m') return days <= 90;
+                if (periodFilter === '6m') return days <= 180;
+                if (periodFilter === 'year') return days <= 365;
+                return true;
+            });
         }
 
-        const term = searchTerm.toLowerCase();
-        const filtered = reports.filter(r =>
-            String(r.得意先CD || '').toLowerCase().includes(term) ||
-            String(r.訪問先名 || '').toLowerCase().includes(term) ||
-            String(r.直送先名 || '').toLowerCase().includes(term) ||
-            String(r.直送先CD || '').toLowerCase().includes(term) ||
-            String(r.競合他社情報 || '').toLowerCase().includes(term) ||
-            String(r.面談者 || '').toLowerCase().includes(term)
-        );
+        // 2. 競合タグフィルター
+        if (selectedTag) {
+            const normTag = normalizeSearchText(selectedTag);
+            result = result.filter(r => normalizeSearchText(r.競合他社情報).includes(normTag));
+        }
 
-        setFilteredReports(filtered);
-    }, [searchTerm, reports]);
+        // 3. キーワードAND検索
+        if (searchTerm.trim()) {
+            const terms = searchTerm.trim().split(/\s+/).filter(Boolean).map(normalizeSearchText);
+            result = result.filter(r => {
+                const targetValues = [
+                    r.得意先CD,
+                    r.訪問先名,
+                    r.直送先名,
+                    r.直送先CD,
+                    r.競合他社情報,
+                    r.面談者,
+                    r.商談内容
+                ].map(normalizeSearchText);
+                return terms.every(term => targetValues.some(val => val.includes(term)));
+            });
+        }
+
+        return result;
+    }, [reports, periodFilter, selectedTag, searchTerm]);
+
+    const hasActiveFilters = Boolean(searchTerm.trim() || selectedTag || periodFilter !== 'all');
+
+    const handleClearAll = () => {
+        setSearchTerm('');
+        setSelectedTag('');
+        setPeriodFilter('all');
+    };
 
     return (
         <div className="space-y-6">
@@ -68,18 +120,86 @@ export default function CompetitorInfoPage(): React.JSX.Element {
                 <h1 className="text-2xl font-semibold text-sf-text">競合他社情報</h1>
             </div>
 
-            {/* 検索エリア */}
-            <div className="bg-white rounded border border-sf-border shadow-sm p-4">
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                    <input
-                        type="text"
-                        placeholder="得意先、直送先、競合他社情報、面談者で検索..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
-                    />
+            {/* 検索・フィルターエリア */}
+            <div className="bg-white rounded border border-sf-border shadow-sm p-4 space-y-3">
+                <div className="flex flex-col md:flex-row gap-3 items-center">
+                    {/* キーワード検索 */}
+                    <div className="relative flex-1 w-full">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="得意先、直送先、競合名、商談内容（複数語AND検索）..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-9 py-2 text-xs border border-sf-border rounded focus:outline-none focus:ring-1 focus:ring-sf-light-blue focus:border-sf-light-blue"
+                        />
+                        {searchTerm && (
+                            <button
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100"
+                                title="クリア"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* 期間フィルター */}
+                    <div className="flex items-center gap-1.5 w-full md:w-auto">
+                        <Calendar size={16} className="text-gray-400 shrink-0" />
+                        <select
+                            value={periodFilter}
+                            onChange={(e) => setPeriodFilter(e.target.value as any)}
+                            className="text-xs border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-sf-light-blue focus:border-sf-light-blue font-medium"
+                        >
+                            <option value="all">全期間</option>
+                            <option value="3m">直近3ヶ月</option>
+                            <option value="6m">直近半年</option>
+                            <option value="year">直近1年</option>
+                        </select>
+                    </div>
+
+                    {/* クリアボタン */}
+                    {hasActiveFilters && (
+                        <button
+                            type="button"
+                            onClick={handleClearAll}
+                            className="flex items-center gap-1 text-xs text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/80 border border-rose-200 px-3 py-2 rounded transition-colors font-medium shrink-0 cursor-pointer"
+                        >
+                            <RotateCcw size={13} />
+                            <span>リセット</span>
+                        </button>
+                    )}
                 </div>
+
+                {/* 頻出競合タグチップ */}
+                {competitorTags.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100 text-xs">
+                        <span className="text-[11px] font-bold text-gray-400 flex items-center gap-1 shrink-0">
+                            <Tag size={12} />
+                            <span>頻出競合タグ:</span>
+                        </span>
+                        {competitorTags.map(tag => (
+                            <button
+                                key={tag.name}
+                                type="button"
+                                onClick={() => setSelectedTag(selectedTag === tag.name ? '' : tag.name)}
+                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition cursor-pointer ${
+                                    selectedTag === tag.name
+                                        ? 'bg-rose-100 border-rose-400 text-rose-950 ring-1 ring-rose-400'
+                                        : 'bg-gray-50 hover:bg-rose-50/60 border-gray-200 text-gray-700'
+                                }`}
+                            >
+                                <span>{tag.name}</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                    selectedTag === tag.name ? 'bg-rose-200 text-rose-950' : 'bg-gray-200 text-gray-600'
+                                }`}>
+                                    {tag.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* 統計サマリー */}

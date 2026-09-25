@@ -5,6 +5,8 @@ import { X, Loader2, Check, MapPin, CheckCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { useOffline } from '@/context/OfflineContext';
+import { usePreventUnload } from '@/hooks/usePreventUnload';
+import SavingLockOverlay from '@/components/common/SavingLockOverlay';
 
 // ローカルストレージからコメント下書きデータを取得する関数
 const getCommentDraft = (reportId: number | string | undefined, field: string): string | null => {
@@ -345,6 +347,9 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     }
     const [submitting, setSubmitting] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
+
+    // 保存中のブラウザ離脱・終了を防止
+    usePreventUnload(submitting);
 
     // Capture initial critical values for conflict detection
     const initialCriticalValues = React.useMemo(() => ({
@@ -807,7 +812,18 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
     const hasDraftComment = formData.上長コメント !== originalComment;
     const hasDraftReply = formData.コメント返信欄 !== originalReply;
 
+    const handleClose = () => {
+        // 保存処理中は画面を閉じさせない
+        if (submitting) return;
+
+        // 入力中の編集データがある場合は確認ダイアログを表示
+        if (window.confirm('編集中の内容がありますが、閉じてよろしいですか？\n（編集中の内容は一時保存されます）')) {
+            onClose();
+        }
+    };
+
     const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (submitting) return;
         mouseDownOnBackdropRef.current = (e.target === e.currentTarget);
     };
 
@@ -819,11 +835,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
             return;
         }
         mouseDownOnBackdropRef.current = false;
-
-        // 入力中の編集データがある場合は確認ダイアログを表示
-        if (window.confirm('編集中の内容がありますが、閉じてよろしいですか？\n（編集中の内容は一時保存されます）')) {
-            onClose();
-        }
+        handleClose();
     };
 
     return (
@@ -861,10 +873,11 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                         )}
                     </div>
                     <button
-                        onClick={onClose}
+                        type="button"
+                        onClick={handleClose}
                         disabled={submitting}
                         className="text-sf-text-weak hover:text-sf-text disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={submitting ? "処理が完了するまでお待ちください" : ""}
+                        title={submitting ? "保存処理が完了するまでお待ちください" : ""}
                     >
                         <X size={24} />
                     </button>
@@ -1505,7 +1518,7 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                     <div className="flex justify-end gap-3 pt-4 border-t border-sf-border">
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={handleClose}
                             disabled={submitting}
                             className="px-4 py-2 border border-sf-border rounded text-sf-text hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -1576,7 +1589,12 @@ export default function EditReportModal({ report, onClose, onSuccess, selectedFi
                 </form>
             </div>
 
-
+            {/* 保存中の画面ロック＆離脱防止オーバーレイ */}
+            <SavingLockOverlay
+                isSaving={submitting}
+                saveStatus={saveStatus}
+                title={`日報 (No. ${report?.管理番号 || ''}) を更新・保存中`}
+            />
         </div>
     );
 }

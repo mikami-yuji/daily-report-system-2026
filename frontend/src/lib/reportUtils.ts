@@ -305,3 +305,82 @@ export function isKidokuChecked(val?: string | null): boolean {
     if (!s || s === '0' || s.toLowerCase() === 'false') return false;
     return s === '✓' || s === '済' || s === 'ü' || s === '1' || s.toLowerCase() === 'true';
 }
+
+/**
+ * 検索用のテキスト正規化（NFKC正規化、小文字化、ひらがな->カタカナ統一）
+ */
+export function normalizeSearchText(text: string | number | undefined | null): string {
+    if (text === undefined || text === null) return '';
+    let normalized = String(text).normalize('NFKC').toLowerCase();
+    normalized = normalized.replace(/[\u3041-\u3096]/g, (ch) =>
+        String.fromCharCode(ch.charCodeAt(0) + 0x60)
+    );
+    return normalized;
+}
+
+/**
+ * 指定日付からの経過日数（今日 - 対象日付）を計算します。
+ * 日付形式: YY/MM/DD, YYYY/MM/DD, YYYY-MM-DD 等に対応
+ */
+export function getDaysSinceDate(dateStr?: string | null): number | null {
+    if (!dateStr) return null;
+    const clean = String(dateStr).trim();
+    if (!clean || clean === '-') return null;
+    const parts = clean.includes('/') ? clean.split('/') : clean.split('-');
+    if (parts.length >= 3) {
+        let year = parseInt(parts[0], 10);
+        if (year < 100) year += 2000;
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const targetDate = new Date(year, month, day);
+        if (isNaN(targetDate.getTime())) return null;
+        const now = new Date();
+        // 時間を00:00:00に揃えて日数計算
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const diffTime = today.getTime() - targetDate.getTime();
+        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    }
+    return null;
+}
+
+/**
+ * 日報データの重複を安全に排除（Deduplicate）するユーティリティ。
+ * 同一の管理番号（正の連番）または同一キーを持つレコードが複数存在する場合、
+ * 1件に集約して画面上の二重表示バグを完全に防止します。
+ */
+export function deduplicateReports(reports: Report[]): Report[] {
+    if (!reports || reports.length <= 1) return reports || [];
+
+    const seenMgmt = new Set<number>();
+    const seenContentKey = new Set<string>();
+    const uniqueList: Report[] = [];
+
+    for (const r of reports) {
+        const mgmt = r.管理番号 !== undefined && r.管理番号 !== null ? Number(r.管理番号) : null;
+
+        // 正の管理番号（Excel原本からの正規データ）による重複判定
+        if (mgmt !== null && !isNaN(mgmt) && mgmt > 0) {
+            if (seenMgmt.has(mgmt)) {
+                continue; // 既に同じ管理番号が存在すればスキップ
+            }
+            seenMgmt.add(mgmt);
+            uniqueList.push(r);
+        } else {
+            // 仮採番（負数）または管理番号なしの場合: 日付・得意先・商談内容等から一意キーを生成
+            const dateStr = String(r.日付 || '').trim();
+            const custCd = String(r.得意先CD || '').trim();
+            const action = String(r.行動内容 || '').trim();
+            const content = String(r.商談内容 || '').trim();
+            const stayTime = String(r.滞在時間 || '').trim();
+            const fallbackKey = `${mgmt ?? ''}_${dateStr}_${custCd}_${action}_${content}_${stayTime}`;
+
+            if (seenContentKey.has(fallbackKey)) {
+                continue;
+            }
+            seenContentKey.add(fallbackKey);
+            uniqueList.push(r);
+        }
+    }
+
+    return uniqueList;
+}

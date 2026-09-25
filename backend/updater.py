@@ -109,6 +109,28 @@ def calculate_sha256(file_path: str) -> str:
             sha256.update(chunk)
     return sha256.hexdigest().lower()
 
+def unblock_windows_file(file_path: str):
+    """Windows Defender SmartScreen / Zone.Identifier (Mark of the Web) ブロック属性を自動解除"""
+    if os.name != 'nt':
+        return
+    # 1. NTFS代替データストリーム (:Zone.Identifier) を削除
+    try:
+        zone_stream = f"{file_path}:Zone.Identifier"
+        if os.path.exists(zone_stream):
+            os.remove(zone_stream)
+    except Exception:
+        pass
+    # 2. PowerShell Unblock-File を実行
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", f"Unblock-File -LiteralPath '{file_path}'"],
+            capture_output=True,
+            timeout=3,
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+        )
+    except Exception:
+        pass
+
 def apply_update() -> Dict[str, Any]:
     """
     共有フォルダから最新EXEを取得し、NTFS安全リネーム方式で差し替え・再起動します。
@@ -202,6 +224,13 @@ def apply_update() -> Dict[str, Any]:
         # 6. 新しい temp_exe を本来の EXE 名にリネーム
         logger.info(f"Renaming temp EXE to {current_exe}...")
         os.rename(temp_exe, current_exe)
+
+        # 7. Windows Defender SmartScreen / MOTW ブロック属性の解除
+        try:
+            unblock_windows_file(current_exe)
+            logger.info("Unblocked current EXE from Windows security zone.")
+        except Exception as ub_err:
+            logger.warning(f"Failed to unblock EXE: {ub_err}")
 
         logger.info("Update applied successfully! File replaced.")
 

@@ -17,7 +17,7 @@ $RootStaticDir = Join-Path $ProjectRoot "static"
 Write-Host "Building frontend..." -ForegroundColor Cyan
 Push-Location $FrontendDir
 try {
-    npm run build
+    cmd.exe /c npm run build
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Build failed"
         exit $LASTEXITCODE

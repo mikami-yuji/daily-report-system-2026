@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>営業日報システム 改善のご報告 (最新版アップデート)</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --primary: #1e40af;
+      --primary-light: #eff6ff;
+      --accent-green: #059669;
+      --accent-green-light: #ecfdf5;
+      --accent-red: #dc2626;
+      --accent-red-light: #fef2f2;
+      
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --text-muted: #64748b;
+      
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --border: #e2e8f0;
+      
+      --shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+      --radius: 16px;
+      --radius-sm: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', 'Inter', -apple-system, sans-serif;
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 60px;
+    }
+
+    /* 上部バー */
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .action-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .timer-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #f1f5f9;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: #334155;
+    }
+
+    .timer-btn {
+      background: #e2e8f0;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+    .timer-btn:hover { background: #cbd5e1; }
+
+    .btn-print {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: white;
+      color: var(--text-main);
+    }
+    .btn-print:hover { background: #f1f5f9; }
+
+    /* メインコンテナ */
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 24px 0;
+    }
+
+    /* ヒーローエリア */
+    .hero {
+      background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+      color: white;
+      border-radius: var(--radius);
+      padding: 36px 40px;
+      margin-bottom: 36px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero-badge {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      margin-bottom: 12px;
+    }
+
+    .hero-title {
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1.35;
+      margin-bottom: 10px;
+    }
+
+    .hero-lead {
+      font-size: 16px;
+      color: #dbeafe;
+      line-height: 1.6;
+    }
+
+    /* セクション見出し */
+    .section-title {
+      font-size: 20px;
+      font-weight: 900;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #0f172a;
+    }
+
+    .section-title::before {
+      content: "";
+      width: 6px;
+      height: 22px;
+      background: var(--primary);
+      border-radius: 3px;
+    }
+
+    /* 改善カード一覧 */
+    .card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .qa-card {
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+    }
+
+    /* 左側：お困りの声 */
+    .qa-voice {
+      background: var(--accent-red-light);
+      border-right: 1px solid #fee2e2;
+      padding: 20px 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .qa-label-red {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent-red);
+      background: white;
+      border: 1px solid #fecaca;
+      padding: 2px 8px;
+      border-radius: 4px;
+      width: fit-content;
+    }
+
+    .qa-voice-text {
+      font-size: 14px;
+      font-weight: 700;
+      color: #991b1b;
+      line-height: 1.55;
+    }
+
+    /* 右側：解決内容 */
+    .qa-solution {
+      padding: 20px 26px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      background: white;
+    }
+
+    .qa-label-green {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent-green);
+      background: var(--accent-green-light);
+      border: 1px solid #a7f3d0;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      width: fit-content;
+    }
+
+    .qa-solution-title {
+      font-size: 17px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.4;
+    }
+
+    .qa-solution-desc {
+      font-size: 14px;
+      color: #334155;
+      line-height: 1.6;
+    }
+
+    .qa-solution-desc strong {
+      color: #1e40af;
+      background: #eff6ff;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    /* 3大メリット（大型カード） */
+    .merit-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+
+    .merit-card {
+      background: white;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-top: 4px solid var(--primary);
+    }
+
+    .merit-icon {
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .merit-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+      line-height: 1.4;
+    }
+
+    .merit-text {
+      font-size: 13.5px;
+      color: #475569;
+      line-height: 1.6;
+    }
+
+    /* 一言まとめバナー */
+    .summary-banner {
+      background: #f1f5f9;
+      border: 1px solid #cbd5e1;
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 20px;
+    }
+
+    /* 印刷スタイル */
+    @media print {
+      body {
+        background: white;
+        padding-bottom: 0;
+      }
+      .top-bar, .timer-badge, .btn-print {
+        display: none !important;
+      }
+      .container {
+        max-width: 100%;
+        padding: 0;
+      }
+      .hero {
+        background: #f1f5f9 !important;
+        color: black !important;
+        border: 1px solid #cbd5e1;
+        box-shadow: none !important;
+        padding: 20px;
+      }
+      .hero-title { color: black !important; font-size: 20px; }
+      .hero-lead { color: #475569 !important; font-size: 13px; }
+      .hero-badge { background: #e2e8f0 !important; color: black !important; }
+      .qa-card {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1;
+        page-break-inside: avoid;
+      }
+      .merit-card {
+        box-shadow: none !important;
+        border: 1px solid #cbd5e1;
+        page-break-inside: avoid;
+      }
+    }
+
+    @media (max-width: 800px) {
+      .qa-card {
+        grid-template-columns: 1fr;
+      }
+      .qa-voice {
+        border-right: none;
+        border-bottom: 1px solid #fee2e2;
+      }
+      .merit-grid {
+        grid-template-columns: 1fr;
+      }
+      .hero {
+        padding: 24px 20px;
+      }
+      .hero-title {
+        font-size: 22px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 上部バー -->
+  <header class="top-bar">
+    <div class="brand-title">
+      <span>📋 営業日報システム</span>
+      <span style="color: #64748b; font-weight: 500; font-size: 14px;">| アップデート報告資料</span>
+    </div>
+    <div class="action-group">
+      <div class="timer-badge">
+        <span>⏱ <span id="timerDisplay">03:00</span></span>
+        <button class="timer-btn" id="timerToggle" onclick="toggleTimer()">開始</button>
+        <button class="timer-btn" onclick="resetTimer()">リセット</button>
+      </div>
+      <button class="btn-print" onclick="window.print()">🖨 印刷 / PDF</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ヒーロー -->
+    <section class="hero">
+      <span class="hero-badge">現場アンケート対応・機能改善</span>
+      <h1 class="hero-title">いただいたご要望をすべて解決！<br>もっとサクサク・安心に使えるようになりました</h1>
+      <p class="hero-lead">
+        現場のみなさまから寄せられた「保存できない」「直送先がない」「キーボードで打ちたい」などの声を1つずつ解決しました。
+      </p>
+    </section>
+
+    <!-- ★現場の声と改善内容（誰でもわかるQAカード）★ -->
+    <section>
+      <h2 class="section-title">現場の「困った！」に対する改善まとめ</h2>
+      
+      <div class="card-list">
+
+        <!-- ① 保存できない・通信エラー -->
+        <article class="qa-card">
+          <div class="qa-voice">
+            <span class="qa-label-red">⚠️ 現場のお困りの声</span>
+            <p class="qa-voice-text">
+              「たまに保存できなくて消えてしまう。<br>
+              一括保存したときに『通信エラー』と出て不安…」
+            </p>
+          </div>
+          <div class="qa-solution">
+            <span class="qa-label-green">✓ 解決しました！</span>
+            <h3 class="qa-solution-title">誰かがExcelを開きっぱなしでも自動で安全保存！データは絶対に消えません</h3>
+            <p class="qa-solution-desc">
+              ・誰かがExcelを開いていても、ネットが切れていても、<strong>自動でパソコン内に安全一時保存</strong>されます（「☁️ 一時退避中」と表示）。<br>
+              ・相手がExcelを閉じた時やネット復帰時に<strong>自動で原本Excelへ反映</strong>されるため、入力し直す必要はありません。<br>
+              ・何件まとめて保存しても、ファイル競合エラーを起こさず<strong>一瞬で保存完了</strong>します。
+            </p>
+          </div>
+        </article>
+
+        <!-- ② 直送先がない -->
+        <article class="qa-card">
+          <div class="qa-voice">
+            <span class="qa-label-red">⚠️ 現場のお困りの声</span>
+            <p class="qa-voice-text">
+              「デザイン依頼の入力に直送先が無いので使えない…」
+            </p>
+          </div>
+          <div class="qa-solution">
+            <span class="qa-label-green">✓ 解決しました！</span>
+            <h3 class="qa-solution-title">すべての画面で「直送先」が入力できるようになりました！</h3>
+            <p class="qa-solution-desc">
+              ・新規作成、編集、一括入力の<strong>すべての画面に「直送先」の入力枠を追加</strong>しました。<br>
+              ・企画課のデザイン依頼を選ぶと、<strong>依頼書の直送先がそのまま自動でセット</strong>されます。<br>
+              ・「得意先名」と「直送先名」が混ざらず、別々にスッキリ表示されます。
+            </p>
+          </div>
+        </article>
+
+        <!-- ③ マウスを使わずタブキーで入力したい -->
+        <article class="qa-card">
+          <div class="qa-voice">
+            <span class="qa-label-red">⚠️ 現場のお困りの声</span>
+            <p class="qa-voice-text">
+              「マウスを使わず、キーボード（タブキー）だけで候補を選びたい」
+            </p>
+          </div>
+          <div class="qa-solution">
+            <span class="qa-label-green">✓ 解決しました！</span>
+            <h3 class="qa-solution-title">キーボードだけでポンポン連続入力できるようになりました！</h3>
+            <p class="qa-solution-desc">
+              ・顧客名や直送先の候補を、<strong>キーボードの「↑ / ↓ 矢印キー」で選べる</strong>ようになりました。<br>
+              ・<strong>「Tab」や「Enter」を押すだけでパッと確定</strong>し、次の入力欄へ自動で進みます。<br>
+              ・マウスに手を伸ばさず、キーボードだけで素早く入力が終わります。
+            </p>
+          </div>
+        </article>
+
+        <!-- ④ ホーム画面の未入力警告 -->
+        <article class="qa-card">
+          <div class="qa-voice">
+            <span class="qa-label-red">⚠️ 現場のお困りの声</span>
+            <p class="qa-voice-text">
+              「デザイン依頼の日報を書いたのに、ホーム画面に『未入力』と出たままになる」
+            </p>
+          </div>
+          <div class="qa-solution">
+            <span class="qa-label-green">✓ 解決しました！</span>
+            <h3 class="qa-solution-title">日報を書いたら、ホームの警告はすぐ消えるように直しました！</h3>
+            <p class="qa-solution-desc">
+              ・依頼番号の「-1」「-01」などの表記の違いをシステムが賢く見分けるように修正しました。<br>
+              ・<strong>日報を書き終えた案件は、警告一覧からきちんと消える</strong>ようになりました。
+            </p>
+          </div>
+        </article>
+
+        <!-- ⑤ 担当者の切り替え -->
+        <article class="qa-card">
+          <div class="qa-voice">
+            <span class="qa-label-red">⚠️ 現場のお困りの声</span>
+            <p class="qa-voice-text">
+              「上の名前（担当者）を変えても、画面がパッと切り替わらないときがある」
+            </p>
+          </div>
+          <div class="qa-solution">
+            <span class="qa-label-green">✓ 解決しました！</span>
+            <h3 class="qa-solution-title">担当者を変えたら、すぐに画面が切り替わるようにしました！</h3>
+            <p class="qa-solution-desc">
+              ・上の担当者プルダウンを選び直した瞬間に、<strong>最新のデータへ即座に切り替わります</strong>。<br>
+              ・いつでも最新ファイルを見に行ける<strong>「手動更新ボタン（↻）」</strong>も画面上部に追加しました。
+            </p>
+          </div>
+        </article>
+
+        <!-- ⑥ Excel日報が開けない疑問・改行について -->
+        <article class="qa-card">
+          <div class="qa-voice">
+            <span class="qa-label-red">❓ 現場の疑問</span>
+            <p class="qa-voice-text">
+              「たまに社内Excelの日報が開けないことがあるのはなぜ？<br>
+              Excelで見ると改行されていない点も少し不便…」
+            </p>
+          </div>
+          <div class="qa-solution">
+            <span class="qa-label-green">💡 原因とシステム側の対策</span>
+            <h3 class="qa-solution-title">誰かがExcelを開いていても、このシステムならいつでも使えます！</h3>
+            <p class="qa-solution-desc">
+              ・<strong>開けない原因</strong>: 誰かがパソコンでExcelファイルを開いたまま作業していると、Windowsの仕様で他の人が開けなくなります。<br>
+              ・<strong>システム側の対策</strong>: この日報システムを使っていれば、<strong>誰かがExcelを開いていてもエラーにならず自動退避保存</strong>されます。日報の閲覧や入力は直接Excelを開かず、この日報システムを使うのが最も安全で快適です。<br>
+              ・<strong>改行について</strong>: Excelで「折り返して全体を表示」を押すと改行されます（この日報システムで見れば最初から綺麗に改行されて見えます）。
+            </p>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- 全体の3大メリット -->
+    <section>
+      <h2 class="section-title">さらに便利になった「3つのポイント」</h2>
+
+      <div class="merit-grid">
+        <div class="merit-card">
+          <div class="merit-icon">📶</div>
+          <h3 class="merit-title">① ネットがなくても1秒で起動！</h3>
+          <p class="merit-text">
+            社外や出張先、新幹線の中などWi-Fiがない場所でも、待たされずに1秒で開いてサクサク日報を書けます。
+          </p>
+        </div>
+
+        <div class="merit-card">
+          <div class="merit-icon">📑</div>
+          <h3 class="merit-title">② 過去日報のコピー作成 ＆ 写真チラ見え</h3>
+          <p class="merit-text">
+            前回の訪問内容を1クリックでコピーして起票できたり、写真アイコンにマウスを乗せるだけで大きくプレビューできます。
+          </p>
+        </div>
+
+        <div class="merit-card">
+          <div class="merit-icon">🖹</div>
+          <h3 class="merit-title">③ 上長の確認・承認がワンクリックで完了！</h3>
+          <p class="merit-text">
+            一覧画面から1クリックで「確認済み」のチェックや承認スタンプが押せるようになり、上長・役員の確認もスピーディーになりました。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- まとめバナー -->
+    <div class="summary-banner">
+      💡 「入力が消えない安心感」と「サクサク打てる軽快さ」で、日々の業務負担を大幅に減らしました。
+    </div>
+
+  </main>
+
+  <script>
+    // タイマー機能
+    let timerDuration = 180;
+    let timerRemaining = timerDuration;
+    let timerInterval = null;
+
+    function updateTimerDisplay() {
+      const minutes = Math.floor(timerRemaining / 60);
+      const seconds = timerRemaining % 60;
+      document.getElementById('timerDisplay').innerText = 
+        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    function toggleTimer() {
+      const btn = document.getElementById('timerToggle');
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        btn.innerText = '再開';
+      } else {
+        btn.innerText = '停止';
+        timerInterval = setInterval(() => {
+          if (timerRemaining > 0) {
+            timerRemaining--;
+            updateTimerDisplay();
+          } else {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            btn.innerText = '終了';
+            alert('⏱ 発表目安時間の3分が経過しました！');
+          }
+        }, 1000);
+      }
+    }
+
+    function resetTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      timerRemaining = timerDuration;
+      updateTimerDisplay();
+      document.getElementById('timerToggle').innerText = '開始';
+    }
+  </script>
+</body>
+</html>

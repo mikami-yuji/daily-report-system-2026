@@ -5,8 +5,9 @@ import { cleanText, isKidokuChecked } from '@/lib/reportUtils';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import { Edit, X, ChevronLeft, ChevronRight, Trash2, Calendar, Hash, Briefcase, User, MapPin, Palette, Info, Loader2, ExternalLink, Lightbulb, MessageSquare, Copy, History, FileText, CheckCheck } from 'lucide-react';
 import DesignImagePreviewModal from './DesignImagePreviewModal';
-import DesignImageHoverButton from './DesignImageHoverButton';
+import DesignImageHoverButton, { prefetchDesignImagePresence } from './DesignImageHoverButton';
 import toast from 'react-hot-toast';
+import { usePreventUnload } from '@/hooks/usePreventUnload';
 
 // ローカルストレージからコメント下書きデータを取得する関数
 const getCommentDraft = (reportId: number | string | undefined, field: string): string | null => {
@@ -90,6 +91,9 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
     const [processingComment, setProcessingComment] = useState<string | null>(null); // 処理中のコメントフィールド
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+    // コメント保存・承認・削除などの処理中は離脱を防止
+    usePreventUnload(saving || !!processingApproval || !!processingComment);
+
     const commentSaveTimersRef = useRef<{ [field: string]: NodeJS.Timeout }>({});
     const pendingCommentsRef = useRef<{ [field: string]: string }>({});
 
@@ -166,7 +170,21 @@ export default function ReportDetailModal({ report, onClose, onNext, onPrev, has
             上長コメント: draftComment !== null ? draftComment : (report?.上長コメント || report?.コメント || ''),
             コメント返信欄: draftReply !== null ? draftReply : (report?.コメント返信欄 || '')
         });
-    }, [report]);
+
+        // デザインNoの画像有無を事前に一括チェック
+        if (report) {
+            const nos: string[] = [];
+            const mainNo = report['デザイン依頼No.'] || report['システム確認用デザインNo.'];
+            if (mainNo) nos.push(String(mainNo));
+            customerHistory.forEach(h => {
+                const hNo = h['デザイン依頼No.'] || h['システム確認用デザインNo.'];
+                if (hNo) nos.push(String(hNo));
+            });
+            if (nos.length > 0) {
+                prefetchDesignImagePresence(nos, selectedFile || undefined);
+            }
+        }
+    }, [report, customerHistory, selectedFile]);
 
     // キーボードイベントのハンドリング
     useEffect(() => {

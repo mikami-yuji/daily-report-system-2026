@@ -1,7 +1,9 @@
 import React, { Fragment } from 'react';
 import { CustomerSummary } from './types';
-import { ChevronDown, ChevronRight, CornerDownRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, CornerDownRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import Link from 'next/link';
+import { CustomerSortKey } from './CustomerFilters';
+import { getDaysSinceDate } from '@/lib/reportUtils';
 
 type CustomerListProps = {
     customers: CustomerSummary[];
@@ -9,9 +11,21 @@ type CustomerListProps = {
     expandedRows: Set<string>;
     toggleRow: (id: string) => void;
     emptyMessage?: string;
+    sortKey?: CustomerSortKey;
+    sortOrder?: 'asc' | 'desc';
+    onSort?: (key: CustomerSortKey) => void;
 };
 
-export default function CustomerList({ customers, loading, expandedRows, toggleRow, emptyMessage }: CustomerListProps) {
+export default function CustomerList({
+    customers,
+    loading,
+    expandedRows,
+    toggleRow,
+    emptyMessage,
+    sortKey,
+    sortOrder,
+    onSort
+}: CustomerListProps) {
     if (loading) {
         return <div className="p-8 text-center text-sf-text-weak">読み込み中...</div>;
     }
@@ -20,23 +34,85 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
         return <div className="p-8 text-center text-sf-text-weak">{emptyMessage || '得意先が見つかりません'}</div>;
     }
 
+    const renderSortIcon = (key: CustomerSortKey) => {
+        if (!sortKey || sortKey !== key) {
+            return <ArrowUpDown size={12} className="text-gray-300 group-hover:text-gray-500 inline ml-1" />;
+        }
+        return sortOrder === 'asc' 
+            ? <ArrowUp size={12} className="text-sf-light-blue inline ml-1" />
+            : <ArrowDown size={12} className="text-sf-light-blue inline ml-1" />;
+    };
+
+    const renderLastActivity = (dateStr?: string) => {
+        if (!dateStr || dateStr === '-') return <span className="text-gray-400">-</span>;
+        const days = getDaysSinceDate(dateStr);
+        return (
+            <div className="flex flex-col gap-0.5">
+                <span className="font-mono text-xs text-sf-text">{dateStr}</span>
+                {days !== null && days >= 60 ? (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-rose-700 bg-rose-50 border border-rose-200 px-1 rounded w-fit font-bold">
+                        {days}日前 (要対応)
+                    </span>
+                ) : days !== null && days >= 30 ? (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1 rounded w-fit font-semibold">
+                        {days}日前
+                    </span>
+                ) : days !== null && days <= 7 ? (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 rounded w-fit font-medium">
+                        {days === 0 ? '今日' : `${days}日前`}
+                    </span>
+                ) : null}
+            </div>
+        );
+    };
+
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm">
-                <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border">
+                <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border sticky top-0 z-10">
                     <tr>
                         <th className="px-4 py-3 text-left font-medium w-8"></th>
-                        <th className="px-4 py-3 text-left font-medium">得意先CD/直送先CD</th>
-                        <th className="px-4 py-3 text-left font-medium">得意先名/直送先名</th>
+                        <th 
+                            onClick={() => onSort?.('code')} 
+                            className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 group transition-colors"
+                        >
+                            <span>得意先CD/直送先CD</span>
+                            {renderSortIcon('code')}
+                        </th>
+                        <th 
+                            onClick={() => onSort?.('name')} 
+                            className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 group transition-colors"
+                        >
+                            <span>得意先名/直送先名</span>
+                            {renderSortIcon('name')}
+                        </th>
                         <th className="px-4 py-3 text-left font-medium">エリア</th>
                         <th className="px-4 py-3 text-center font-medium">ランク</th>
                         <th className="px-4 py-3 text-center font-medium">重点</th>
                         <th className="px-4 py-3 text-left font-medium">現目標</th>
-                        <th className="px-4 py-3 text-center font-medium">総活動数</th>
-                        <th className="px-4 py-3 text-center font-medium">訪問</th>
+                        <th 
+                            onClick={() => onSort?.('totalActivities')} 
+                            className="px-4 py-3 text-center font-medium cursor-pointer hover:bg-gray-100 group transition-colors"
+                        >
+                            <span>総活動数</span>
+                            {renderSortIcon('totalActivities')}
+                        </th>
+                        <th 
+                            onClick={() => onSort?.('visits')} 
+                            className="px-4 py-3 text-center font-medium cursor-pointer hover:bg-gray-100 group transition-colors"
+                        >
+                            <span>訪問</span>
+                            {renderSortIcon('visits')}
+                        </th>
                         <th className="px-4 py-3 text-center font-medium">電話</th>
                         <th className="px-4 py-3 text-center font-medium">デザイン案件</th>
-                        <th className="px-4 py-3 text-left font-medium">最終活動日</th>
+                        <th 
+                            onClick={() => onSort?.('lastActivity')} 
+                            className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 group transition-colors"
+                        >
+                            <span>最終活動日</span>
+                            {renderSortIcon('lastActivity')}
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -104,7 +180,9 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                                         <span className="text-gray-400">-</span>
                                     )}
                                 </td>
-                                <td className="px-4 py-3 text-sf-text">{customer.lastActivity}</td>
+                                <td className="px-4 py-3">
+                                    {renderLastActivity(customer.lastActivity)}
+                                </td>
                             </tr>
                             {/* Direct Delivery Rows (Sub Items) */}
                             {expandedRows.has(customer.id) && customer.subItems?.map(sub => (
@@ -155,7 +233,9 @@ export default function CustomerList({ customers, loading, expandedRows, toggleR
                                             <span className="text-xs text-purple-800/70">{sub.designRequests}</span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-3 text-sf-text-weak text-xs">{sub.lastActivity}</td>
+                                    <td className="px-4 py-3 text-xs">
+                                        {renderLastActivity(sub.lastActivity)}
+                                    </td>
                                 </tr>
                             ))}
                         </Fragment>

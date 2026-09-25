@@ -5,6 +5,8 @@ import { useLocalStorageDraft } from '@/hooks/useLocalStorageDraft';
 import { X, Loader2, Check, ExternalLink, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, isSalesPersonMatch } from '@/lib/reportUtils';
+import { usePreventUnload } from '@/hooks/usePreventUnload';
+import SavingLockOverlay from '@/components/common/SavingLockOverlay';
 
 export type InitialDesignData = {
     得意先CD?: string;
@@ -110,6 +112,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     });
     const [submitting, setSubmitting] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
+
+    // 保存中のブラウザ離脱・終了を防止
+    usePreventUnload(submitting);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -844,18 +849,9 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
     const isMinimalUI = ['社内（１日）', '社内（半日）', '外出時間'].includes(formData.行動内容);
     const isOuting = formData.行動内容 === '外出時間';
 
-    const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-        mouseDownOnBackdropRef.current = (e.target === e.currentTarget);
-    };
-
-    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const handleClose = () => {
+        // 保存処理中は画面を閉じさせない
         if (submitting) return;
-        // モーダル内部からのドラッグ離し（文字選択など）では絶対に閉じない
-        if (!mouseDownOnBackdropRef.current || e.target !== e.currentTarget) {
-            mouseDownOnBackdropRef.current = false;
-            return;
-        }
-        mouseDownOnBackdropRef.current = false;
 
         // 入力中のデータがある場合は確認ダイアログを表示
         const hasInputData = !!(
@@ -873,6 +869,22 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
         } else {
             onClose();
         }
+    };
+
+    const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (submitting) return;
+        mouseDownOnBackdropRef.current = (e.target === e.currentTarget);
+    };
+
+    const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (submitting) return;
+        // モーダル内部からのドラッグ離し（文字選択など）では絶対に閉じない
+        if (!mouseDownOnBackdropRef.current || e.target !== e.currentTarget) {
+            mouseDownOnBackdropRef.current = false;
+            return;
+        }
+        mouseDownOnBackdropRef.current = false;
+        handleClose();
     };
 
     return (
@@ -910,10 +922,11 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                         )}
                     </div>
                     <button
-                        onClick={onClose}
+                        type="button"
+                        onClick={handleClose}
                         disabled={submitting}
                         className="text-sf-text-weak hover:text-sf-text disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={submitting ? "処理が完了するまでお待ちください" : ""}
+                        title={submitting ? "保存処理が完了するまでお待ちください" : ""}
                     >
                         <X size={24} />
                     </button>
@@ -1575,7 +1588,7 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                     <div className="flex justify-end gap-3 pt-4 border-t border-sf-border">
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={handleClose}
                             disabled={submitting}
                             className="px-4 py-2 border border-sf-border rounded text-sf-text hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -1646,7 +1659,12 @@ export default function NewReportModal({ onClose, onSuccess, selectedFile, initi
                 </form>
             </div>
 
-
+            {/* 保存中の画面ロック＆離脱防止オーバーレイ */}
+            <SavingLockOverlay
+                isSaving={submitting}
+                saveStatus={saveStatus}
+                title="日報を新規作成・保存中"
+            />
         </div>
     );
 }

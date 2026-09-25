@@ -11,6 +11,8 @@ import { Plus, Trash2, Save, Calendar, Building2, ChevronDown, ChevronUp, Search
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import { normalizeDateInput, convertYYMMDDToYYYYMMDD, convertYYYYMMDDToYYMMDD, generateUUID, isSalesPersonMatch } from '@/lib/reportUtils';
+import { usePreventUnload } from '@/hooks/usePreventUnload';
+import SavingLockOverlay from '@/components/common/SavingLockOverlay';
 
 // バリデーションエラーの型
 type ValidationErrors = {
@@ -431,6 +433,9 @@ export default function BatchReportPage() {
 
     const [submitting, setSubmitting] = useState(false);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'sending' | 'writing' | 'backup' | 'success'>('idle');
+
+    // 保存中のブラウザ離脱・終了を防止
+    usePreventUnload(submitting);
 
     // バリデーションエラー状態
     const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
@@ -2127,12 +2132,18 @@ export default function BatchReportPage() {
                     入力済み: <span className="font-semibold text-sf-text">{validCount}</span> 件
                 </div>
                 <div className="flex gap-3">
-                    <Link
-                        href="/reports"
-                        className="px-4 py-2 text-sf-text-weak hover:text-sf-text border border-sf-border rounded"
-                    >
-                        キャンセル
-                    </Link>
+                    {submitting ? (
+                        <span className="px-4 py-2 text-sf-text-weak border border-sf-border rounded opacity-50 cursor-not-allowed">
+                            キャンセル
+                        </span>
+                    ) : (
+                        <Link
+                            href="/reports"
+                            className="px-4 py-2 text-sf-text-weak hover:text-sf-text border border-sf-border rounded"
+                        >
+                            キャンセル
+                        </Link>
+                    )}
                     <button
                         type="button"
                         onClick={handleSubmit}
@@ -2198,6 +2209,13 @@ export default function BatchReportPage() {
                     </button>
                 </div>
             </div>
+
+            {/* 保存中の画面ロック＆離脱防止オーバーレイ */}
+            <SavingLockOverlay
+                isSaving={submitting}
+                saveStatus={saveStatus}
+                title={`日報を一括保存中 (${validCount}件)`}
+            />
         </div >
     );
 }

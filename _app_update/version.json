@@ -1,11 +1,13 @@
 {
-  "version": "2.5.12",
-  "releaseDate": "2026-09-16",
-  "fileName": "DailyReportServer_v2.5.12.exe",
-  "fileSize": 49184872,
-  "sha256": "abca559b5c659a1fc674811af8c604d4bd5d2ba0ff5e96db6e2fcdcc6e866c73",
+  "version": "2.5.19",
+  "releaseDate": "2026-09-25",
+  "fileName": "DailyReportServer_v2.5.19.exe",
+  "fileSize": 49151945,
+  "sha256": "502f53d025d6126ea742b8f049200d09795121d5738f186fcadf710a7d4d7856",
   "forceUpdate": false,
   "releaseNotes": [
-    "\\"
+    "日報の二重表示バグを完全解消",
+    "画面およびAPIでの重複排除ガード強化",
+    "キャッシュクリア・リフレッシュ機能の強化"
   ]
 }

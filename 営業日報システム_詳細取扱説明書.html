@@ -654,7 +654,7 @@
         <div class="sidebar-title">
           <span>📝 営業日報システム</span>
         </div>
-        <div class="sidebar-subtitle">詳細取扱説明書 v2.4.2 (2026年9月最新版)</div>
+        <div class="sidebar-subtitle">詳細取扱説明書 v2.5.12 (2026年9月最新版)</div>
       </div>
       
       <ul class="sidebar-menu">
@@ -710,7 +710,7 @@
       <!-- ヘッダーバナー -->
       <div class="header-banner">
         <span class="header-tag" style="background-color: var(--primary); color: white; margin-right: 8px;">Official Document</span>
-        <span class="header-tag" style="background-color: var(--success); color: white;">最新版: v2.4.2</span>
+        <span class="header-tag" style="background-color: var(--success); color: white;">最新版: v2.5.12</span>
         <h1 class="header-title">営業日報システム (Daily Report System)<br>詳細取扱説明書</h1>
         <p class="header-desc">本マニュアルは、エクセルベースの営業日報をモダンなWebインターフェースで効率的に管理・分析するための「営業日報システム」の導入・操作・保守に関する詳細な取扱説明書です。PCの操作に不慣れな一般ユーザー様からシステム管理者様まで、全員が迷わず安心して使用できるように構成されています。</p>
       </div>
@@ -809,12 +809,14 @@
               <li>※昨日の日報を後から書くなど、「後日入力」をする場合だけ、枠をクリックして日付を変更してください。（枠の右側のカレンダーマークを押して日付を選ぶと簡単です）。</li>
             </ul>
           </li>
-          <li><strong>活動した「得意先」を入力する（キーワード検索もできます）</strong>:
+          <li><strong>活動した「得意先」と「直送先」を入力する（キーボード操作対応）</strong>:
             <ul>
-              <li><strong>「得意先」</strong> の入力欄に、取引先の名前やコードをキーボードで入力します。</li>
-              <li>文字を入れると、<strong>データベース（エクセルファイル）から自動的に探し出して候補リストを表示してくれます。</strong> 表示されたリストの中から、当てはまる得意先をクリックして選びます。</li>
-              <li><strong>💡 リストにない場合</strong>: 新しい取引先など候補リストにない場合は、そのままキーボードで名前を入力し、キーボードの「Enter」キーを押すことで、<strong>自由に入力することも可能</strong>です。</li>
-              <li>※「社内（半日・１日）」や「量販店調査」、「外出時間」を登録したい場合は、この得意先欄は何も触らず空欄のままにして、次のステップへ進みます。</li>
+              <li><strong>「得意先CD / 得意先名」</strong> の入力欄に、取引先の名前やコードをキーボードで入力します。</li>
+              <li>文字を入れると、<strong>データベース（エクセルファイル）から自動的に探し出して候補リストを表示してくれます。</strong></li>
+              <li><strong>⌨️ キーボードだけで快速入力</strong>: キーボードの上下矢印キー（<code>↓</code> / <code>↑</code>）で候補を選び、<code>Enter</code> または <code>Tab</code> キーを押すだけで即座に確定し、次の項目へスムーズに移動します！</li>
+              <li><strong>💡 リストにない場合</strong>: 新しい取引先など候補リストにない場合は、そのままキーボードで名前を入力し、<code>Enter</code> キーを押すことで自由に入力できます。</li>
+              <li><strong>🚚 直送先がある場合</strong>: 納品先や支店などの直送先がある場合は、右隣の「直送先CD / 直送先名（任意）」欄も同様に入力または候補選択します（企画課ビューアやデザイン検索から連携した場合は自動入力されます）。</li>
+              <li>※「社内（半日・１日）」や「量販店調査」、「外出時間」を登録したい場合は、この得意先欄は空欄のままにして次のステップへ進みます。</li>
             </ul>
             <div class="screenshot-container">
               <img src="docs_images/start_06_customer_suggest.png" alt="得意先入力サジェスト" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
@@ -1129,7 +1131,7 @@
             <span class="screenshot-placeholder-filename">docs_images/02_report_list.png</span>
           </div>
         </div>
-        <p>過去に登録された日報を、一覧表形式で閲覧・検索する画面です。</p>
+        <p>過去に登録された日報を、一覧表形式または時系列カードで閲覧・検索・編集する画面です。上長コメント枠内における<strong>「✓ 既読チェック済」バッジ表示</strong>により、指導内容の確認状況が一目で分かります。</p>
         
         <h4>🔹 主な機能と詳細な活用方法:</h4>
         <ul>
@@ -1209,7 +1211,7 @@
           </li>
         </ul>
 
-        <h3 id="screen-new">📝 ③ 新規日報入力</h3>
+        <h3 id="screen-new">📝 ③ 新規日報入力（直送先入力・一括高速保存・キーボード快適入力）</h3>
         <div class="screenshot-container">
           <img src="docs_images/03_report_input.png" alt="③ 新規日報入力" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
           <div class="screenshot-placeholder">
@@ -1218,10 +1220,34 @@
             <span class="screenshot-placeholder-filename">docs_images/03_report_input.png</span>
           </div>
         </div>
-        <p>エクセルを開くことなく、直感的なWebフォームから日報を直接エクセルに追加できるメインの入力画面です。</p>
+        <p>エクセルを開くことなく、直感的なWebフォームから日報を直接エクセルに追加できるメインの入力画面です。最新バージョン（v2.5.12）では、直送先の個別管理、キーボードによる快速入力、複数件の一括高速保存に対応しています。</p>
         
-        <h4>💡 入力をサポートするスマート動的フォーム:</h4>
+        <h4>💡 入力をサポートする最新機能とスマート動的フォーム:</h4>
         <p>本画面は、入力の手間をできる限り省き、間違いのない登録ができるよう、様々な支援機能を搭載しています。</p>
+        
+        <ul>
+          <li><strong>🚚 直送先CD / 直送先名（任意）入力欄の新設 (v2.5.9〜v2.5.12)</strong>:
+            <ul>
+              <li>得意先名の右側に「直送先CD / 直送先名」の入力枠を新設。納品先や支店・事業所がある場合も、サジェスト選択または自由記述で正確に記録できます。</li>
+              <li>デザイン検索や企画課ビューアから連携起票した際は、依頼データ内の直送先が自動入力されます。</li>
+            </ul>
+          </li>
+          <li><strong>⌨️ キーボード操作の完全対応 (v2.5.9〜)</strong>:
+            <ul>
+              <li>得意先・直送先などのサジェスト入力欄において、上下矢印キー（<code>↓</code> / <code>↑</code>）で候補を選び、<code>Tab</code> または <code>Enter</code> キーで確定＆次項目へ自動フォーカス移動。マウスを持たずに高速に入力を完結できます。</li>
+            </ul>
+          </li>
+          <li><strong>🚀 日報一括保存の高速化とファイルロック競合解消 (v2.5.9〜)</strong>:
+            <ul>
+              <li><code>POST /api/reports/batch</code> 最適化により、複数件の訪問データを1回のエクセルオープンで全件一括追記。保存速度が劇的に向上し、Windowsのファイルロック待ちによるタイムアウトを根絶しました。</li>
+            </ul>
+          </li>
+          <li><strong>☁️ 安心のステータス通知とオフライン自動一時保存</strong>:
+            <ul>
+              <li>一括保存完了時には「〇件の日報を一括保存しました」と安心できるトーストを表示。万が一社内サーバー未接続時でも「ローカルに安全一時保存しました」とブラウザストレージへ自動退避されます。</li>
+            </ul>
+          </li>
+        </ul>
         
         <ul>
           <li><strong>📁 選択されているエクセルファイルの自動・常時確認（★超重要）</strong>:

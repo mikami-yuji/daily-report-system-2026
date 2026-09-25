@@ -1,10 +1,98 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Image as ImageIcon, Loader2 } from 'lucide-react';
-import { searchDesignImages, DesignImage, getImageUrl } from '@/lib/api';
+import { searchDesignImages, checkDesignImagesBatch, DesignImage, getImageUrl } from '@/lib/api';
 
-// グローバルなメモリキャッシュ（同一デザインNoの重複検索を抑止）
-const imageHoverCache = new Map<string, DesignImage[]>();
+// グローバルなメモリキャッシュ（重複検索・判定を徹底抑止）
+export const imagePresenceCache = new Map<string, boolean>();
+export const imageCountCache = new Map<string, number>();
+export const imageHoverCache = new Map<string, DesignImage[]>();
+
+// 画面側からまとめて事前にチェックできる関数
+export async function prefetchDesignImagePresence(designNos: (string | number)[], filename?: string) {
+    const uniqueNos = Array.from(
+        new Set(
+            designNos
+                .map(n => String(n || '').trim())
+                .filter(n => n && !imagePresenceCache.has(n))
+        )
+    );
+    if (uniqueNos.length === 0) return;
+
+    try {
+        const results = await checkDesignImagesBatch(uniqueNos, filename);
+        uniqueNos.forEach(no => {
+            const res = results[no];
+            const hasImg = !!res?.has_images;
+            imagePresenceCache.set(no, hasImg);
+            imageCountCache.set(no, res?.count || 0);
+        });
+    } catch (e) {
+        console.error('Failed to prefetch design image presence:', e);
+    }
+}
+
+// バッチリクエスト用のキューイング機構（マウント時の個別リクエストを自動で束ねて送信）
+let batchQueue: string[] = [];
+let batchQueueFilename: string | undefined = undefined;
+let batchTimer: NodeJS.Timeout | null = null;
+const batchListeners = new Map<string, ((hasImages: boolean, count: number) => void)[]>();
+
+function queueDesignNoCheck(designNo: string, filename?: string, onResult?: (hasImages: boolean, count: number) => void) {
+    if (imagePresenceCache.has(designNo)) {
+        if (onResult) {
+            onResult(imagePresenceCache.get(designNo)!, imageCountCache.get(designNo) || 0);
+        }
+        return;
+    }
+
+    if (onResult) {
+        const list = batchListeners.get(designNo) || [];
+        list.push(onResult);
+        batchListeners.set(designNo, list);
+    }
+
+    if (!batchQueue.includes(designNo)) {
+        batchQueue.push(designNo);
+        if (filename && !batchQueueFilename) {
+            batchQueueFilename = filename;
+        }
+    }
+
+    if (batchTimer) clearTimeout(batchTimer);
+    batchTimer = setTimeout(async () => {
+        const currentQueue = [...batchQueue];
+        const currentFilename = batchQueueFilename;
+        batchQueue = [];
+        batchQueueFilename = undefined;
+        batchTimer = null;
+
+        if (currentQueue.length === 0) return;
+
+        try {
+            const results = await checkDesignImagesBatch(currentQueue, currentFilename);
+            currentQueue.forEach(no => {
+                const res = results[no];
+                const hasImg = !!res?.has_images;
+                const count = res?.count || 0;
+                imagePresenceCache.set(no, hasImg);
+                imageCountCache.set(no, count);
+
+                const listeners = batchListeners.get(no) || [];
+                listeners.forEach(fn => fn(hasImg, count));
+                batchListeners.delete(no);
+            });
+        } catch (e) {
+            console.error('Failed to batch check design images:', e);
+            currentQueue.forEach(no => {
+                imagePresenceCache.set(no, false);
+                const listeners = batchListeners.get(no) || [];
+                listeners.forEach(fn => fn(false, 0));
+                batchListeners.delete(no);
+            });
+        }
+    }, 40); // 40ms debounce
+}
 
 type DesignImageHoverButtonProps = {
     designNo: string | number;
@@ -22,15 +110,57 @@ export default function DesignImageHoverButton({
     className = '',
 }: DesignImageHoverButtonProps) {
     const cleanNo = String(designNo || '').trim();
+
+    // 初期状態でキャッシュがあるか確認
+    const initialHasImages = cleanNo && imagePresenceCache.has(cleanNo)
+        ? imagePresenceCache.get(cleanNo)!
+        : null;
+    const initialCount = cleanNo && imageCountCache.has(cleanNo)
+        ? imageCountCache.get(cleanNo)!
+        : 0;
+
+    const [hasImages, setHasImages] = useState<boolean | null>(initialHasImages);
+    const [imageCount, setImageCount] = useState<number>(initialCount);
     const [isHovered, setIsHovered] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [images, setImages] = useState<DesignImage[] | null>(null);
-    const [hasLoaded, setHasLoaded] = useState(false);
+    const [images, setImages] = useState<DesignImage[] | null>(() => {
+        return cleanNo && imageHoverCache.has(cleanNo) ? imageHoverCache.get(cleanNo)! : null;
+    });
     const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; placeAbove: boolean; arrowLeft: number } | null>(null);
 
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
     const leaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    // マウント時または cleanNo 変更時に画像有無をチェック
+    useEffect(() => {
+        if (!cleanNo) {
+            setHasImages(false);
+            return;
+        }
+
+        if (imagePresenceCache.has(cleanNo)) {
+            const cachedHas = imagePresenceCache.get(cleanNo)!;
+            setHasImages(cachedHas);
+            setImageCount(imageCountCache.get(cleanNo) || 0);
+            if (imageHoverCache.has(cleanNo)) {
+                setImages(imageHoverCache.get(cleanNo)!);
+            }
+            return;
+        }
+
+        let isMounted = true;
+        queueDesignNoCheck(cleanNo, selectedFile, (foundHasImages, count) => {
+            if (isMounted) {
+                setHasImages(foundHasImages);
+                setImageCount(count);
+            }
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [cleanNo, selectedFile]);
 
     // ポップオーバーの位置計算（画面外やヘッダーによる見切れをスマートに防止）
     const updatePosition = useCallback(() => {
@@ -73,23 +203,27 @@ export default function DesignImageHoverButton({
             // キャッシュ確認
             if (imageHoverCache.has(cleanNo)) {
                 setImages(imageHoverCache.get(cleanNo) || []);
-                setHasLoaded(true);
                 return;
             }
 
-            if (!hasLoaded) {
+            if (!images) {
                 setIsLoading(true);
                 try {
                     const res = await searchDesignImages(cleanNo, selectedFile);
                     const found = res?.images || [];
                     imageHoverCache.set(cleanNo, found);
                     setImages(found);
+                    if (found.length === 0) {
+                        setHasImages(false);
+                    } else {
+                        setHasImages(true);
+                        setImageCount(found.length);
+                    }
                 } catch (e) {
                     console.error('Failed to pre-fetch image:', e);
                     setImages([]);
                 } finally {
                     setIsLoading(false);
-                    setHasLoaded(true);
                 }
             }
         }, 180);
@@ -105,12 +239,30 @@ export default function DesignImageHoverButton({
         }, 140);
     };
 
-    const handleClick = (e: React.MouseEvent) => {
+    const handleClick = async (e: React.MouseEvent) => {
         e.stopPropagation();
         setIsHovered(false);
-        if (onOpenModal && cleanNo) {
-            const cached = imageHoverCache.get(cleanNo);
-            onOpenModal(cached || (images ? images : []), cleanNo);
+        if (!onOpenModal || !cleanNo) return;
+
+        if (imageHoverCache.has(cleanNo)) {
+            onOpenModal(imageHoverCache.get(cleanNo) || [], cleanNo);
+            return;
+        }
+
+        if (images && images.length > 0) {
+            onOpenModal(images, cleanNo);
+            return;
+        }
+
+        try {
+            const res = await searchDesignImages(cleanNo, selectedFile);
+            const found = res?.images || [];
+            imageHoverCache.set(cleanNo, found);
+            setImages(found);
+            onOpenModal(found, cleanNo);
+        } catch (e) {
+            console.error('Failed to load images on click:', e);
+            onOpenModal([], cleanNo);
         }
     };
 
@@ -138,9 +290,13 @@ export default function DesignImageHoverButton({
         };
     }, []);
 
-    if (!cleanNo) return null;
+    // 画像なし（0件）、または未確認の場合は表示しない！
+    if (!cleanNo || hasImages !== true) {
+        return null;
+    }
 
     const firstImage = images && images.length > 0 ? images[0] : null;
+    const displayCount = (images && images.length > 0) ? images.length : imageCount;
 
     return (
         <div 
@@ -159,9 +315,9 @@ export default function DesignImageHoverButton({
             >
                 <ImageIcon size={size === 'md' ? 14 : 12} className="text-white shrink-0" />
                 <span>画像</span>
-                {images && images.length > 1 && (
+                {displayCount > 1 && (
                     <span className="bg-blue-800/80 text-[10px] px-1 py-0.2 rounded-full font-mono">
-                        {images.length}
+                        {displayCount}
                     </span>
                 )}
             </button>
@@ -206,9 +362,9 @@ export default function DesignImageHoverButton({
                                 </span>
                             )}
                         </div>
-                        {images && images.length > 0 && (
+                        {displayCount > 0 && (
                             <span className="bg-blue-50 text-blue-700 font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0">
-                                全{images.length}枚
+                                全{displayCount}枚
                             </span>
                         )}
                     </div>
@@ -247,8 +403,7 @@ export default function DesignImageHoverButton({
                     ) : (
                         <div className="relative z-10 h-24 flex flex-col items-center justify-center text-gray-400 text-center text-xs gap-1">
                             <ImageIcon size={20} className="text-gray-300 stroke-[1.5]" />
-                            <span>画像が見つかりません</span>
-                            <span className="text-[10px] text-gray-400">（クリックで検索）</span>
+                            <span>画像を取得中...</span>
                         </div>
                     )}
                 </div>,
@@ -257,3 +412,4 @@ export default function DesignImageHoverButton({
         </div>
     );
 }
+

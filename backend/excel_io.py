@@ -12,6 +12,11 @@ from fastapi import HTTPException
 
 import cache
 
+class ExcelFileLockedError(HTTPException):
+    """Excelファイルが他プロセスによって開かれロックされていることを示す例外（オフライン退避対象）"""
+    def __init__(self, detail: str = "Excelファイルが別のプロセスで開かれているため保存できませんでした。"):
+        super().__init__(status_code=409, detail=detail)
+
 # ファイルパスごとの再帰的排他ロック（スレッドセーフ）
 _file_locks = defaultdict(threading.RLock)
 _global_lock = threading.Lock()
@@ -20,7 +25,7 @@ _global_lock = threading.Lock()
 def get_file_write_lock(file_path: str, timeout: float = 30.0):
     """
     同一Excelファイルへの並行書き込みを直列化（キューイング）するコンテキストマネージャー。
-    指定タイムアウト内にロックが取得できない場合は 409 Conflict を送出します。
+    指定タイムアウト内にロックが取得できない場合は ExcelFileLockedError (409 Conflict) を送出します。
     """
     norm_path = os.path.abspath(file_path).lower()
     with _global_lock:
@@ -29,9 +34,8 @@ def get_file_write_lock(file_path: str, timeout: float = 30.0):
     acquired = lock.acquire(timeout=timeout)
     if not acquired:
         logging.warning(f"File write lock timeout ({timeout}s) on {file_path}")
-        raise HTTPException(
-            status_code=409,
-            detail="現在、別のユーザーまたは処理がこのExcelファイルを更新中です。数秒待ってから再試行してください。"
+        raise ExcelFileLockedError(
+            "現在、別のユーザーまたは処理がこのExcelファイルを更新中です。数秒待ってから再試行してください。"
         )
     try:
         logging.debug(f"Acquired write lock for {file_path}")
@@ -119,9 +123,8 @@ def safe_save_workbook_with_retry(
 
     if last_error is not None:
         if isinstance(last_error, PermissionError):
-            raise HTTPException(
-                status_code=409,
-                detail="Excelファイルが別のプロセスで開かれているため保存できませんでした。ファイルを閉じてから再試行してください。"
+            raise ExcelFileLockedError(
+                "Excelファイルが別のプロセスで開かれているため保存できませんでした。ファイルを閉じてから再試行してください。"
             )
         raise HTTPException(status_code=500, detail=f"ファイル保存に失敗しました: {str(last_error)}")
 
@@ -170,8 +173,7 @@ def safe_load_workbook_with_retry(
             raise HTTPException(status_code=500, detail=f"Excelファイルの読み込みに失敗しました: {str(e)}")
 
     if isinstance(last_error, PermissionError):
-        raise HTTPException(
-            status_code=409,
-            detail="Excelファイルがロックされているため読み込めませんでした。しばらく待ってから再試行してください。"
+        raise ExcelFileLockedError(
+            "Excelファイルがロックされているため読み込めませんでした。しばらく待ってから再試行してください。"
         )
     raise HTTPException(status_code=500, detail=f"Excelファイルの読み込みに失敗しました: {str(last_error)}")

@@ -8,6 +8,7 @@ import { useReactToPrint } from 'react-to-print';
 import toast from 'react-hot-toast';
 import { searchDesignImages, DesignImage } from '@/lib/api';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
+import DesignImageHoverButton, { prefetchDesignImagePresence } from '@/components/reports/DesignImageHoverButton';
 
 // ファイル名から担当者名を抽出
 function extractStaffName(filename: string | null): string {
@@ -96,6 +97,20 @@ export default function MonthlySummaryPage(): React.ReactElement {
 
     // 月次サマリーデータをバックエンドから取得
     const { data: summary, isLoading } = useMonthlySummaryStats(monthPrefix, selectedFile || undefined);
+
+    // デザイン画像有無の一括事前チェック
+    useEffect(() => {
+        if (!summary?.dailyActivity) return;
+        const designNos: string[] = [];
+        summary.dailyActivity.forEach(day => {
+            day.activities?.forEach(act => {
+                if (act.design_no) designNos.push(String(act.design_no).replace('.0', '').trim());
+            });
+        });
+        if (designNos.length > 0) {
+            prefetchDesignImagePresence(designNos, selectedFile || undefined);
+        }
+    }, [summary, selectedFile]);
 
     // 月送り
     const handlePreviousMonth = (): void => {
@@ -626,19 +641,15 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                                                     {act.design_no ? ` (No.${act.design_no})` : ''} 
                                                                                     【{act.design_status || '進行中'}】
                                                                                     {act.design_no && (
-                                                                                        <button
-                                                                                            onClick={(e): Promise<void> => handleImageSearch(act.design_no!, e)}
-                                                                                            disabled={searchingImage}
-                                                                                            className="ml-1.5 px-1 py-0.5 bg-pink-50 hover:bg-pink-100 border border-pink-200 rounded text-pink-600 hover:text-pink-800 transition-colors inline-flex items-center gap-0.5 print:hidden cursor-pointer text-[10px] font-bold shadow-sm"
-                                                                                            title="デザイン画像を表示"
-                                                                                        >
-                                                                                            {searchingImage ? (
-                                                                                                <Loader2 size={10} className="animate-spin" />
-                                                                                            ) : (
-                                                                                                <ImageIcon size={10} />
-                                                                                            )}
-                                                                                            <span>画像</span>
-                                                                                        </button>
+                                                                                        <DesignImageHoverButton
+                                                                                            designNo={act.design_no}
+                                                                                            selectedFile={selectedFile || undefined}
+                                                                                            onOpenModal={(images, no) => {
+                                                                                                setImageResults(images);
+                                                                                                setCurrentSearchDesignNo(no);
+                                                                                                setShowImageModal(true);
+                                                                                            }}
+                                                                                        />
                                                                                     )}
                                                                                 </span>
                                                                             </div>

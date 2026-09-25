@@ -7,7 +7,7 @@ import { useDashboardStats } from '@/hooks/useStatsHooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/useQueryHooks';
 import EditReportModal from '@/components/reports/EditReportModal';
-import { compareDates } from '@/lib/reportUtils';
+import { compareDates, deduplicateReports } from '@/lib/reportUtils';
 import { Report } from '@/lib/api';
 
 // 新規に作成したダッシュボード用分割コンポーネントのインポート
@@ -43,9 +43,9 @@ export default function Home(): React.JSX.Element {
 
   const isLoading = isReportsLoading || isStatsLoading;
 
-  // 日付でソート（通知や最近の日報リスト用）
+  // 日付でソート（通知や最近の日報リスト用、重複を完全排除）
   const reports = useMemo((): Report[] => {
-    return [...rawReports].sort((a: Report, b: Report): number => {
+    return deduplicateReports([...rawReports]).sort((a: Report, b: Report): number => {
       return compareDates(String(b.日付 || ''), String(a.日付 || ''));
     });
   }, [rawReports]);

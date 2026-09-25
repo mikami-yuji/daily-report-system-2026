@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, Suspense } from 'react';
 import { getReports, getCustomers, Report, searchDesignImages, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
+import DesignImageHoverButton, { prefetchDesignImagePresence } from '@/components/reports/DesignImageHoverButton';
 import {
     User,
     MapPin,
@@ -222,6 +223,9 @@ function CustomerDetailContent() {
 
         requests.sort((a, b) => compareDates(b.lastUpdate, a.lastUpdate));
         setDesignRequests(requests);
+        if (requests.length > 0) {
+            prefetchDesignImagePresence(requests.map(r => r.designNo), selectedFile || undefined);
+        }
     };
 
     const getProgressBadge = (progress: string) => {
@@ -613,14 +617,16 @@ function CustomerDetailContent() {
                                             <div className="flex items-center gap-3">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-bold text-lg text-sf-light-blue">#{req.designNo}</span>
-                                                    <button
-                                                        onClick={(e) => handleImageSearch(req.designNo, e)}
-                                                        disabled={searchingImage}
-                                                        className="p-1 rounded hover:bg-sf-light-blue/10 text-pink-500 transition-colors disabled:opacity-50"
-                                                        title="関連画像を検索"
-                                                    >
-                                                        <ImageIcon size={18} />
-                                                    </button>
+                                                    <DesignImageHoverButton
+                                                        designNo={req.designNo}
+                                                        selectedFile={selectedFile || undefined}
+                                                        onOpenModal={(imgs, dNo) => {
+                                                            setImageResults(imgs);
+                                                            setSearchQueryDebug(dNo);
+                                                            setShowImageModal(true);
+                                                        }}
+                                                        size="sm"
+                                                    />
                                                 </div>
                                                 <h3 className="font-semibold text-sf-text">{req.designName || '名称未設定'}</h3>
                                             </div>

@@ -14,6 +14,8 @@ import hashlib
 import time
 
 
+import subprocess
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = BASE_DIR
 DIST_EXE = os.path.join(BASE_DIR, "dist", "DailyReportServer.exe")
@@ -108,7 +110,17 @@ def main():
         shutil.copy2(DIST_EXE, dest_ver_exe)
         shutil.copy2(DIST_EXE, dest_std_exe)
 
-        # 2. 最後に version.json を配置（不完全ダウンロードの防止）
+        # 2. Windowsセキュリティブロック（Zone.Identifier）の解除
+        for exe_path in [dest_ver_exe, dest_std_exe]:
+            try:
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", f"Unblock-File -LiteralPath '{exe_path}'"],
+                    capture_output=True, timeout=3
+                )
+            except Exception:
+                pass
+
+        # 3. 最後に version.json を配置（不完全ダウンロードの防止）
         dest_json = os.path.join(t_dir, "version.json")
         print(f" -> version.json 作成: {dest_json}")
         with open(dest_json, "w", encoding="utf-8") as f:

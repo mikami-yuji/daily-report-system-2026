@@ -234,3 +234,111 @@ def test_invalidate_cache_preserves_sqlite_when_offline(tmp_path):
         config.SQLITE_CACHE_DB = orig_db
         config.EXCEL_DIR = orig_dir
 
+
+def test_excel_file_locked_fallback_to_sync_queue(tmp_path, monkeypatch):
+    """Excelファイルが他プロセスで開かれてロックされている（ExcelFileLockedError）場合でも、エラーにならずsync_queueへ自動退避されること"""
+    import excel_io
+    from fastapi import BackgroundTasks
+
+    test_db = str(tmp_path / "test_locked_sync_queue.db")
+    orig_db = config.SQLITE_CACHE_DB
+    config.SQLITE_CACHE_DB = test_db
+
+    # Excelファイルが実際に存在する環境を作る
+    test_excel_dir = str(tmp_path / "excel_files")
+    os.makedirs(test_excel_dir, exist_ok=True)
+    orig_excel_dir = config.EXCEL_DIR
+    config.EXCEL_DIR = test_excel_dir
+
+    fake_excel = "テスト担当者_日報.xlsm"
+    fake_path = os.path.join(test_excel_dir, fake_excel)
+    with open(fake_path, "w") as f:
+        f.write("dummy excel content")
+
+    try:
+        bg = BackgroundTasks()
+
+        # 1. add_report: ExcelFileLockedError 発生時の安全退避検証
+        def mock_apply_add_locked(file, report):
+            raise excel_io.ExcelFileLockedError("Excel is currently locked by another user")
+
+        monkeypatch.setattr(routes_reports, "_apply_add_report_to_excel", mock_apply_add_locked)
+
+        report_input = models.ReportInput(
+            日付="2026-09-17",
+            訪問先名="株式会社ロックテスト",
+            商談内容="他者がExcelを開いている時の保存テスト"
+        )
+        res_add = routes_reports.add_report(report_input, bg, filename=fake_excel)
+        assert res_add["status"] == "queued"
+        assert res_add["offline"] is True
+        assert res_add["management_number"] < 0
+        assert "一時退避" in res_add["message"]
+
+        # sync_queue にタスクが入っていることを検証
+        pending = sync_queue.get_pending_tasks()
+        assert len(pending) == 1
+        assert pending[0]["task_type"] == "create"
+        assert pending[0]["payload"]["訪問先名"] == "株式会社ロックテスト"
+
+        # 2. add_batch_reports: 一括保存時の安全退避検証
+        def mock_apply_batch_locked(file, reports):
+            raise excel_io.ExcelFileLockedError("Excel locked during batch save")
+
+        monkeypatch.setattr(routes_reports, "_apply_batch_add_reports_to_excel", mock_apply_batch_locked)
+
+        batch_input = models.BatchReportCreateInput(
+            reports=[
+                models.ReportInput(日付="2026-09-17", 訪問先名="一括顧客1", 商談内容="商談1"),
+                models.ReportInput(日付="2026-09-17", 訪問先名="一括顧客2", 商談内容="商談2"),
+            ]
+        )
+        res_batch = routes_reports.add_batch_reports(batch_input, bg, filename=fake_excel)
+        assert res_batch["status"] == "queued"
+        assert res_batch["offline"] is True
+        assert res_batch["count"] == 2
+        assert len(res_batch["management_numbers"]) == 2
+
+        # 3. update_report: 編集時の安全退避検証
+        def mock_apply_update_locked(file, mgmt, report):
+            raise excel_io.ExcelFileLockedError("Excel locked during update")
+
+        monkeypatch.setattr(routes_reports, "_apply_update_report_to_excel", mock_apply_update_locked)
+
+        res_update = routes_reports.update_report(100, report_input, bg, filename=fake_excel)
+        assert res_update["status"] == "queued"
+        assert res_update["offline"] is True
+        assert res_update["management_number"] == 100
+
+        # 4. delete_report: 削除時の安全退避検証
+        def mock_apply_delete_locked(file, mgmt):
+            raise excel_io.ExcelFileLockedError("Excel locked during delete")
+
+        monkeypatch.setattr(routes_reports, "_apply_delete_to_excel", mock_apply_delete_locked)
+
+        res_del = routes_reports.delete_report(100, filename=fake_excel)
+        assert res_del["status"] == "queued"
+        assert res_del["offline"] is True
+        assert res_del["management_number"] == 100
+
+        # 5. batch_update_report_approval: 一括承認時の安全退避検証
+        def mock_apply_batch_appr_locked(file, mgmts, field, val):
+            raise excel_io.ExcelFileLockedError("Excel locked during batch approval")
+
+        monkeypatch.setattr(routes_reports, "_apply_batch_approval_to_excel", mock_apply_batch_appr_locked)
+
+        batch_appr_input = models.BatchApprovalInput(
+            management_numbers=[101, 102],
+            field_name="上長",
+            value="承認済"
+        )
+        res_appr = routes_reports.batch_update_report_approval(batch_appr_input, filename=fake_excel)
+        assert res_appr["success"] is True
+        assert res_appr["offline"] is True
+        assert res_appr["updated_count"] == 2
+
+    finally:
+        config.SQLITE_CACHE_DB = orig_db
+        config.EXCEL_DIR = orig_excel_dir
+
+

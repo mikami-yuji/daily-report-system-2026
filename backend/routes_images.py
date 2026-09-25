@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel
 import os
 import shutil
 import json
@@ -622,7 +623,139 @@ def search_design_images(query: str, filename: Optional[str] = None, passcode: O
         raise HTTPException(status_code=500, detail=error_msg)
 
 
-# --- Sales Data Integration ---
-# --- Sales Data Integration (Global) ---
+class BatchCheckRequest(BaseModel):
+    queries: List[str]
+    filename: Optional[str] = None
+    passcode: Optional[str] = None
+
+
+@router.post("/api/images/check-batch")
+def check_design_images_batch(body: BatchCheckRequest, request: Request = None):
+    """
+    Check whether images exist for multiple design numbers in a single fast call.
+    Checks both:
+    1. 企画課ビューア (Webデータベース)
+    2. 営業部デザインデータディレクトリ (ファイルサーバー)
+    Returns: {"results": {query: {"has_images": bool, "count": int}}}
+    """
+    import routes_proxy
+    
+    queries = [str(q).strip() for q in body.queries if str(q).strip()]
+    if not queries:
+        return {"results": {}}
+    
+    # 辞書初期化: {query: count}
+    counts = {q: 0 for q in queries}
+    
+    # クエリの正規化マッピング (小文字、4桁以上の数値)
+    query_lookup = {}
+    for q in queries:
+        clean_q = q.lower()
+        digits_match = re.search(r'\d{4,}', clean_q)
+        digits = digits_match.group(0) if digits_match else clean_q
+        query_lookup[q] = (clean_q, digits)
+
+    # 1. 企画課ビューアから画像有無を判定
+    try:
+        client_cookies = dict(request.cookies) if request else None
+        docs = routes_proxy.fetch_viewer_documents(passcode=body.passcode, client_cookies=client_cookies)
+        
+        for doc in docs:
+            # 画像（カンプ画像または添付画像）を持つかチェック
+            comp_images = doc.get("compImages") or []
+            comp_url = doc.get("compUrl")
+            attachments = doc.get("attachments") or []
+            
+            img_count = 0
+            if comp_images:
+                img_count += len([c for c in comp_images if c.get("url")])
+            elif comp_url:
+                img_count += 1
+                
+            for att in attachments:
+                file_type = att.get("fileType")
+                att_name = att.get("fileName") or ""
+                if (file_type == "image" or any(att_name.lower().endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))) and att.get("url"):
+                    img_count += 1
+                    
+            if img_count == 0:
+                continue
+                
+            req_id = str(doc.get("requestId") or "").strip().lower()
+            sub_id = str(doc.get("subId") or "").strip().lower()
+            full_id = f"{req_id}-{sub_id}" if sub_id and sub_id != '0' else req_id
+            submission_id = str(doc.get("submissionId") or "").strip().lower()
+            
+            for orig_q, (clean_q, digits) in query_lookup.items():
+                if clean_q in req_id or clean_q in full_id:
+                    counts[orig_q] += img_count
+                elif digits and (digits in req_id or digits in submission_id):
+                    counts[orig_q] += img_count
+    except Exception as e:
+        logging.warning(f"Error checking viewer documents in batch: {e}")
+
+    # 2. 営業部ファイルサーバーから画像有無を判定
+    DESIGN_DIR = config.DESIGN_DIR
+    filename = os.path.basename(body.filename) if body.filename else None
+    
+    if config.is_network_path_accessible(DESIGN_DIR, timeout=0.35):
+        try:
+            # 担当者フォルダの特定
+            search_folders = []
+            valid_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.pdf')
+            
+            # キャッシュ済みリストがあれば最優先利用
+            cached_images = []
+            if filename and filename in IMAGE_LIST_CACHE:
+                cached_images = IMAGE_LIST_CACHE[filename].get("images", [])
+                
+            if cached_images:
+                for img in cached_images:
+                    name_lower = img.get("name", "").lower()
+                    for orig_q, (clean_q, digits) in query_lookup.items():
+                        if clean_q in name_lower or (digits and digits in name_lower):
+                            counts[orig_q] += 1
+            else:
+                # 担当者フォルダの検索
+                if filename:
+                    try:
+                        match = re.search(r'【(.*?)】', filename)
+                        name_part = match.group(1) if match else os.path.splitext(os.path.basename(filename))[0]
+                        # 正規化
+                        norm_target = name_part.replace('（', '(').replace('）', ')').replace('　', ' ').strip()
+                        stripped = re.sub(r'(MGR|Mgr|次長|課長|部長|係長|主任|担当|顧問|専務|常務|社長)$', '', norm_target, flags=re.IGNORECASE)
+                        
+                        with os.scandir(DESIGN_DIR) as it:
+                            for entry in it:
+                                if entry.is_dir():
+                                    entry_norm = entry.name.replace('（', '(').replace('）', ')').replace('　', ' ').strip()
+                                    if norm_target in entry_norm or (stripped and stripped in entry_norm):
+                                        search_folders.append(entry.path)
+                                        break
+                    except Exception as fe:
+                        logging.warning(f"Failed to find rep folder: {fe}")
+                
+                # 担当者フォルダが見つからなければ全体（深さ1）
+                if not search_folders:
+                    search_folders = [DESIGN_DIR]
+                    
+                for s_dir in search_folders:
+                    found = safe_walk(s_dir, "", valid_extensions, max_depth=2, max_results=200)
+                    for f_img in found:
+                        name_lower = f_img.get("name", "").lower()
+                        for orig_q, (clean_q, digits) in query_lookup.items():
+                            if clean_q in name_lower or (digits and digits in name_lower):
+                                counts[orig_q] += 1
+        except Exception as se:
+            logging.warning(f"Error scanning file server in batch: {se}")
+
+    results = {}
+    for q, cnt in counts.items():
+        results[q] = {
+            "has_images": cnt > 0,
+            "count": cnt
+        }
+
+    return {"results": results}
 
 

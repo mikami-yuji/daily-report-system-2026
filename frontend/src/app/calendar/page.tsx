@@ -25,12 +25,14 @@ import toast from 'react-hot-toast';
 import ReportDetailModal from '@/components/reports/ReportDetailModal';
 import EditReportModal from '@/components/reports/EditReportModal';
 import { Report } from '@/types/report';
+import { deduplicateReports } from '@/lib/reportUtils';
 
 export default function CalendarPage(): React.JSX.Element {
     const { selectedFile } = useFile();
 
-    // React Queryでデータ取得（自動キャッシュ）
-    const { data: reports = [], isLoading, error, refetch } = useReports(selectedFile || undefined);
+    // React Queryでデータ取得（自動キャッシュ、重複を完全排除）
+    const { data: rawReports = [], isLoading, error, refetch } = useReports(selectedFile || undefined);
+    const reports = useMemo(() => deduplicateReports(rawReports), [rawReports]);
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);

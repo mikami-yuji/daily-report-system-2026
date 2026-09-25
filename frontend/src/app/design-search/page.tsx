@@ -4,13 +4,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useFile } from '@/context/FileContext';
 import { useReports, useViewerDesignRequests, useCustomers } from '@/hooks/useQueryHooks';
 import { Report, searchDesignImages, DesignImage } from '@/lib/api';
-import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare, Truck } from 'lucide-react';
+import { Search, Calendar, User, FileText, ChevronDown, ChevronUp, Package, Layers, TrendingUp, Filter, Image as ImageIcon, PenSquare, Truck, ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import NewReportModal, { InitialDesignData } from '@/components/reports/NewReportModal';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
 import PdfPreviewModal, { PdfItem } from '@/components/reports/PdfPreviewModal';
+import DesignImageHoverButton, { prefetchDesignImagePresence, imagePresenceCache } from '@/components/reports/DesignImageHoverButton';
 import { ViewerDesignRequest, Customer } from '@/types/report';
-import { isSalesPersonMatch, extractCleanCustomerName } from '@/lib/reportUtils';
+import { isSalesPersonMatch, extractCleanCustomerName, deduplicateReports } from '@/lib/reportUtils';
 
 type DesignRequest = {
     designNo: string;
@@ -29,8 +30,9 @@ type DesignRequest = {
 export default function DesignSearchPage() {
     const { selectedFile } = useFile();
 
-    // React Queryでデータ取得（自動キャッシュ）
-    const { data: reports = [], isLoading, error } = useReports(selectedFile || undefined);
+    // React Queryでデータ取得（自動キャッシュ、重複を完全排除）
+    const { data: rawReports = [], isLoading, error } = useReports(selectedFile || undefined);
+    const reports = useMemo(() => deduplicateReports(rawReports), [rawReports]);
 
     // 企画課ビューワーからデザインデータ取得
     const { data: viewerData } = useViewerDesignRequests();
@@ -87,6 +89,26 @@ export default function DesignSearchPage() {
         return map;
     }, [viewerData, selectedFile]);
 
+type StatusTab = 'all' | 'in_progress' | 'completed' | 'pending_rejected';
+type SortKey = 'designNo' | 'customerCode' | 'customerName' | 'deliveryName' | 'designName' | 'designType' | 'designProgress' | 'requestsCount' | 'lastActivityDate';
+type SortOrder = 'asc' | 'desc';
+
+// 表記ゆれ吸収（NFKC正規化、大文字小文字無視、ひらがな->カタカナ統一）
+const normalizeSearchText = (text: string | number | undefined | null): string => {
+    if (text === undefined || text === null) return '';
+    let normalized = String(text).normalize('NFKC').toLowerCase();
+    // ひらがなをカタカナに変換して比較
+    normalized = normalized.replace(/[\u3041-\u3096]/g, (ch) =>
+        String.fromCharCode(ch.charCodeAt(0) + 0x60)
+    );
+    return normalized;
+};
+
+const isCompleted = (status: string) => status === '出稿';
+const isPendingOrRejected = (status: string) =>
+    ['保留', '不採用（コンペ負け）', '不採用（企画倒れ）'].includes(status);
+const isInProgress = (status: string) => !isCompleted(status) && !isPendingOrRejected(status);
+
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<string[]>([]);
     const [selectedType, setSelectedType] = useState<string[]>([]);
@@ -96,6 +118,15 @@ export default function DesignSearchPage() {
     const [showCustomerFilter, setShowCustomerFilter] = useState(false); // 得意先フィルターの表示状態
     const [showTypeFilter, setShowTypeFilter] = useState(false); // 種別フィルターの表示状態
     const [showProgressFilter, setShowProgressFilter] = useState(false); // 進捗フィルターの表示状態
+
+    // クイックフィルター & ソート用ステート
+    const [statusTab, setStatusTab] = useState<StatusTab>('all');
+    const [onlyWithImage, setOnlyWithImage] = useState<boolean>(false);
+    const [onlyWithPdf, setOnlyWithPdf] = useState<boolean>(false);
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; order: SortOrder }>({
+        key: 'lastActivityDate',
+        order: 'desc'
+    });
 
     // Image Search State
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -346,40 +377,210 @@ export default function DesignSearchPage() {
         return Array.from(progressList).sort();
     }, [designRequests, selectedCustomer, selectedType]);
 
+    // 案件データ取得時に含まれるデザインNoの画像有無を一括プリフェッチ
+    useEffect(() => {
+        if (!designRequests || designRequests.length === 0) return;
+        const nos = designRequests.map(r => r.designNo).filter(Boolean);
+        if (nos.length > 0) {
+            prefetchDesignImagePresence(nos, selectedFile || undefined);
+        }
+    }, [designRequests, selectedFile]);
+
+    // 企画課ビューワーおよび営業部フォルダから画像の有無を判定するヘルパー
+    const hasAnyDesignImage = (designNo: string) => {
+        if (imagePresenceCache.has(designNo)) {
+            return !!imagePresenceCache.get(designNo);
+        }
+        const docs = viewerMap.get(designNo);
+        return !!docs?.some(d => !!d.compUrl || (d.compImages && d.compImages.length > 0));
+    };
+
+    const hasViewerImage = (designNo: string) => hasAnyDesignImage(designNo);
+
+    const hasViewerPdf = (designNo: string) => {
+        const docs = viewerMap.get(designNo);
+        return !!docs?.some(d => !!d.pdfUrl);
+    };
+
+    // ステータスタブごとの件数集計
+    const statusCounts = useMemo(() => {
+        let inProgress = 0;
+        let completed = 0;
+        let pendingRejected = 0;
+
+        designRequests.forEach(req => {
+            const prog = req.designProgress;
+            if (isCompleted(prog)) {
+                completed++;
+            } else if (isPendingOrRejected(prog)) {
+                pendingRejected++;
+            } else {
+                inProgress++;
+            }
+        });
+
+        return {
+            all: designRequests.length,
+            in_progress: inProgress,
+            completed: completed,
+            pending_rejected: pendingRejected,
+        };
+    }, [designRequests]);
+
     useEffect(() => {
         let filtered = designRequests;
 
-        // 得意先フィルター（複数選択対応）
+        // 1. ステータスクイックタブ
+        if (statusTab === 'in_progress') {
+            filtered = filtered.filter(req => isInProgress(req.designProgress));
+        } else if (statusTab === 'completed') {
+            filtered = filtered.filter(req => isCompleted(req.designProgress));
+        } else if (statusTab === 'pending_rejected') {
+            filtered = filtered.filter(req => isPendingOrRejected(req.designProgress));
+        }
+
+        // 2. 得意先フィルター（複数選択対応）
         if (selectedCustomer.length > 0) {
             filtered = filtered.filter(req => selectedCustomer.includes(req.customerCode));
         }
 
-        // 種別フィルター（複数選択対応）
+        // 3. 種別フィルター（複数選択対応）
         if (selectedType.length > 0) {
             filtered = filtered.filter(req => selectedType.includes(req.designType));
         }
 
-        // 進捗状況フィルター（複数選択対応）
+        // 4. 進捗状況フィルター（複数選択対応）
         if (selectedProgress.length > 0) {
             filtered = filtered.filter(req => selectedProgress.includes(req.designProgress));
         }
 
-        // キーワード検索
+        // 5. クイックトグル（画像あり）
+        if (onlyWithImage) {
+            filtered = filtered.filter(req => hasViewerImage(req.designNo));
+        }
+
+        // 6. クイックトグル（仕様書あり）
+        if (onlyWithPdf) {
+            filtered = filtered.filter(req => hasViewerPdf(req.designNo));
+        }
+
+        // 7. スペース区切りANDキーワード検索（全角半角・かなカナ表記ゆれ吸収）
         if (searchTerm.trim()) {
-            const term = searchTerm.toLowerCase();
-            filtered = filtered.filter(req =>
-                String(req.designNo).includes(term) ||
-                req.customerCode.toLowerCase().includes(term) ||
-                req.customerName.toLowerCase().includes(term) ||
-                (req.deliveryName && req.deliveryName.toLowerCase().includes(term)) ||
-                (req.deliveryCode && req.deliveryCode.toLowerCase().includes(term)) ||
-                req.designName.toLowerCase().includes(term) ||
-                req.designType.toLowerCase().includes(term)
-            );
+            const terms = searchTerm
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map(normalizeSearchText);
+
+            filtered = filtered.filter(req => {
+                const targetValues = [
+                    req.designNo,
+                    req.customerCode,
+                    req.customerName,
+                    req.deliveryName || '',
+                    req.deliveryCode || '',
+                    req.designName,
+                    req.designType,
+                ].map(normalizeSearchText);
+
+                // 全ての単語がいずれかのフィールドに含まれること（AND条件）
+                return terms.every(term =>
+                    targetValues.some(val => val.includes(term))
+                );
+            });
         }
 
         setFilteredRequests(filtered);
-    }, [searchTerm, selectedCustomer, selectedType, selectedProgress, designRequests]);
+    }, [
+        searchTerm,
+        selectedCustomer,
+        selectedType,
+        selectedProgress,
+        statusTab,
+        onlyWithImage,
+        onlyWithPdf,
+        designRequests,
+        viewerMap
+    ]);
+
+    // ソート処理
+    const sortedRequests = useMemo(() => {
+        const list = [...filteredRequests];
+        const { key, order } = sortConfig;
+        const modifier = order === 'asc' ? 1 : -1;
+
+        list.sort((a, b) => {
+            if (key === 'lastActivityDate') {
+                const aLast = a.requests[a.requests.length - 1];
+                const bLast = b.requests[b.requests.length - 1];
+                const aDate = aLast?.日付 || '';
+                const bDate = bLast?.日付 || '';
+                const cmp = aDate.localeCompare(bDate);
+                if (cmp !== 0) return cmp * modifier;
+                return String(a.designNo).localeCompare(String(b.designNo), undefined, { numeric: true }) * modifier;
+            }
+            if (key === 'requestsCount') {
+                const diff = a.requests.length - b.requests.length;
+                if (diff !== 0) return diff * modifier;
+                return String(a.designNo).localeCompare(String(b.designNo), undefined, { numeric: true }) * modifier;
+            }
+            if (key === 'designNo') {
+                return String(a.designNo).localeCompare(String(b.designNo), undefined, { numeric: true }) * modifier;
+            }
+            if (key === 'customerCode') {
+                return String(a.customerCode || '').localeCompare(String(b.customerCode || ''), undefined, { numeric: true }) * modifier;
+            }
+            if (key === 'customerName') {
+                return String(a.customerName || '').localeCompare(String(b.customerName || '')) * modifier;
+            }
+            if (key === 'deliveryName') {
+                return String(a.deliveryName || '').localeCompare(String(b.deliveryName || '')) * modifier;
+            }
+            if (key === 'designName') {
+                return String(a.designName || '').localeCompare(String(b.designName || '')) * modifier;
+            }
+            if (key === 'designType') {
+                return String(a.designType || '').localeCompare(String(b.designType || '')) * modifier;
+            }
+            if (key === 'designProgress') {
+                return String(a.designProgress || '').localeCompare(String(b.designProgress || '')) * modifier;
+            }
+            return 0;
+        });
+
+        return list;
+    }, [filteredRequests, sortConfig]);
+
+    const handleSort = (key: SortKey) => {
+        setSortConfig(prev => {
+            if (prev.key === key) {
+                return { key, order: prev.order === 'asc' ? 'desc' : 'asc' };
+            }
+            // 日付・回数はデフォルト降順、それ以外は昇順
+            const defaultOrder = (key === 'lastActivityDate' || key === 'requestsCount') ? 'desc' : 'asc';
+            return { key, order: defaultOrder };
+        });
+    };
+
+    const handleClearAllFilters = () => {
+        setSearchTerm('');
+        setSelectedCustomer([]);
+        setSelectedType([]);
+        setSelectedProgress([]);
+        setStatusTab('all');
+        setOnlyWithImage(false);
+        setOnlyWithPdf(false);
+    };
+
+    const hasActiveFilters = Boolean(
+        searchTerm.trim() ||
+        selectedCustomer.length > 0 ||
+        selectedType.length > 0 ||
+        selectedProgress.length > 0 ||
+        statusTab !== 'all' ||
+        onlyWithImage ||
+        onlyWithPdf
+    );
 
 
 
@@ -426,23 +627,109 @@ export default function DesignSearchPage() {
     return (
         <>
             <div className="space-y-6 animate-fadeIn">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-semibold text-sf-text">デザイン依頼検索</h1>
+            {/* ヘッダーエリア */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-semibold text-sf-text">デザイン依頼検索</h1>
+                    <p className="text-xs text-sf-text-weak mt-1">
+                        デザイン依頼案件の進捗、カンプ画像、仕様書PDF、および商談履歴を横断検索できます
+                    </p>
+                </div>
+                {hasActiveFilters && (
+                    <button
+                        type="button"
+                        onClick={handleClearAllFilters}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:text-sf-light-blue bg-white hover:bg-blue-50 border border-gray-200 rounded-lg shadow-2xs transition-colors self-start sm:self-auto cursor-pointer"
+                    >
+                        <RotateCcw size={13} />
+                        検索条件をすべてクリア
+                    </button>
+                )}
+            </div>
+
+            {/* ステータスクイックタブ（大分類） */}
+            <div className="flex items-center gap-1.5 border-b border-sf-border pb-1 overflow-x-auto">
+                <button
+                    type="button"
+                    onClick={() => setStatusTab('all')}
+                    className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                        statusTab === 'all'
+                            ? 'border-sf-light-blue text-sf-light-blue bg-blue-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                    すべて
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusTab === 'all' ? 'bg-sf-light-blue text-white' : 'bg-gray-100 text-gray-600'}`}>
+                        {statusCounts.all}
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setStatusTab('in_progress')}
+                    className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                        statusTab === 'in_progress'
+                            ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                    進行中
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusTab === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-800'}`}>
+                        {statusCounts.in_progress}
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setStatusTab('completed')}
+                    className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                        statusTab === 'completed'
+                            ? 'border-green-600 text-green-600 bg-green-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                    出稿・完了
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusTab === 'completed' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-800'}`}>
+                        {statusCounts.completed}
+                    </span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setStatusTab('pending_rejected')}
+                    className={`px-3.5 py-2 text-sm font-semibold rounded-t-lg transition-all border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                        statusTab === 'pending_rejected'
+                            ? 'border-amber-600 text-amber-600 bg-amber-50/50'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                    保留・失注
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${statusTab === 'pending_rejected' ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-700'}`}>
+                        {statusCounts.pending_rejected}
+                    </span>
+                </button>
             </div>
 
             {/* 検索・フィルターエリア */}
-            <div className="bg-white rounded border border-sf-border shadow-sm p-4">
+            <div className="bg-white rounded border border-sf-border shadow-sm p-4 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* キーワード検索 */}
+                    {/* キーワード検索（スペース区切りAND対応） */}
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
                             type="text"
-                            placeholder="デザインNo.、得意先、直送先、デザイン名、種別で検索..."
+                            placeholder="No.、得意先、直送先、デザイン名（スペース区切りでAND検索）..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent"
+                            className="w-full pl-9 pr-8 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue focus:border-transparent text-sm"
                         />
+                        {searchTerm && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded-full hover:bg-gray-100 cursor-pointer"
+                                title="キーワードをクリア"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
 
                     {/* 得意先フィルター（複数選択） */}
@@ -452,7 +739,7 @@ export default function DesignSearchPage() {
                             onClick={() => setShowCustomerFilter(!showCustomerFilter)}
                         >
                             <div className="flex items-center gap-2">
-                                <Filter className="text-gray-400" size={20} />
+                                <Filter className="text-gray-400" size={18} />
                                 <span className="text-sm font-medium text-sf-text">
                                     得意先 {selectedCustomer.length > 0 && `(${selectedCustomer.length})`}
                                 </span>
@@ -491,7 +778,7 @@ export default function DesignSearchPage() {
                                             e.stopPropagation();
                                             setSelectedCustomer([]);
                                         }}
-                                        className="mt-2 text-xs text-sf-light-blue hover:underline"
+                                        className="mt-2 text-xs text-sf-light-blue hover:underline cursor-pointer"
                                     >
                                         すべてクリア
                                     </button>
@@ -507,7 +794,7 @@ export default function DesignSearchPage() {
                             onClick={() => setShowTypeFilter(!showTypeFilter)}
                         >
                             <div className="flex items-center gap-2">
-                                <Layers className="text-gray-400" size={20} />
+                                <Layers className="text-gray-400" size={18} />
                                 <span className="text-sm font-medium text-sf-text">
                                     種別 {selectedType.length > 0 && `(${selectedType.length})`}
                                 </span>
@@ -546,7 +833,7 @@ export default function DesignSearchPage() {
                                             e.stopPropagation();
                                             setSelectedType([]);
                                         }}
-                                        className="mt-2 text-xs text-sf-light-blue hover:underline"
+                                        className="mt-2 text-xs text-sf-light-blue hover:underline cursor-pointer"
                                     >
                                         すべてクリア
                                     </button>
@@ -562,7 +849,7 @@ export default function DesignSearchPage() {
                             onClick={() => setShowProgressFilter(!showProgressFilter)}
                         >
                             <div className="flex items-center gap-2">
-                                <TrendingUp className="text-gray-400" size={20} />
+                                <TrendingUp className="text-gray-400" size={18} />
                                 <span className="text-sm font-medium text-sf-text">
                                     進捗状況 {selectedProgress.length > 0 && `(${selectedProgress.length})`}
                                 </span>
@@ -601,7 +888,7 @@ export default function DesignSearchPage() {
                                             e.stopPropagation();
                                             setSelectedProgress([]);
                                         }}
-                                        className="mt-2 text-xs text-sf-light-blue hover:underline"
+                                        className="mt-2 text-xs text-sf-light-blue hover:underline cursor-pointer"
                                     >
                                         すべてクリア
                                     </button>
@@ -610,16 +897,94 @@ export default function DesignSearchPage() {
                         )}
                     </div>
                 </div>
+
+                {/* クイックトグル & アクティブフィルター一覧 */}
+                <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2.5">
+                    {/* トグルボタン群 */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-sf-text-weak font-medium">クイック絞り込み:</span>
+                        <button
+                            type="button"
+                            onClick={() => setOnlyWithImage(!onlyWithImage)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border transition-all cursor-pointer ${
+                                onlyWithImage
+                                    ? 'bg-pink-50 border-pink-300 text-pink-700 font-semibold shadow-2xs'
+                                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            <ImageIcon size={13} className={onlyWithImage ? 'text-pink-600' : 'text-gray-400'} />
+                            画像あり
+                            {onlyWithImage && <X size={12} className="ml-0.5 hover:opacity-75" />}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setOnlyWithPdf(!onlyWithPdf)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border transition-all cursor-pointer ${
+                                onlyWithPdf
+                                    ? 'bg-red-50 border-red-300 text-red-700 font-semibold shadow-2xs'
+                                    : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                            }`}
+                        >
+                            <FileText size={13} className={onlyWithPdf ? 'text-red-600' : 'text-gray-400'} />
+                            仕様書PDFあり
+                            {onlyWithPdf && <X size={12} className="ml-0.5 hover:opacity-75" />}
+                        </button>
+                    </div>
+
+                    {/* アクティブフィルターチップ & リセット */}
+                    {hasActiveFilters && (
+                        <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+                            <span className="text-xs text-sf-text-weak">適用中:</span>
+                            {searchTerm.trim() && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                                    検索: {searchTerm}
+                                    <button onClick={() => setSearchTerm('')} className="hover:text-blue-900 cursor-pointer"><X size={11} /></button>
+                                </span>
+                            )}
+                            {statusTab !== 'all' && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    {statusTab === 'in_progress' ? '進行中' : statusTab === 'completed' ? '出稿・完了' : '保留・失注'}
+                                    <button onClick={() => setStatusTab('all')} className="hover:text-indigo-900 cursor-pointer"><X size={11} /></button>
+                                </span>
+                            )}
+                            {selectedCustomer.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200">
+                                    得意先 ({selectedCustomer.length})
+                                    <button onClick={() => setSelectedCustomer([])} className="hover:text-gray-900 cursor-pointer"><X size={11} /></button>
+                                </span>
+                            )}
+                            {selectedType.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200">
+                                    種別 ({selectedType.length})
+                                    <button onClick={() => setSelectedType([])} className="hover:text-gray-900 cursor-pointer"><X size={11} /></button>
+                                </span>
+                            )}
+                            {selectedProgress.length > 0 && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200">
+                                    進捗 ({selectedProgress.length})
+                                    <button onClick={() => setSelectedProgress([])} className="hover:text-gray-900 cursor-pointer"><X size={11} /></button>
+                                </span>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleClearAllFilters}
+                                className="text-xs text-sf-light-blue hover:underline font-medium ml-1 cursor-pointer"
+                            >
+                                条件をクリア
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* 統計サマリー */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded border border-sf-border shadow-sm">
-                    <p className="text-sm text-sf-text-weak mb-1">デザイン依頼</p>
+                    <p className="text-sm text-sf-text-weak mb-1">デザイン依頼（全体）</p>
                     <p className="text-2xl font-semibold text-sf-text">{designRequests.length}</p>
                 </div>
                 <div className="bg-white p-4 rounded border border-sf-border shadow-sm">
-                    <p className="text-sm text-sf-text-weak mb-1">検索結果</p>
+                    <p className="text-sm text-sf-text-weak mb-1">絞り込み結果</p>
                     <p className="text-2xl font-semibold text-sf-light-blue">{filteredRequests.length}</p>
                 </div>
                 <div className="bg-white p-4 rounded border border-sf-border shadow-sm">
@@ -632,35 +997,168 @@ export default function DesignSearchPage() {
 
             {/* 検索結果テーブル */}
             <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-sf-border bg-gray-50">
-                    <h2 className="font-semibold text-sm text-sf-text">デザイン依頼一覧</h2>
+                <div className="px-4 py-3 border-b border-sf-border bg-gray-50 flex items-center justify-between">
+                    <h2 className="font-semibold text-sm text-sf-text">
+                        デザイン依頼一覧 ({sortedRequests.length}件)
+                    </h2>
+                    {sortConfig.key && (
+                        <span className="text-xs text-sf-text-weak">
+                            並び順: {
+                                sortConfig.key === 'lastActivityDate' ? '最終活動日' :
+                                sortConfig.key === 'requestsCount' ? '活動回数' :
+                                sortConfig.key === 'designNo' ? 'デザインNo.' :
+                                sortConfig.key === 'customerName' ? '得意先名' :
+                                sortConfig.key === 'customerCode' ? '得意先CD' :
+                                sortConfig.key === 'deliveryName' ? '直送先' :
+                                sortConfig.key === 'designName' ? 'デザイン名' :
+                                sortConfig.key === 'designType' ? '種別' : '進捗状況'
+                            } ({sortConfig.order === 'asc' ? '昇順 ▲' : '降順 ▼'})
+                        </span>
+                    )}
                 </div>
 
                 {isLoading ? (
                     <div className="p-8 text-center text-sf-text-weak">読み込み中...</div>
-                ) : filteredRequests.length === 0 ? (
+                ) : sortedRequests.length === 0 ? (
                     <div className="p-8 text-center text-sf-text-weak">
-                        {searchTerm || selectedCustomer || selectedType || selectedProgress ? '検索結果が見つかりません' : 'デザイン依頼が見つかりません'}
+                        {hasActiveFilters ? '条件に一致するデザイン依頼が見つかりません' : 'デザイン依頼が見つかりません'}
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
-                            <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border">
+                            <thead className="text-xs text-sf-text-weak bg-gray-50 border-b border-sf-border select-none">
                                 <tr>
-                                    <th className="px-4 py-3 text-left font-medium w-12"></th>
-                                    <th className="px-4 py-3 text-left font-medium">デザインNo.</th>
-                                    <th className="px-4 py-3 text-left font-medium">得意先CD</th>
-                                    <th className="px-4 py-3 text-left font-medium">得意先名</th>
-                                    <th className="px-4 py-3 text-left font-medium">直送先</th>
-                                    <th className="px-4 py-3 text-left font-medium">デザイン名</th>
-                                    <th className="px-4 py-3 text-left font-medium">種別</th>
-                                    <th className="px-4 py-3 text-center font-medium">進捗状況</th>
-                                    <th className="px-4 py-3 text-center font-medium">活動回数</th>
-                                    <th className="px-4 py-3 text-left font-medium">最終活動日</th>
+                                    <th className="px-4 py-3 text-left font-medium w-10"></th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('designNo')}
+                                        title="デザインNo.で並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>デザインNo.</span>
+                                            {sortConfig.key === 'designNo' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('customerCode')}
+                                        title="得意先CDで並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>得意先CD</span>
+                                            {sortConfig.key === 'customerCode' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('customerName')}
+                                        title="得意先名で並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>得意先名</span>
+                                            {sortConfig.key === 'customerName' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('deliveryName')}
+                                        title="直送先で並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>直送先</span>
+                                            {sortConfig.key === 'deliveryName' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('designName')}
+                                        title="デザイン名で並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>デザイン名</span>
+                                            {sortConfig.key === 'designName' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('designType')}
+                                        title="種別で並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>種別</span>
+                                            {sortConfig.key === 'designType' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-center font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('designProgress')}
+                                        title="進捗状況で並び替え"
+                                    >
+                                        <div className="inline-flex items-center justify-center gap-1.5 w-full">
+                                            <span>進捗状況</span>
+                                            {sortConfig.key === 'designProgress' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-center font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('requestsCount')}
+                                        title="活動回数で並び替え"
+                                    >
+                                        <div className="inline-flex items-center justify-center gap-1.5 w-full">
+                                            <span>活動回数</span>
+                                            {sortConfig.key === 'requestsCount' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        onClick={() => handleSort('lastActivityDate')}
+                                        title="最終活動日で並び替え"
+                                    >
+                                        <div className="inline-flex items-center gap-1.5">
+                                            <span>最終活動日</span>
+                                            {sortConfig.key === 'lastActivityDate' ? (
+                                                sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
+                                            ) : (
+                                                <ArrowUpDown size={13} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                                            )}
+                                        </div>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredRequests.map((req) => {
+                                {sortedRequests.map((req) => {
                                     const isExpanded = expandedRows.has(req.designNo);
                                     const lastActivity = req.requests[req.requests.length - 1];
 
@@ -679,15 +1177,20 @@ export default function DesignSearchPage() {
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3 font-medium text-sf-light-blue">
-                                                    <div className="flex items-center gap-2">
-                                                        {req.designNo}
-                                                        <button
-                                                            onClick={(e: React.MouseEvent) => handleImageSearch(req.designNo, e)}
-                                                            className="p-1 rounded hover:bg-sf-light-blue/10 text-pink-500 transition-colors"
-                                                            title="関連画像を検索"
-                                                        >
-                                                            <ImageIcon size={16} />
-                                                        </button>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-mono font-semibold">{req.designNo}</span>
+                                                        <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center">
+                                                            <DesignImageHoverButton
+                                                                designNo={req.designNo}
+                                                                selectedFile={selectedFile || undefined}
+                                                                onOpenModal={(imgs, targetNo) => {
+                                                                    setImageResults(imgs);
+                                                                    setSearchQueryDebug(targetNo);
+                                                                    setShowImageModal(true);
+                                                                }}
+                                                                size="sm"
+                                                            />
+                                                        </div>
                                                         {(() => {
                                                             const matchedDocs = viewerMap.get(req.designNo);
                                                             if (!matchedDocs || matchedDocs.length === 0) return null;

@@ -281,6 +281,32 @@ export const searchDesignImages = async (query: string, filename?: string): Prom
     }
 };
 
+export const checkDesignImagesBatch = async (
+    queries: string[],
+    filename?: string
+): Promise<Record<string, { has_images: boolean; count: number }>> => {
+    if (!queries || queries.length === 0) return {};
+    try {
+        const body: { queries: string[]; filename?: string; passcode?: string } = {
+            queries
+        };
+        if (filename) {
+            body.filename = filename;
+        }
+        if (typeof window !== 'undefined') {
+            const passcode = localStorage.getItem('viewer_passcode');
+            if (passcode) {
+                body.passcode = passcode;
+            }
+        }
+        const response = await api.post(`${API_URL}/images/check-batch`, body);
+        return response.data?.results || {};
+    } catch (error) {
+        console.error('Error checking design images batch:', error);
+        return {};
+    }
+};
+
 export const getImageUrl = (path: string): string => {
     if (!path) return '';
     if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -359,6 +385,12 @@ export const getSyncStatus = async (): Promise<SyncStatus> => {
 
 export const triggerSyncProcess = async (): Promise<{ processed: number; failed: number; remaining: number }> => {
     const response = await api.post(`${API_URL}/sync/process`);
+    return response.data;
+};
+
+export const clearCache = async (filename?: string): Promise<{ status: string; message: string }> => {
+    const params = filename ? { filename } : {};
+    const response = await api.post(`${API_URL}/cache/clear`, null, { params });
     return response.data;
 };
 

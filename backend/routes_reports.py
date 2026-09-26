@@ -261,6 +261,8 @@ def get_priority_customers(filename: str = config.DEFAULT_EXCEL_FILE) -> List[Di
                 customer_cd = str(int(customer_cd))
             else:
                 customer_cd = str(customer_cd).strip()
+            if customer_cd.endswith('.0'):
+                customer_cd = customer_cd[:-2]
             
             if not customer_cd:
                 continue

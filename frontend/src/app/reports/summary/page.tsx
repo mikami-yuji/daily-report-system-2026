@@ -23,6 +23,22 @@ function extractStaffName(filename: string | null): string {
     return content.slice(0, 4);
 }
 
+// 得意先CD・直送先CDの整形（.0の除去、nan除外など）
+function formatCustomerCode(code: string | number | undefined | null): string {
+    if (!code) return '';
+    const str = String(code).trim();
+    if (str.toLowerCase() === 'nan' || str.toLowerCase() === 'none' || str === '-') return '';
+    return str.replace(/\.0$/, '');
+}
+
+// ランク文字列のクリーンアップ（nan等の除外）
+function formatRank(rank: string | undefined | null): string {
+    if (!rank) return '';
+    const str = String(rank).trim();
+    if (str.toLowerCase() === 'nan' || str.toLowerCase() === 'none' || str === '-') return '';
+    return str;
+}
+
 export default function MonthlySummaryPage(): React.ReactElement {
     const { selectedFile } = useFile();
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -346,7 +362,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                         </button>
                                                     )}
                                                 </td>
-                                                <td className="px-3 py-2 text-gray-500 font-mono text-xs">{pc.code}</td>
+                                                <td className="px-3 py-2 text-gray-500 font-mono text-xs">{formatCustomerCode(pc.code)}</td>
                                                 <td className="px-3 py-2">
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-gray-900 font-bold">{pc.name}</span>
@@ -354,9 +370,9 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                 </td>
                                                 <td className="px-3 py-2 text-gray-600 text-xs">{pc.area}</td>
                                                 <td className="px-3 py-2 text-center">
-                                                    {pc.rank && (
+                                                    {formatRank(pc.rank) && (
                                                         <span className="inline-block px-1.5 py-0.5 rounded border border-gray-300 text-[10px] font-bold text-gray-500 bg-gray-50">
-                                                            {pc.rank}
+                                                            {formatRank(pc.rank)}
                                                         </span>
                                                     )}
                                                 </td>
@@ -377,7 +393,7 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                 <tr key={`${pc.code}-${dd.code}`} className="bg-gray-50/50 border-l-4 border-gray-200">
                                                     <td className="px-3 py-1.5 print:hidden"></td>
                                                     <td className="px-3 py-1.5 text-gray-400 font-mono text-[10px] pl-6 flex items-center gap-1">
-                                                        <CornerDownRight size={12} /> {dd.code}
+                                                        <CornerDownRight size={12} /> {formatCustomerCode(dd.code)}
                                                     </td>
                                                     <td className="px-3 py-1.5">
                                                         <div className="flex items-center gap-2">
@@ -387,9 +403,9 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                                     </td>
                                                     <td className="px-3 py-1.5 text-gray-500 text-[10px]">{dd.area}</td>
                                                     <td className="px-3 py-1.5 text-center">
-                                                        {dd.rank && (
+                                                        {formatRank(dd.rank) && (
                                                             <span className="inline-block px-1 py-0.5 rounded border border-gray-200 text-[10px] font-bold text-gray-400">
-                                                                {dd.rank}
+                                                                {formatRank(dd.rank)}
                                                             </span>
                                                         )}
                                                     </td>

@@ -414,37 +414,57 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
         priorityCustomers = []
         pdf = mdf[mdf['is_p']].copy()
         if not pdf.empty and customer_col in pdf.columns:
+            def clean_code(val):
+                if pd.isna(val) or val is None:
+                    return ''
+                s = str(val).strip()
+                if s.endswith('.0'):
+                    s = s[:-2]
+                if s.lower() in ['nan', 'none', '-']:
+                    return ''
+                return s
+
+            def clean_rank(val):
+                if pd.isna(val) or val is None:
+                    return ''
+                s = str(val).strip()
+                if s.lower() in ['nan', 'none', '-']:
+                    return ''
+                return s
+
             for ccode, cg in pdf.groupby(customer_col):
+                clean_ccode = clean_code(ccode)
                 p_cname = cg[customer_name_col].iloc[0] if customer_name_col in cg.columns else '不明'
                 p_area = cg[area_col].iloc[0] if area_col in cg.columns else ''
-                p_rank = cg[rank_col].iloc[0] if rank_col in cg.columns else ''
+                p_rank = clean_rank(cg[rank_col].iloc[0] if rank_col in cg.columns else '')
                 
                 dd_list = []
                 if dd_code_col in cg.columns:
                     for ddcode, ddg in cg[cg[dd_code_col].notna() & (cg[dd_code_col].astype(str).str.strip() != '')].groupby(dd_code_col):
                         dd_cname = ddg[dd_name_col].iloc[0] if dd_name_col in ddg.columns else ''
                         dd_area = ddg[area_col].iloc[0] if area_col in ddg.columns else ''
-                        dd_rank = ddg[rank_col].iloc[0] if rank_col in ddg.columns else ''
+                        dd_rank = clean_rank(ddg[rank_col].iloc[0] if rank_col in ddg.columns else '')
                         dd_visits = int(ddg['is_v'].sum())
                         dd_calls = int(ddg['is_c'].sum())
+                        clean_ddcode = clean_code(ddcode)
                         
                         if dd_visits > 0 or dd_calls > 0 or int(is_design_proposal[ddg.index].sum()) > 0:
                             dd_list.append({
-                                "code": str(ddcode).replace('.0', '').strip(),
+                                "code": clean_ddcode,
                                 "name": str(dd_cname),
                                 "visits": dd_visits,
                                 "calls": dd_calls,
                                 "designProposals": int(is_design_proposal[ddg.index].sum()),
                                 "lastDate": ddg['dt'].max().strftime('%Y/%m/%d') if not pd.isna(ddg['dt'].max()) else '',
                                 "area": str(dd_area),
-                                "rank": str(dd_rank),
+                                "rank": dd_rank,
                                 "isPriority": True
                             })
 
                 c_visits = int(cg['is_v'].sum())
                 c_calls = int(cg['is_c'].sum())
                 priorityCustomers.append({
-                    "code": str(ccode),
+                    "code": clean_ccode,
                     "name": str(p_cname),
                     "visits": c_visits,
                     "calls": c_calls,
@@ -452,7 +472,7 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
                     "total": c_visits + c_calls,
                     "lastDate": cg['dt'].max().strftime('%Y/%m/%d') if not pd.isna(cg['dt'].max()) else '',
                     "area": str(p_area),
-                    "rank": str(p_rank),
+                    "rank": p_rank,
                     "isPriority": True,
                     "directDeliveries": dd_list
                 })

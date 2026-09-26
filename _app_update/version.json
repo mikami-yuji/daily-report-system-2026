@@ -1,12 +1,11 @@
 {
-  "version": "2.5.21",
+  "version": "2.5.22",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.21.exe",
-  "fileSize": 49158910,
-  "sha256": "5eeb30080c1cc594dda9f75ace8fc7c1f39d1de2aea23c0b8822b637c97389c5",
+  "fileName": "DailyReportServer_v2.5.22.exe",
+  "fileSize": 49167643,
+  "sha256": "0b478adad5590e46e06d1383a38cbd53957a0514bb8d7413fbf9892a34ba07cf",
   "forceUpdate": false,
   "releaseNotes": [
-    "月次サマリー画面における得意先CDの.0表示削除",
-    "ランクのnan表示クリーンアップ"
+    "基幹システム(AS/400)全社売上明細データの自動取り込み・顧客詳細での直近受注履歴表示に対応"
   ]
 }

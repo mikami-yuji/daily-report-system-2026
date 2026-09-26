@@ -96,16 +96,37 @@ async def get_all_sales_data():
 
 
 
+import sales_importer
+
 @router.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
-    Retrieves sales data for a specific customer from the global dataset.
+    得意先コードの売上サマリーおよび直近購入履歴を取得。
+    AS/400キャッシュを優先参照し、フォールバックで従来のグローバル売上データも参照可能。
     """
+    target_code = str(customer_code).split('.')[0].strip().lstrip('0')
+    
+    # 1. AS/400の最新売上明細キャッシュ（SQLite）から取得を試みる
+    try:
+        as400_summary = sales_importer.get_customer_sales_summary(target_code)
+        if as400_summary.get("found"):
+            # 従来の sales_df に順位等があればマージ
+            if config.global_sales_df is not None:
+                matched_row = config.global_sales_df[config.global_sales_df['得意先コード'] == target_code]
+                if not matched_row.empty:
+                    row = matched_row.iloc[0]
+                    as400_summary["rank"] = row.get('順位') if pd.notna(row.get('順位')) else None
+                    if not as400_summary.get("rank_class") and pd.notna(row.get('ランク')):
+                        as400_summary["rank_class"] = row.get('ランク')
+            return as400_summary
+    except Exception as e:
+        logging.error(f"Error querying AS400 sales cache for {target_code}: {e}")
+
+    # 2. フォールバック: 従来のグローバル売上データ
     if config.global_sales_df is None:
         return {"found": False, "message": "Sales data not yet uploaded."}
     
     try:
-        target_code = str(customer_code).split('.')[0]
         matched_row = config.global_sales_df[config.global_sales_df['得意先コード'] == target_code]
         
         if matched_row.empty:
@@ -134,6 +155,7 @@ async def get_sales_data(customer_code: str):
             "sales_2y_ago": get_val('前々年売上'),
             "profit_2y_ago": get_val('前々年粗利'),
             "customer_name": get_val('得意先名称'),
+            "recent_orders": [],
             "updated_at": datetime.now().isoformat()
         }
         return data

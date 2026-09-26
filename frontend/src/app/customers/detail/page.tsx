@@ -21,7 +21,8 @@ import {
     DollarSign,
     Database,
     Image as ImageIcon,
-    BarChart3
+    BarChart3,
+    ShoppingBag
 } from 'lucide-react';
 import {
     BarChart,
@@ -50,6 +51,17 @@ type DesignRequest = {
     lastUpdate: string;
 };
 
+type SalesOrderItem = {
+    order_date: string;
+    product_name: string;
+    brand_name?: string;
+    quantity: number;
+    unit_price: number;
+    amount: number;
+    sales_rep?: string;
+    delivery_date?: string;
+};
+
 type SalesData = {
     found: boolean;
     rank?: string | number;
@@ -62,6 +74,8 @@ type SalesData = {
     sales_2y_ago?: string | number;
     profit_2y_ago?: string | number;
     customer_name?: string;
+    last_order_date?: string;
+    recent_orders?: SalesOrderItem[];
     message?: string;
     updated_at?: string;
 };
@@ -834,6 +848,71 @@ function CustomerDetailContent() {
                                 </div>
                             )}
                         </div>
+
+                        {/* 直近の受注・納品明細履歴（基幹AS/400連携） */}
+                        {salesData && salesData.recent_orders && salesData.recent_orders.length > 0 && (
+                            <div className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
+                                <div className="p-4 border-b border-sf-border bg-gray-50 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <ShoppingBag size={18} className="text-sf-light-blue" />
+                                        <h4 className="font-semibold text-sf-text">直近の受注・納品履歴 (AS/400基幹データ)</h4>
+                                    </div>
+                                    {salesData.last_order_date && (
+                                        <span className="text-xs text-sf-text-weak bg-white px-2.5 py-1 rounded border border-sf-border">
+                                            最終受注: <strong className="text-sf-text">{salesData.last_order_date}</strong>
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-gray-50 text-xs text-sf-text-weak uppercase border-b border-sf-border">
+                                            <tr>
+                                                <th className="py-2.5 px-4 font-semibold">受注日</th>
+                                                <th className="py-2.5 px-4 font-semibold">商品名称 / 銘柄・ブランド</th>
+                                                <th className="py-2.5 px-4 font-semibold text-right">数量</th>
+                                                <th className="py-2.5 px-4 font-semibold text-right">単価</th>
+                                                <th className="py-2.5 px-4 font-semibold text-right">受注金額</th>
+                                                <th className="py-2.5 px-4 font-semibold">担当</th>
+                                                <th className="py-2.5 px-4 font-semibold">納期日</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {salesData.recent_orders.map((order, idx) => (
+                                                <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
+                                                    <td className="py-3 px-4 font-mono text-xs whitespace-nowrap text-gray-700">
+                                                        {order.order_date}
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        <div className="font-medium text-sf-text">{order.product_name}</div>
+                                                        {order.brand_name && (
+                                                            <span className="inline-block mt-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200">
+                                                                🏷️ {order.brand_name}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right font-medium whitespace-nowrap">
+                                                        {Number(order.quantity).toLocaleString()}
+                                                        <span className="text-xs text-gray-500 ml-1">枚</span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right text-sf-text-weak whitespace-nowrap">
+                                                        {order.unit_price > 0 ? `${Number(order.unit_price).toLocaleString()}円` : '-'}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right font-semibold text-sf-text whitespace-nowrap">
+                                                        {Number(order.amount).toLocaleString()}円
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs text-gray-600 whitespace-nowrap">
+                                                        {order.sales_rep || '-'}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-xs font-mono text-gray-500 whitespace-nowrap">
+                                                        {order.delivery_date || '-'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

@@ -918,9 +918,9 @@ function CustomerDetailContent() {
                                                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                                                     fontSize: '12px'
                                                 }}
-                                                formatter={(value: any, name: any) => [
+                                                formatter={(value: unknown, name: unknown) => [
                                                     `${Number(value || 0).toLocaleString()}円`,
-                                                    name === 'sales' ? '当期売上' : (name === 'last_year_sales' ? '前年同月売上' : name)
+                                                    name === 'sales' ? '当期売上' : (name === 'last_year_sales' ? '前年同月売上' : String(name || ''))
                                                 ]}
                                                 labelFormatter={(label) => `年月: 20${label}`}
                                             />

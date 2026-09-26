@@ -17,11 +17,8 @@ import {
     Trash2,
     Copy,
     Check,
-    AlertTriangle,
-    Clock,
     Tag,
     Building2,
-    Calendar,
     ChevronDown,
     X,
     ExternalLink,
@@ -30,7 +27,6 @@ import {
     FileSpreadsheet,
     Eye,
     Layers,
-    SlidersHorizontal,
     MapPin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -118,7 +114,6 @@ function CatalogContent() {
 
     const [products, setProducts] = useState<ProductItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [loadingCustomers, setLoadingCustomers] = useState(true);
     const [directDests, setDirectDests] = useState<{ name: string; code: string; sample_customer?: string; order_count: number }[]>([]);
     const [selectedDirectDest, setSelectedDirectDest] = useState<string>('all');
     const [directDestQuery, setDirectDestQuery] = useState<string>('');
@@ -156,7 +151,6 @@ function CatalogContent() {
 
     // Initial / On-file-change Load of Customers
     useEffect(() => {
-        setLoadingCustomers(true);
         const url = selectedFile
             ? `/api/catalog/customers?file_name=${encodeURIComponent(selectedFile)}`
             : '/api/catalog/customers';
@@ -192,26 +186,23 @@ function CatalogContent() {
             .catch(err => {
                 console.error('Failed to load customers:', err);
                 toast.error('得意先リストの取得に失敗しました');
-            })
-            .finally(() => setLoadingCustomers(false));
+            });
     }, [selectedFile, initialCode]);
 
     // Load direct destinations when selected customer changes
     useEffect(() => {
         if (!selectedCustomer) {
-            setDirectDests([]);
-            setSelectedDirectDest('all');
-            setDirectDestQuery('');
-            setShowDirectDestDropdown(false);
             return;
         }
 
-        setSelectedDirectDest('all');
-        setDirectDestQuery('');
-        setShowDirectDestDropdown(false);
+        let isMounted = true;
         fetch(`/api/catalog/direct-dests?customer_code=${selectedCustomer.code}`)
             .then(res => res.json())
             .then(data => {
+                if (!isMounted) return;
+                setSelectedDirectDest('all');
+                setDirectDestQuery('');
+                setShowDirectDestDropdown(false);
                 if (data.success && data.direct_dests) {
                     setDirectDests(data.direct_dests);
                 } else {
@@ -219,18 +210,23 @@ function CatalogContent() {
                 }
             })
             .catch(err => {
+                if (!isMounted) return;
                 console.error('Failed to load direct dests:', err);
+                setDirectDests([]);
             });
+
+        return () => {
+            isMounted = false;
+        };
     }, [selectedCustomer]);
 
     // Load Products when selected customer or selected direct destination changes
     useEffect(() => {
         if (!selectedCustomer) {
-            setProducts([]);
             return;
         }
 
-        setLoading(true);
+        let isMounted = true;
         let url = `/api/catalog/products?customer_code=${selectedCustomer.code}`;
         if (selectedDirectDest !== 'all') {
             url += `&direct_dest=${encodeURIComponent(selectedDirectDest)}`;
@@ -239,15 +235,25 @@ function CatalogContent() {
         fetch(url)
             .then(res => res.json())
             .then(data => {
+                if (!isMounted) return;
                 if (data.success && data.products) {
                     setProducts(data.products);
+                } else {
+                    setProducts([]);
                 }
+                setLoading(false);
             })
             .catch(err => {
+                if (!isMounted) return;
                 console.error('Failed to load products:', err);
                 toast.error('商品リストの取得に失敗しました');
-            })
-            .finally(() => setLoading(false));
+                setProducts([]);
+                setLoading(false);
+            });
+
+        return () => {
+            isMounted = false;
+        };
     }, [selectedCustomer, selectedDirectDest]);
 
     // Filtered and Sorted Products
@@ -904,7 +910,7 @@ function CatalogContent() {
                     name: fname,
                     path: url,
                     folder: 'Asahipack01 商品画像サーバー',
-                    mtime: Date.now() / 1000,
+                    mtime: 0,
                     source: 'file_server'
                 };
             });
@@ -917,7 +923,7 @@ function CatalogContent() {
                 name: fname,
                 path: product.image_url,
                 folder: 'Asahipack01 商品画像サーバー',
-                mtime: Date.now() / 1000,
+                mtime: 0,
                 source: 'file_server'
             }]);
             setSearchingImage(false);

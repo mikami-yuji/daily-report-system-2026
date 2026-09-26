@@ -149,7 +149,7 @@ export default function CompetitorInfoPage(): React.JSX.Element {
                         <Calendar size={16} className="text-gray-400 shrink-0" />
                         <select
                             value={periodFilter}
-                            onChange={(e) => setPeriodFilter(e.target.value as any)}
+                            onChange={(e) => setPeriodFilter(e.target.value as 'all' | '3m' | '6m' | 'year')}
                             className="text-xs border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-sf-light-blue focus:border-sf-light-blue font-medium"
                         >
                             <option value="all">全期間</option>

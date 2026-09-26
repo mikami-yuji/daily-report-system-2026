@@ -206,7 +206,7 @@ export default function ComplaintsPage() {
                             <Calendar size={14} className="text-gray-400 shrink-0" />
                             <select
                                 value={periodFilter}
-                                onChange={(e) => setPeriodFilter(e.target.value as any)}
+                                onChange={(e) => setPeriodFilter(e.target.value as 'all' | '3m' | '6m' | 'year')}
                                 className="w-full text-xs border border-sf-border rounded px-2.5 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-sf-light-blue font-medium"
                             >
                                 <option value="all">全期間</option>

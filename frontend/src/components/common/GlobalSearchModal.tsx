@@ -48,11 +48,12 @@ export default function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModal
     // モーダルが開いたときに入力欄にフォーカス
     useEffect(() => {
         if (isOpen) {
-            setKeyword('');
-            setSelectedIndex(0);
-            setTimeout(() => {
+            const timer = setTimeout(() => {
+                setKeyword('');
+                setSelectedIndex(0);
                 inputRef.current?.focus();
             }, 50);
+            return () => clearTimeout(timer);
         }
     }, [isOpen]);
 

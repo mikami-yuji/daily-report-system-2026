@@ -229,7 +229,7 @@ export default function MassRetailerSurveyPage(): React.JSX.Element {
                             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                             <select
                                 value={periodFilter}
-                                onChange={(e) => setPeriodFilter(e.target.value as any)}
+                                onChange={(e) => setPeriodFilter(e.target.value as 'all' | '3m' | '6m' | 'year')}
                                 className="w-full pl-8 pr-4 py-2 text-xs border border-gray-300 rounded-lg focus:ring-1 focus:ring-sf-light-blue focus:border-sf-light-blue outline-none bg-white font-medium"
                             >
                                 <option value="all">全期間</option>

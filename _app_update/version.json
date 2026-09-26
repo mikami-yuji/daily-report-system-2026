@@ -1,13 +1,12 @@
 {
-  "version": "2.5.25",
+  "version": "2.5.26",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.25.exe",
-  "fileSize": 49169504,
-  "sha256": "b39669eb123d7407f956b2086739f53230ffcc2a6ea44ad2bc5963db1271960d",
+  "fileName": "DailyReportServer_v2.5.26.exe",
+  "fileSize": 49174135,
+  "sha256": "d925c841a2ff246a3a26892eb477d11f3cb5f9ea4b54ffeb047defe2920b86f6",
   "forceUpdate": false,
   "releaseNotes": [
-    "基幹AS400売上データ連携高速化",
-    "フリーズ・タイムアウト解消",
-    "数量単位（ロールｍ・単袋枚）自動判別"
+    "基幹売上明細（AS/400）手動同期対応",
+    "設定画面連携"
   ]
 }

@@ -4,6 +4,7 @@ import os
 import shutil
 import json
 import logging
+import asyncio
 import re
 import traceback
 import math
@@ -109,6 +110,28 @@ async def get_all_sales_data():
 
 import sales_importer
 
+@router.get("/api/sales/sync-status")
+async def get_sales_sync_status():
+    """現在のAS/400基幹売上データの手動同期ステータスを取得"""
+    try:
+        status = sales_importer.get_as400_sync_status()
+        return sanitize_json_obj(status)
+    except Exception as e:
+        logging.error(f"Error getting sales sync status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/sales/sync")
+async def trigger_sales_sync():
+    """基幹売上データの手動同期を実行（非同期スレッド実行）"""
+    try:
+        result = await asyncio.to_thread(sales_importer.run_manual_sync, True)
+        return sanitize_json_obj(result)
+    except Exception as e:
+        logging.error(f"Error triggering sales sync: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
@@ -180,6 +203,7 @@ async def get_sales_data(customer_code: str):
     except Exception as e:
         logging.error(f"Error retrieving sales data: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+
 
 
 

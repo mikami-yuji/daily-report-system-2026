@@ -58,25 +58,13 @@ async def sync_worker_loop():
 
 import sales_importer
 
-async def sales_importer_background():
-    """起動時にAS/400の売上CSVをバックグラウンドで取り込み・更新（日報や画像の初期ロード完了後に安全に実行）"""
-    try:
-        await asyncio.sleep(10) # 起動直後の日報データ・画像取得を最優先
-        await asyncio.to_thread(sales_importer.import_as400_sales_csv)
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        logging.warning(f"Background AS/400 sales import error: {e}")
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 起動時: バックグラウンド同期ワーカーを開始
     worker_task = asyncio.create_task(sync_worker_loop())
-    sales_task = asyncio.create_task(sales_importer_background())
     yield
     # 終了時: ワーカーを安全に停止
     worker_task.cancel()
-    sales_task.cancel()
     try:
         await worker_task
     except asyncio.CancelledError:

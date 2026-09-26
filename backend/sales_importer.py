@@ -9,6 +9,7 @@ import os
 import glob
 import logging
 import sqlite3
+import threading
 import pandas as pd
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -358,3 +359,77 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
             "recent_orders": history,
             "updated_at": datetime.now().isoformat()
         }
+
+
+_sync_lock = threading.Lock()
+_is_syncing = False
+
+def get_as400_sync_status() -> Dict[str, Any]:
+    """現在のAS/400売上データの同期ステータスを取得"""
+    latest_csv = find_latest_sales_csv()
+    csv_info = None
+    if latest_csv and os.path.exists(latest_csv):
+        csv_info = {
+            "path": latest_csv,
+            "filename": os.path.basename(latest_csv),
+            "size": os.path.getsize(latest_csv),
+            "modified_at": datetime.fromtimestamp(os.path.getmtime(latest_csv)).strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+    init_sales_db()
+    meta = {}
+    total_orders = 0
+    with get_sales_db_conn() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT key, value FROM as400_sales_meta")
+        for k, v in cursor.fetchall():
+            meta[k] = v
+        try:
+            cursor.execute("SELECT COUNT(*) FROM as400_sales_orders")
+            row = cursor.fetchone()
+            total_orders = row[0] if row else 0
+        except Exception:
+            total_orders = 0
+
+    last_import = meta.get("last_import_time")
+    if last_import and "T" in last_import:
+        last_import = last_import.replace("T", " ")[:19]
+
+    return {
+        "is_syncing": _is_syncing,
+        "total_orders": total_orders,
+        "last_import_time": last_import,
+        "last_csv_path": meta.get("last_csv_path"),
+        "latest_csv": csv_info,
+        "configured_dir": DEFAULT_AS400_CSV_DIR
+    }
+
+
+def run_manual_sync(force: bool = True) -> Dict[str, Any]:
+    """手動同期を実行（排他ロック付き）"""
+    global _is_syncing
+    if not _sync_lock.acquire(blocking=False):
+        return {
+            "success": False,
+            "message": "現在別の同期処理が実行中です。完了するまでお待ちください。"
+        }
+    _is_syncing = True
+    try:
+        success = import_as400_sales_csv(force=force)
+        status = get_as400_sync_status()
+        if success:
+            return {
+                "success": True,
+                "message": f"基幹売上明細の同期が完了しました（{status['total_orders']:,}件）。",
+                "status": status
+            }
+        else:
+            return {
+                "success": False,
+                "message": "同期に失敗したか、対象のCSVファイルが見つかりませんでした。",
+                "status": status
+            }
+    finally:
+        _is_syncing = False
+        _sync_lock.release()
+

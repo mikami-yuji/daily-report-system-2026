@@ -70,13 +70,15 @@ def init_sales_db(db_path: Optional[str] = None):
     with get_sales_db_conn(db_path) as conn:
         cursor = conn.cursor()
         
-        # 売上明細テーブル
+        # 売上明細テーブル（納期基準の売上日、出来高数量、実効単価を完全サポート）
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS as400_sales_orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_no INTEGER,
                 branch_no INTEGER,
                 order_date TEXT,
+                delivery_date TEXT,
+                sales_date TEXT,
                 customer_code TEXT,
                 customer_name TEXT,
                 customer_rank TEXT,
@@ -85,22 +87,34 @@ def init_sales_db(db_path: Optional[str] = None):
                 brand_name TEXT,
                 shape_type TEXT,
                 unit TEXT,
+                order_quantity REAL,
                 quantity REAL,
                 unit_price REAL,
                 cost_price REAL,
                 amount REAL,
                 profit REAL,
                 sales_rep TEXT,
-                delivery_date TEXT,
                 title TEXT,
                 csv_mtime REAL
             )
         """)
         
+        # 既存DBへのカラム追加互換（カラムが存在しない場合は追加）
+        cursor.execute("PRAGMA table_info(as400_sales_orders)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if "sales_date" not in existing_cols:
+            cursor.execute("ALTER TABLE as400_sales_orders ADD COLUMN sales_date TEXT")
+        if "order_quantity" not in existing_cols:
+            cursor.execute("ALTER TABLE as400_sales_orders ADD COLUMN order_quantity REAL")
+        if "cost_price" not in existing_cols:
+            cursor.execute("ALTER TABLE as400_sales_orders ADD COLUMN cost_price REAL")
+        
         # インデックス
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_cust_code ON as400_sales_orders (customer_code)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_sales_rep ON as400_sales_orders (sales_rep)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_order_date ON as400_sales_orders (order_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_delivery_date ON as400_sales_orders (delivery_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_sales_date ON as400_sales_orders (sales_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_order_no_branch ON as400_sales_orders (order_no, branch_no)")
         
         # メタ情報テーブル（最新取り込みCSVのタイムスタンプ管理）
@@ -116,7 +130,10 @@ def init_sales_db(db_path: Optional[str] = None):
 def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) -> bool:
     """
     AS/400のCSVを取り込んで専用SQLiteキャッシュ（sales_cache.db）に保存する。
-    日報原本キャッシュ（shadow_cache.db）とは完全に独立して動作。
+    - 売上計上日: 納期日基準（製造リードタイム・月跨ぎを正確に反映、異常値は受注日にフォールバック）
+    - 売上数量: 引当数基準（製造ロスを引いた実際の完成・納品数量）
+    - 実効売上単価: 印刷代・製版代を本体単価に合算（伝票合計売上金額 ÷ 納品数量）
+    - 二重計上防止: 同一行№（ロールと袋）の金額重複を完全に排除
     """
     target_path = csv_path or find_latest_sales_csv()
     if not target_path or not os.path.exists(target_path):
@@ -152,10 +169,23 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
         brand_df = df[df['商品コード'].astype(str).str.strip() == '999999999']
         brand_map = dict(zip(zip(brand_df['受注№'], brand_df['受注枝番']), brand_df['商品名称'].astype(str).str.strip()))
 
-        # 2. 金額合計（伝票行計）のマップ
-        amount_map = df.groupby(['受注№', '受注枝番'])['受注金額'].sum().to_dict()
+        # 2. 受注行№の重複排除（同一行№でロールと袋が同じ金額で重複記録されている問題を防止）
+        df_unique = df.drop_duplicates(subset=['受注№', '受注枝番', '受注行№'], keep='first').copy()
 
-        # 3. 主製品行（製品コードが 90/91/99 以外）を高速抽出
+        # 3. 各行の有効数量と原価の計算
+        df_unique['引当数_num'] = pd.to_numeric(df_unique['引当数'], errors='coerce').fillna(0)
+        df_unique['受注数_num'] = pd.to_numeric(df_unique['受注数'], errors='coerce').fillna(0)
+        df_unique['原単価_num'] = pd.to_numeric(df_unique['原単価（下代）'], errors='coerce').fillna(0)
+        df_unique['受注金額_num'] = pd.to_numeric(df_unique['受注金額'], errors='coerce').fillna(0)
+
+        df_unique['line_qty'] = df_unique['引当数_num'].where(df_unique['引当数_num'] > 0, df_unique['受注数_num'])
+        df_unique['line_cost'] = df_unique['line_qty'] * df_unique['原単価_num']
+
+        # 伝票枝番（受注№, 受注枝番）ごとの合計売上金額 & 合計原価
+        amount_map = df_unique.groupby(['受注№', '受注枝番'])['受注金額_num'].sum().to_dict()
+        cost_map = df_unique.groupby(['受注№', '受注枝番'])['line_cost'].sum().to_dict()
+
+        # 4. 主製品行（製品コードが 90/91/99 以外）を高速抽出
         prod_mask = df['商品コード'].astype(str).str.strip().str.startswith(('0', '1', '2', '3', '4', '5', '6', '7', '8')) & \
                     (~df['商品コード'].astype(str).str.strip().str.startswith(('90', '91', '99')))
         main_df = df[prod_mask].drop_duplicates(subset=['受注№', '受注枝番'], keep='first')
@@ -169,58 +199,65 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
             fallback_missing = fallback_df[fallback_df.set_index(['受注№', '受注枝番']).index.isin(missing_keys)]
             main_df = pd.concat([main_df, fallback_missing], ignore_index=True)
 
-        # 4. レコード作成（ベクトル高速化）
+        # 5. レコード作成（ベクトル高速化）
         records = []
-        for row in main_df.itertuples(index=False):
-            row_dict = row._asdict()
-            jno = row_dict.get('受注№', 0)
-            eda = row_dict.get('受注枝番', 0)
+        for row in main_df.to_dict('records'):
+            jno = row.get('受注№', 0)
+            eda = row.get('受注枝番', 0)
             key = (jno, eda)
 
-            raw_cust_code = str(row_dict.get('得意先コード', '')).strip().split('.')[0]
+            raw_cust_code = str(row.get('得意先コード', '')).strip().split('.')[0]
             cust_code = raw_cust_code.lstrip('0') or raw_cust_code
-            cust_name = str(row_dict.get('得意先名称', '')).strip()
-            cust_rank = str(row_dict.get('得意先ランク', '')).strip() if pd.notna(row_dict.get('得意先ランク')) else ''
+            cust_name = str(row.get('得意先名称', '')).strip()
+            cust_rank = str(row.get('得意先ランク', '')).strip() if pd.notna(row.get('得意先ランク')) else ''
 
-            prod_code = str(row_dict.get('商品コード', '')).strip()
-            prod_name = str(row_dict.get('商品名称', '')).strip()
+            prod_code = str(row.get('商品コード', '')).strip()
+            prod_name = str(row.get('商品名称', '')).strip()
             brand_name = brand_map.get(key, '')
 
-            # T列（index 19 / 2つ目の文字１）
-            # itertuples では重複名カラムは _19 等になる
-            shape_type = ''
-            if len(row) > 19 and pd.notna(row[19]):
-                shape_type = str(row[19]).strip()
+            # 形状区分（T列 / 文字１.1）
+            shape_type = str(row.get('文字１.1', '')).strip() if pd.notna(row.get('文字１.1')) else ''
 
-            # ロールなら「ｍ」、単袋＋他は「枚」
-            title = str(row_dict.get('タイトル', '')).strip() if pd.notna(row_dict.get('タイトル')) else ''
+            title = str(row.get('タイトル', '')).strip() if pd.notna(row.get('タイトル')) else ''
             is_roll = ('ロール' in shape_type) or ('ロール' in prod_name) or ('RZ' in prod_name) or ('RA' in prod_name) or ('RZ' in title) or ('RA' in title)
             unit = 'ｍ' if is_roll else '枚'
 
-            qty = float(row_dict.get('受注数', 0)) if pd.notna(row_dict.get('受注数')) else 0.0
-            uprice = float(row_dict.get('売上単価', 0)) if pd.notna(row_dict.get('売上単価')) else 0.0
-            cprice = float(row_dict.get('原単価（下代）', 0)) if pd.notna(row_dict.get('原単価（下代）')) else 0.0
+            order_qty = float(row.get('受注数', 0)) if pd.notna(row.get('受注数')) else 0.0
+            hiki_qty = float(row.get('引当数', 0)) if pd.notna(row.get('引当数')) else 0.0
+            # 売上数量: 製造ロス反映後の出来高（引当数 > 0 なら引当数、それ以外は受注数）
+            qty = hiki_qty if hiki_qty > 0 else order_qty
+
+            base_uprice = float(row.get('売上単価', 0)) if pd.notna(row.get('売上単価')) else 0.0
+            base_cprice = float(row.get('原単価（下代）', 0)) if pd.notna(row.get('原単価（下代）')) else 0.0
+
+            amount = float(amount_map.get(key, qty * base_uprice))
+            total_cost = float(cost_map.get(key, qty * base_cprice))
+            profit = amount - total_cost
+
+            # 実効売上単価（印刷代・製版代合算） & 実効原単価
+            unit_price = round(amount / qty, 2) if qty > 0 else base_uprice
+            cost_price = round(total_cost / qty, 2) if qty > 0 else base_cprice
+
+            sales_rep = str(row.get('社員名', '')).strip() if pd.notna(row.get('社員名')) else ''
             
-            amount = float(amount_map.get(key, qty * uprice))
-            profit = (uprice - cprice) * qty if uprice and cprice else 0.0
+            order_date_raw = str(row.get('受注日', '')).strip().split('.')[0]
+            order_date = f"{order_date_raw[:4]}-{order_date_raw[4:6]}-{order_date_raw[6:]}" if len(order_date_raw) == 8 and order_date_raw.isdigit() else order_date_raw
 
-            sales_rep = str(row_dict.get('社員名', '')).strip() if pd.notna(row_dict.get('社員名')) else ''
-            order_date_raw = str(row_dict.get('受注日', '')).strip().split('.')[0]
-            if len(order_date_raw) == 8 and order_date_raw.isdigit():
-                order_date = f"{order_date_raw[:4]}-{order_date_raw[4:6]}-{order_date_raw[6:]}"
-            else:
-                order_date = order_date_raw
+            delivery_date_raw = str(row.get('納期日', '')).strip().split('.')[0]
+            delivery_date = f"{delivery_date_raw[:4]}-{delivery_date_raw[4:6]}-{delivery_date_raw[6:]}" if len(delivery_date_raw) == 8 and delivery_date_raw.isdigit() else delivery_date_raw
 
-            delivery_date_raw = str(row_dict.get('納期日', '')).strip().split('.')[0]
-            if len(delivery_date_raw) == 8 and delivery_date_raw.isdigit():
-                delivery_date = f"{delivery_date_raw[:4]}-{delivery_date_raw[4:6]}-{delivery_date_raw[6:]}"
+            # 売上計上日（納期日基準、異常値や保留は受注日にフォールバック）
+            if delivery_date and len(delivery_date) == 10 and '2020-01-01' <= delivery_date <= '2027-12-31':
+                sales_date = delivery_date
             else:
-                delivery_date = delivery_date_raw
+                sales_date = order_date
 
             records.append((
                 int(jno) if str(jno).isdigit() else 0,
                 int(eda) if str(eda).isdigit() else 0,
                 order_date,
+                delivery_date,
+                sales_date,
                 cust_code,
                 cust_name,
                 cust_rank,
@@ -229,29 +266,28 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 brand_name,
                 shape_type,
                 unit,
+                order_qty,
                 qty,
-                uprice,
-                cprice,
+                unit_price,
+                cost_price,
                 amount,
                 profit,
                 sales_rep,
-                delivery_date,
                 title,
                 current_mtime
             ))
 
-        # 5. 専用SQLiteへ一括保存
+        # 6. 専用SQLiteへ一括保存
         with get_sales_db_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM as400_sales_orders")
             cursor.executemany("""
                 INSERT INTO as400_sales_orders (
-                    order_no, branch_no, order_date, customer_code, customer_name,
-                    customer_rank, product_code, product_name, brand_name,
-                    shape_type, unit,
-                    quantity, unit_price, cost_price, amount, profit,
-                    sales_rep, delivery_date, title, csv_mtime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    order_no, branch_no, order_date, delivery_date, sales_date,
+                    customer_code, customer_name, customer_rank, product_code, product_name,
+                    brand_name, shape_type, unit, order_quantity, quantity,
+                    unit_price, cost_price, amount, profit, sales_rep, title, csv_mtime
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, records)
 
             cursor.execute("INSERT OR REPLACE INTO as400_sales_meta (key, value) VALUES ('last_mtime', ?)", (str(current_mtime),))
@@ -269,7 +305,7 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
 
 
 def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
-    """特定の得意先コードの売上サマリーと直近購入履歴を取得（sales_cache.db から 0.001秒で取得）"""
+    """特定の得意先コードの売上サマリーと直近購入履歴を取得（sales_date = 納期・売上日基準で集計）"""
     clean_code = str(customer_code).strip().split('.')[0].lstrip('0')
     init_sales_db()
 
@@ -277,12 +313,12 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # 直近10件の受注明細履歴
+        # 直近10件の売上明細履歴（売上計上日順）
         cursor.execute("""
-            SELECT order_date, product_name, brand_name, shape_type, unit, quantity, unit_price, amount, sales_rep, delivery_date
+            SELECT order_date, delivery_date, sales_date, product_name, brand_name, shape_type, unit, order_quantity, quantity, unit_price, cost_price, amount, profit, sales_rep
             FROM as400_sales_orders
             WHERE customer_code = ? OR customer_code = ?
-            ORDER BY order_date DESC
+            ORDER BY sales_date DESC, order_date DESC
             LIMIT 10
         """, (clean_code, f"00{clean_code}"))
         
@@ -290,18 +326,22 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
         for r in cursor.fetchall():
             history.append({
                 "order_date": r["order_date"],
+                "delivery_date": r["delivery_date"],
+                "sales_date": r["sales_date"] or r["delivery_date"] or r["order_date"],
                 "product_name": r["product_name"],
                 "brand_name": r["brand_name"],
                 "shape_type": r["shape_type"] or "",
                 "unit": r["unit"] or "枚",
+                "order_quantity": r["order_quantity"] if "order_quantity" in r.keys() else r["quantity"],
                 "quantity": r["quantity"],
                 "unit_price": r["unit_price"],
+                "cost_price": r["cost_price"] if "cost_price" in r.keys() else 0.0,
                 "amount": r["amount"],
-                "sales_rep": r["sales_rep"],
-                "delivery_date": r["delivery_date"]
+                "profit": r["profit"] if "profit" in r.keys() else 0.0,
+                "sales_rep": r["sales_rep"]
             })
 
-        # 年間・累計集計（直近1年、前年同期など）
+        # 年間・累計集計（売上日 sales_date 基準）
         current_year = datetime.now().strftime("%Y")
         last_year = str(int(current_year) - 1)
 
@@ -314,18 +354,18 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
                 MAX(customer_name) as cust_name
             FROM as400_sales_orders
             WHERE (customer_code = ? OR customer_code = ?)
-              AND order_date LIKE ?
+              AND sales_date LIKE ?
         """, (clean_code, f"00{clean_code}", f"{current_year}%"))
         curr_stat = cursor.fetchone()
 
-        # 前年のデータ
+        # 前年のデータ（売上日 sales_date 基準）
         cursor.execute("""
             SELECT 
                 SUM(amount) as total_amount,
                 SUM(profit) as total_profit
             FROM as400_sales_orders
             WHERE (customer_code = ? OR customer_code = ?)
-              AND order_date LIKE ?
+              AND sales_date LIKE ?
         """, (clean_code, f"00{clean_code}", f"{last_year}%"))
         last_stat = cursor.fetchone()
 
@@ -336,18 +376,18 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
 
         yoy = round((sales_amount / last_sales) * 100, 1) if last_sales > 0 else None
 
-        # 最終受注日
+        # 最終売上日
         cursor.execute("""
-            SELECT MAX(order_date) as last_order_date
+            SELECT MAX(sales_date) as last_sales_date, MAX(order_date) as last_order_date
             FROM as400_sales_orders
             WHERE customer_code = ? OR customer_code = ?
         """, (clean_code, f"00{clean_code}"))
         last_order = cursor.fetchone()
-        last_order_date = last_order["last_order_date"] if last_order else None
+        last_order_date = last_order["last_sales_date"] if last_order and last_order["last_sales_date"] else (last_order["last_order_date"] if last_order else None)
 
-        # 月別売上集計（直近12ヶ月 + 前年同月実績比較）
+        # 月別売上集計（直近12ヶ月 + 前年同月実績比較、売上日 sales_date 基準）
         cursor.execute("""
-            SELECT SUBSTR(order_date, 1, 7) as ym, SUM(amount) as sales, SUM(profit) as profit, COUNT(*) as orders
+            SELECT SUBSTR(sales_date, 1, 7) as ym, SUM(amount) as sales, SUM(profit) as profit, COUNT(*) as orders
             FROM as400_sales_orders
             WHERE customer_code = ? OR customer_code = ?
             GROUP BY ym

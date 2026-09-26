@@ -1,11 +1,13 @@
 {
-  "version": "2.5.28",
+  "version": "2.5.29",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.28.exe",
-  "fileSize": 49176221,
-  "sha256": "f95b8bde2d8e2c29a5fbc6a4418d9c0d4c64072f78aa40a0d7e2435de3c7b8ea",
+  "fileName": "DailyReportServer_v2.5.29.exe",
+  "fileSize": 49177372,
+  "sha256": "658ca77a04dc459db68827f642b448e595d5227072107e90aa48c69fb8422df1",
   "forceUpdate": false,
   "releaseNotes": [
-    "得意先詳細画面への月別売上推移グラフ＆一覧テーブル追加"
+    "売上日の納期基準移行",
+    "製造ロス反映出来高数量採用",
+    "実効売上単価(印刷代・製版代合算)算出"
   ]
 }

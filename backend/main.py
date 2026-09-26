@@ -59,15 +59,37 @@ async def sync_worker_loop():
 
 import sales_importer
 
+async def sales_auto_sync_loop():
+    """起動直後および定期的に共有フォルダ内の最新AS/400売上CSVを自動検知して取り込む"""
+    await asyncio.sleep(3)
+    while True:
+        try:
+            await asyncio.to_thread(sales_importer.auto_check_and_import)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logging.warning(f"Error in sales_auto_sync_loop: {e}")
+        
+        try:
+            await asyncio.sleep(180)
+        except asyncio.CancelledError:
+            break
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 起動時: バックグラウンド同期ワーカーを開始
     worker_task = asyncio.create_task(sync_worker_loop())
+    sales_task = asyncio.create_task(sales_auto_sync_loop())
     yield
     # 終了時: ワーカーを安全に停止
     worker_task.cancel()
+    sales_task.cancel()
     try:
         await worker_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await sales_task
     except asyncio.CancelledError:
         pass
 

@@ -84,6 +84,7 @@ def init_sales_db(db_path: Optional[str] = None):
                 customer_rank TEXT,
                 direct_customer_code TEXT,
                 direct_customer_name TEXT,
+                classification TEXT,
                 product_code TEXT,
                 product_name TEXT,
                 brand_name TEXT,
@@ -126,6 +127,7 @@ def init_sales_db(db_path: Optional[str] = None):
                 customer_name TEXT,
                 direct_customer_code TEXT,
                 direct_customer_name TEXT,
+                classification TEXT,
                 product_code TEXT,
                 product_name TEXT,
                 brand_name TEXT,
@@ -165,6 +167,7 @@ def init_sales_db(db_path: Optional[str] = None):
         for col, c_type in [
             ("sales_date", "TEXT"), ("order_quantity", "REAL"), ("cost_price", "REAL"),
             ("direct_customer_code", "TEXT"), ("direct_customer_name", "TEXT"),
+            ("classification", "TEXT"),
             ("material_name", "TEXT"), ("material_short", "TEXT"),
             ("colors_front", "INTEGER"), ("colors_back", "INTEGER"), ("colors_total", "INTEGER"),
             ("color_display", "TEXT"), ("size_width", "REAL"), ("size_pitch", "REAL"),
@@ -180,6 +183,7 @@ def init_sales_db(db_path: Optional[str] = None):
         cursor.execute("PRAGMA table_info(as400_backlog_orders)")
         existing_b_cols = {row[1] for row in cursor.fetchall()}
         for col, c_type in [
+            ("classification", "TEXT"),
             ("material_name", "TEXT"), ("material_short", "TEXT"),
             ("colors_front", "INTEGER"), ("colors_back", "INTEGER"), ("colors_total", "INTEGER"),
             ("color_display", "TEXT"), ("size_width", "REAL"), ("size_pitch", "REAL"),
@@ -464,6 +468,7 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
 
             direct_code = str(row.get('直送先コード', '')).strip().split('.')[0] if pd.notna(row.get('直送先コード')) else ''
             direct_name = str(row.get('直送先名称', '')).strip() if pd.notna(row.get('直送先名称')) else ''
+            classification = str(row.get('文字１', '')).replace('\t', '').strip() if pd.notna(row.get('文字１')) else ''
 
             prod_code = str(row.get('商品コード', '')).strip()
             prod_name = str(row.get('商品名称', '')).strip()
@@ -516,6 +521,7 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 cust_rank,
                 direct_code,
                 direct_name,
+                classification,
                 prod_code,
                 prod_name,
                 brand_name,
@@ -572,6 +578,7 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
 
             direct_code = str(row.get('直送先コード', '')).strip().split('.')[0] if pd.notna(row.get('直送先コード')) else ''
             direct_name = str(row.get('直送先名称', '')).strip() if pd.notna(row.get('直送先名称')) else ''
+            classification = str(row.get('文字１', '')).replace('\t', '').strip() if pd.notna(row.get('文字１')) else ''
 
             prod_code = str(row.get('商品コード', '')).strip()
             prod_name = str(row.get('商品名称', '')).strip()
@@ -627,6 +634,7 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 cust_name,
                 direct_code,
                 direct_name,
+                classification,
                 prod_code,
                 prod_name,
                 brand_name,
@@ -671,11 +679,12 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 INSERT INTO as400_sales_orders (
                     order_no, branch_no, order_date, delivery_date, sales_date,
                     customer_code, customer_name, customer_rank, direct_customer_code, direct_customer_name,
+                    classification,
                     product_code, product_name, brand_name, shape_type, unit, order_quantity, quantity,
                     unit_price, cost_price, amount, profit, sales_rep, title,
                     material_name, material_short, colors_front, colors_back, colors_total, color_display,
                     size_width, size_pitch, weight, capacity_display, finish_note, print_note, csv_mtime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, sales_records)
 
             # 受注残データ更新
@@ -684,13 +693,14 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 INSERT INTO as400_backlog_orders (
                     order_no, branch_no, order_date, delivery_date, arrival_date,
                     customer_code, customer_name, direct_customer_code, direct_customer_name,
+                    classification,
                     product_code, product_name, brand_name, shape_type, unit,
                     order_quantity, allocated_quantity, unit_price, cost_price, amount, profit,
                     sales_rep, delivery_status, delivery_status_label,
                     shipping_note, finish_note, print_note, special_note,
                     material_name, material_short, colors_front, colors_back, colors_total, color_display,
                     size_width, size_pitch, weight, capacity_display, is_complete_flag, csv_mtime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, backlog_records)
 
             cursor.execute("INSERT OR REPLACE INTO as400_sales_meta (key, value) VALUES ('last_mtime', ?)", (str(current_mtime),))
@@ -941,14 +951,76 @@ def get_as400_sync_status() -> Dict[str, Any]:
     if last_import and "T" in last_import:
         last_import = last_import.replace("T", " ")[:19]
 
+    is_up_to_date = False
+    if csv_info and meta.get("last_mtime"):
+        try:
+            current_mtime = os.path.getmtime(latest_csv)
+            last_mtime = float(meta["last_mtime"])
+            is_up_to_date = (current_mtime <= last_mtime)
+        except Exception:
+            pass
+
     return {
         "is_syncing": _is_syncing,
         "total_orders": total_orders,
         "last_import_time": last_import,
         "last_csv_path": meta.get("last_csv_path"),
         "latest_csv": csv_info,
-        "configured_dir": DEFAULT_AS400_CSV_DIR
+        "configured_dir": DEFAULT_AS400_CSV_DIR,
+        "auto_sync_enabled": True,
+        "is_up_to_date": is_up_to_date
     }
+
+
+def auto_check_and_import() -> bool:
+    """
+    共有フォルダ内の最新CSVを検知し、未取り込み（更新日時が新しい）であれば自動で取り込む。
+    既に最新の場合は数ミリ秒でスキップするため常時監視に適している。
+    """
+    global _is_syncing
+    if not _sync_lock.acquire(blocking=False):
+        logger.debug("auto_check_and_import: Sync already in progress, skipping.")
+        return False
+    
+    try:
+        latest_csv = find_latest_sales_csv()
+        if not latest_csv or not os.path.exists(latest_csv):
+            return False
+
+        current_mtime = os.path.getmtime(latest_csv)
+        init_sales_db()
+        
+        needs_import = False
+        with get_sales_db_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM as400_sales_meta WHERE key = 'last_mtime'")
+            row = cursor.fetchone()
+            if not row:
+                needs_import = True
+            else:
+                try:
+                    last_mtime = float(row[0])
+                    if current_mtime > last_mtime:
+                        needs_import = True
+                except ValueError:
+                    needs_import = True
+
+        if needs_import:
+            logger.info(f"Auto-sync detected new AS/400 sales CSV: {latest_csv} (mtime: {current_mtime}). Starting auto import...")
+            _is_syncing = True
+            try:
+                # 内部でDB更新とlast_mtimeの保存を行う
+                return import_as400_sales_csv(csv_path=latest_csv, force=True)
+            finally:
+                _is_syncing = False
+        else:
+            logger.debug(f"Auto-sync: AS/400 sales CSV is already up-to-date ({latest_csv}).")
+            return False
+    except Exception as e:
+        logger.error(f"Error during auto_check_and_import: {e}", exc_info=True)
+        return False
+    finally:
+        _sync_lock.release()
 
 
 def run_manual_sync(force: bool = True) -> Dict[str, Any]:

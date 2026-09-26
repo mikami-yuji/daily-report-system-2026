@@ -17,6 +17,8 @@ type AS400SyncStatus = {
         modified_at: string;
     } | null;
     configured_dir: string;
+    auto_sync_enabled?: boolean;
+    is_up_to_date?: boolean;
 };
 
 export default function SettingsPage(): React.JSX.Element {
@@ -320,24 +322,29 @@ export default function SettingsPage(): React.JSX.Element {
                     </div>
                 </div>
 
-                {/* AS/400 Sales Data Manual Sync Card */}
+                {/* AS/400 Sales Data Sync Card */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                             <Database size={20} className="text-blue-600" />
-                            基幹売上明細連携 (AS/400 手動同期)
+                            基幹売上明細連携 (AS/400 自動同期・手動同期)
                         </h2>
-                        {as400Status && as400Status.total_orders > 0 && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                登録済: {as400Status.total_orders.toLocaleString()} 件
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                自動同期: 有効 (定期監視中)
                             </span>
-                        )}
+                            {as400Status && as400Status.total_orders > 0 && (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                    登録済: {as400Status.total_orders.toLocaleString()} 件
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     <div className="space-y-4">
                         <p className="text-sm text-gray-600 leading-relaxed">
                             基幹システム（IBM AS/400）から共有フォルダに出力された最新売上明細CSVを取り込みます。<br/>
-                            日報システムの動作安定と負荷軽減のため、<strong>起動時の自動同期は停止されています</strong>。最新の売上・粗利・直近受注明細（ロール＝ｍ、単袋＋他＝枚）を反映したい時に、以下のボタンから手動で同期を行ってください。
+                            <strong>システム起動時および定期的に、フォルダ内の最新CSVを自動検知して取り込みます。</strong>最新の売上・粗利・直近受注残（ロール＝ｍ、単袋＋他＝枚）を今すぐ手動で即時反映したい場合は、以下のボタンからも同期できます。
                         </p>
 
                         {/* ステータスボックス */}
@@ -371,9 +378,16 @@ export default function SettingsPage(): React.JSX.Element {
                                 <span className="font-semibold text-gray-800">
                                     最終同期日時:
                                 </span>
-                                <span className="font-mono text-gray-600">
-                                    {as400Status?.last_import_time ? as400Status.last_import_time : '未実行'}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-mono text-gray-600">
+                                        {as400Status?.last_import_time ? as400Status.last_import_time : '未実行'}
+                                    </span>
+                                    {as400Status?.is_up_to_date && (
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700">
+                                            最新反映済
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
@@ -399,7 +413,7 @@ export default function SettingsPage(): React.JSX.Element {
                                 ) : (
                                     <>
                                         <RefreshCw size={16} />
-                                        <span>基幹売上明細を手動同期する</span>
+                                        <span>今すぐ最新データを手動同期する</span>
                                     </>
                                 )}
                             </button>

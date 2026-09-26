@@ -76,6 +76,8 @@ function OrdersBacklogContent() {
     const [selectedRep, setSelectedRep] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('all'); // all, confirmed, asap, provisional, delayed
     const [selectedDirectDest, setSelectedDirectDest] = useState<string>('all');
+    const [directDestSearchText, setDirectDestSearchText] = useState<string>('');
+    const [showDestDropdown, setShowDestDropdown] = useState<boolean>(false);
     const [directDestsList, setDirectDestsList] = useState<string[]>([]);
     const [searchKeyword, setSearchKeyword] = useState<string>('');
     const [datePreset, setDatePreset] = useState<string>('all'); // all, today, this_week, this_month
@@ -93,6 +95,18 @@ function OrdersBacklogContent() {
             setSelectedRep(repName);
         }
     }, [repName]);
+
+    // 直送先テキスト入力のデバウンス反映
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (directDestSearchText.trim()) {
+                setSelectedDirectDest(directDestSearchText.trim());
+            } else {
+                setSelectedDirectDest('all');
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [directDestSearchText]);
 
     // データ読み込み
     const fetchBacklogData = async () => {
@@ -686,33 +700,98 @@ function OrdersBacklogContent() {
 
                 {/* Direct Dest and Keyword Search Row */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                    {/* Direct Destination Selector */}
+                    {/* Direct Destination Search Box with Autocomplete */}
                     <div className="md:col-span-5 relative">
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-gray-500 flex items-center gap-1 shrink-0">
                                 <Building2 size={14} className="text-indigo-600" />
-                                直送先:
+                                直送先検索:
                             </span>
                             <div className="relative flex-1">
-                                <select
-                                    value={selectedDirectDest}
-                                    onChange={(e) => setSelectedDirectDest(e.target.value)}
-                                    className={`w-full appearance-none pl-3 pr-8 py-2 border rounded-xl text-xs font-medium transition-all ${
-                                        selectedDirectDest !== 'all'
-                                            ? 'bg-indigo-50/80 border-indigo-300 text-indigo-900 font-bold ring-2 ring-indigo-500/20'
-                                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                <input
+                                    type="text"
+                                    value={directDestSearchText}
+                                    onChange={(e) => {
+                                        setDirectDestSearchText(e.target.value);
+                                        setShowDestDropdown(true);
+                                    }}
+                                    onFocus={() => setShowDestDropdown(true)}
+                                    placeholder={directDestsList.length > 0 ? `直送先名で絞り込み (${directDestsList.length}件)...` : "直送先名で絞り込み..."}
+                                    className={`w-full pl-8 pr-7 py-2 border rounded-xl text-xs font-medium transition-all ${
+                                        directDestSearchText.trim()
+                                            ? 'bg-indigo-50/90 border-indigo-300 text-indigo-950 font-bold ring-2 ring-indigo-500/20'
+                                            : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 focus:bg-white focus:border-indigo-500'
                                     }`}
-                                >
-                                    <option value="all">すべての直送先（全納品先）</option>
-                                    {directDestsList.map((d, i) => (
-                                        <option key={i} value={d}>{d}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                />
+                                {directDestSearchText ? (
+                                    <button
+                                        onClick={() => {
+                                            setDirectDestSearchText('');
+                                            setSelectedDirectDest('all');
+                                            setShowDestDropdown(false);
+                                        }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                                        title="クリア"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDestDropdown(!showDestDropdown)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                                    >
+                                        <ChevronDown size={13} />
+                                    </button>
+                                )}
+
+                                {/* Suggestions Dropdown */}
+                                {showDestDropdown && (
+                                    <>
+                                        <div
+                                            className="fixed inset-0 z-20"
+                                            onClick={() => setShowDestDropdown(false)}
+                                        />
+                                        <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl border border-gray-200 shadow-xl z-30 max-h-60 overflow-y-auto divide-y divide-gray-50">
+                                            <div
+                                                onClick={() => {
+                                                    setDirectDestSearchText('');
+                                                    setSelectedDirectDest('all');
+                                                    setShowDestDropdown(false);
+                                                }}
+                                                className="px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-indigo-50 cursor-pointer flex items-center justify-between"
+                                            >
+                                                <span>すべての直送先（全納品先）</span>
+                                                <span className="text-[10px] text-gray-400">{directDestsList.length}件</span>
+                                            </div>
+                                            {directDestsList
+                                                .filter(d => !directDestSearchText.trim() || d.toLowerCase().includes(directDestSearchText.toLowerCase()))
+                                                .slice(0, 30)
+                                                .map((d, i) => (
+                                                    <div
+                                                        key={i}
+                                                        onClick={() => {
+                                                            setDirectDestSearchText(d);
+                                                            setSelectedDirectDest(d);
+                                                            setShowDestDropdown(false);
+                                                        }}
+                                                        className="px-3 py-2 text-xs text-gray-800 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer flex items-center justify-between transition-colors"
+                                                    >
+                                                        <span className="font-medium truncate">{d}</span>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
-                            {selectedDirectDest !== 'all' && (
+                            {directDestSearchText && (
                                 <button
-                                    onClick={() => setSelectedDirectDest('all')}
+                                    onClick={() => {
+                                        setDirectDestSearchText('');
+                                        setSelectedDirectDest('all');
+                                        setShowDestDropdown(false);
+                                    }}
                                     className="p-1.5 text-xs text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg flex items-center gap-0.5 shrink-0"
                                     title="直送先フィルターを解除"
                                 >

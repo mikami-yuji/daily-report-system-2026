@@ -172,9 +172,11 @@ def get_catalog_customers(
 @router.get("/direct-dests")
 def get_catalog_direct_dests(
     customer_code: Optional[str] = None,
-    sales_rep: Optional[str] = None
+    sales_rep: Optional[str] = None,
+    query: Optional[str] = None,
+    limit: int = 100
 ) -> Dict[str, Any]:
-    """得意先（または担当者）に紐づく直送先（納品先）一覧を取得"""
+    """得意先（または担当者・キーワード）に紐づく直送先（納品先）一覧を取得"""
     sales_importer.init_sales_db()
     raw_code = str(customer_code).strip() if customer_code else None
     clean_code = raw_code.split('.')[0].lstrip('0') if raw_code else None
@@ -186,7 +188,7 @@ def get_catalog_direct_dests(
         where_clauses = ["direct_customer_name IS NOT NULL AND direct_customer_name != ''"]
         params = []
         
-        if raw_code:
+        if raw_code and raw_code != 'all':
             if clean_code:
                 where_clauses.append("(customer_code = ? OR customer_code = ? OR customer_code = ? OR customer_code = ? OR customer_code LIKE ?)")
                 params.extend([raw_code, clean_code, f"0{clean_code}", f"00{clean_code}", f"%{clean_code}"])
@@ -194,24 +196,32 @@ def get_catalog_direct_dests(
                 where_clauses.append("customer_code = ?")
                 params.append(raw_code)
                 
-        if sales_rep:
-            where_clauses.append("sales_rep LIKE ?")
-            params.append(f"%{sales_rep.strip()}%")
+        if sales_rep and sales_rep not in ('all', '全員', '全体', ''):
+            clean_r = sales_rep.strip('【】').strip()
+            where_clauses.append("(sales_rep LIKE ? OR sales_rep = ?)")
+            params.extend([f"%{clean_r}%", clean_r])
+
+        if query and query.strip():
+            q = f"%{query.strip()}%"
+            where_clauses.append("(direct_customer_name LIKE ? OR direct_customer_code LIKE ?)")
+            params.extend([q, q])
             
         where_str = f"WHERE {' AND '.join(where_clauses)}"
         cursor.execute(f"""
-            SELECT DISTINCT direct_customer_name, direct_customer_code, COUNT(*) as order_count
+            SELECT DISTINCT direct_customer_name, direct_customer_code, MAX(customer_name) as sample_customer, COUNT(*) as order_count
             FROM as400_sales_orders
             {where_str}
             GROUP BY direct_customer_name
             ORDER BY order_count DESC, direct_customer_name ASC
-        """, params)
+            LIMIT ?
+        """, params + [limit])
         
         dests = []
         for r in cursor.fetchall():
             dests.append({
                 "name": r["direct_customer_name"],
                 "code": r["direct_customer_code"] or "",
+                "sample_customer": r["sample_customer"] or "",
                 "order_count": r["order_count"]
             })
             
@@ -313,7 +323,8 @@ def get_catalog_products(
             detail_query = """
                 SELECT order_no, branch_no, order_date, delivery_date, sales_date, unit_price, cost_price, quantity, order_quantity, sales_rep, title,
                        material_name, material_short, colors_front, colors_back, colors_total, color_display,
-                       size_width, size_pitch, weight, capacity_display, finish_note, print_note
+                       size_width, size_pitch, weight, capacity_display, finish_note, print_note,
+                       direct_customer_name, direct_customer_code, classification
                 FROM as400_sales_orders
                 WHERE product_code = ? AND product_name = ?
             """
@@ -338,6 +349,9 @@ def get_catalog_products(
             delivery_date = latest_detail["delivery_date"] if latest_detail else ""
             rep = latest_detail["sales_rep"] if latest_detail else (row["sample_sales_rep"] or "")
             title = latest_detail["title"] if latest_detail else ""
+            direct_name = latest_detail["direct_customer_name"] if latest_detail and latest_detail["direct_customer_name"] else ""
+            direct_code = latest_detail["direct_customer_code"] if latest_detail and latest_detail["direct_customer_code"] else ""
+            classification = latest_detail["classification"] if latest_detail and latest_detail["classification"] else ""
             
             # スペック情報（材質、色数、量目、サイズ、備考）
             mat_name = latest_detail["material_name"] if latest_detail and latest_detail["material_name"] else ""
@@ -432,6 +446,9 @@ def get_catalog_products(
                 "capacity_display": cap_display,
                 "finish_note": finish_n,
                 "print_note": print_n,
+                "direct_customer_name": direct_name,
+                "direct_customer_code": direct_code,
+                "classification": classification,
                 "image_url": img_data["image_url"],
                 "image_name": img_data["image_name"],
                 "image_variants": img_data["image_variants"]

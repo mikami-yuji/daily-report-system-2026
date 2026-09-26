@@ -1,6 +1,11 @@
 {
-  "version": "2.5.43",
-  "sha256": "90220b9d0112ebe05c9f0a445548f59c401ec56a6ea14d80fd97b3a42717633f",
-  "size": 49203625,
-  "release_notes": "受注残・納期管理および商品カタログに直送先（納品先）絞り込み枠を追加"
+  "version": "2.5.49",
+  "releaseDate": "2026-09-26",
+  "fileName": "DailyReportServer_v2.5.49.exe",
+  "fileSize": 49517809,
+  "sha256": "d673e3b44891d8e5c9aea888adfe332905ae8bbca487708c0ea68c08851093dc",
+  "forceUpdate": false,
+  "releaseNotes": [
+    "種別（カラムDの文字1）バッジ追加・Excel列追加・第一キー種別ソート対応"
+  ]
 }

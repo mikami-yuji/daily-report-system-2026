@@ -30,7 +30,8 @@ import {
     FileSpreadsheet,
     Eye,
     Layers,
-    SlidersHorizontal
+    SlidersHorizontal,
+    MapPin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -91,6 +92,9 @@ interface ProductItem {
     image_url?: string | null;
     image_name?: string | null;
     image_variants?: string[];
+    direct_customer_name?: string;
+    direct_customer_code?: string;
+    classification?: string;
 }
 
 interface CartItem {
@@ -115,8 +119,20 @@ function CatalogContent() {
     const [products, setProducts] = useState<ProductItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadingCustomers, setLoadingCustomers] = useState(true);
-    const [directDests, setDirectDests] = useState<{ name: string; code: string; order_count: number }[]>([]);
+    const [directDests, setDirectDests] = useState<{ name: string; code: string; sample_customer?: string; order_count: number }[]>([]);
     const [selectedDirectDest, setSelectedDirectDest] = useState<string>('all');
+    const [directDestQuery, setDirectDestQuery] = useState<string>('');
+    const [showDirectDestDropdown, setShowDirectDestDropdown] = useState<boolean>(false);
+
+    // 直送先のキーワード検索・サジェスト絞り込み
+    const filteredDirectDests = useMemo(() => {
+        if (!directDestQuery.trim()) return directDests;
+        const q = directDestQuery.toLowerCase().trim();
+        return directDests.filter(d =>
+            (d.name && d.name.toLowerCase().includes(q)) ||
+            (d.code && d.code.toLowerCase().includes(q))
+        );
+    }, [directDests, directDestQuery]);
 
     // Filters
     const [keyword, setKeyword] = useState('');
@@ -185,10 +201,14 @@ function CatalogContent() {
         if (!selectedCustomer) {
             setDirectDests([]);
             setSelectedDirectDest('all');
+            setDirectDestQuery('');
+            setShowDirectDestDropdown(false);
             return;
         }
 
         setSelectedDirectDest('all');
+        setDirectDestQuery('');
+        setShowDirectDestDropdown(false);
         fetch(`/api/catalog/direct-dests?customer_code=${selectedCustomer.code}`)
             .then(res => res.json())
             .then(data => {
@@ -344,7 +364,9 @@ function CatalogContent() {
             const subtotal = Math.round(item.quantity * p.latest_unit_price);
             text += `----------------------------------------\n`;
             text += `${idx + 1}. ${p.product_name}\n`;
+            if (p.classification) text += `   種別: ${p.classification}\n`;
             if (p.brand_name) text += `   銘柄: ${p.brand_name}\n`;
+            if (p.direct_customer_name) text += `   直送先: ${p.direct_customer_name}\n`;
             text += `   商品コード: ${p.product_code}\n`;
             if (p.order_no_display && p.order_no_display !== '-') text += `   前回受注No: ${p.order_no_display}\n`;
             text += `   数量: ${item.quantity.toLocaleString()} ${p.unit}\n`;
@@ -395,6 +417,56 @@ function CatalogContent() {
             const dateStr = `${today.getFullYear()}年${String(today.getMonth() + 1).padStart(2, '0')}月${String(today.getDate()).padStart(2, '0')}日`;
             const fileDateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
 
+            // 並び替え: 材質別 → 量目（小→大） → 色数（小→大）
+            const parseCapacityKg = (p: ProductItem): number => {
+                if (p.weight && p.weight > 0) return p.weight;
+                if (!p.capacity_display) return 999999;
+                const str = p.capacity_display.toLowerCase().trim();
+                const gMatch = str.match(/([\d.]+)\s*g/);
+                if (gMatch && !str.includes('kg')) {
+                    return parseFloat(gMatch[1]) / 1000;
+                }
+                const kgMatch = str.match(/([\d.]+)\s*k/);
+                if (kgMatch) {
+                    return parseFloat(kgMatch[1]);
+                }
+                const numMatch = str.match(/[\d.]+/);
+                if (numMatch) {
+                    return parseFloat(numMatch[0]);
+                }
+                return 999999;
+            };
+
+            const sortedForExport = [...filteredProducts].sort((a, b) => {
+                // 1. 種別（カラムD「文字１」）昇順（小→大 / 50音順）
+                const clsA = (a.classification || '').trim();
+                const clsB = (b.classification || '').trim();
+                if (!clsA && clsB) return 1;
+                if (clsA && !clsB) return -1;
+                const clsComp = clsA.localeCompare(clsB, 'ja');
+                if (clsComp !== 0) return clsComp;
+
+                // 2. 材質別（昇順: 小→大 / 50音順）
+                const matA = (a.material_name || a.material_short || '').trim();
+                const matB = (b.material_name || b.material_short || '').trim();
+                if (!matA && matB) return 1;
+                if (matA && !matB) return -1;
+                const matComp = matA.localeCompare(matB, 'ja');
+                if (matComp !== 0) return matComp;
+
+                // 3. 量目（昇順: 小→大 / kg数値換算比較）
+                const wA = parseCapacityKg(a);
+                const wB = parseCapacityKg(b);
+                if (wA !== wB) return wA - wB;
+
+                // 4. 色数（昇順: 小→大 / 数値比較）
+                const colA = a.colors_total ?? 0;
+                const colB = b.colors_total ?? 0;
+                if (colA !== colB) return colA - colB;
+
+                return a.product_code.localeCompare(b.product_code);
+            });
+
             const workbook = new ExcelJS.Workbook();
             workbook.creator = 'ASAHIPACK Daily Report System';
             workbook.lastModifiedBy = repName || '営業担当';
@@ -404,13 +476,15 @@ function CatalogContent() {
                 views: [{ state: 'frozen', xSplit: 0, ySplit: 4, showGridLines: true }]
             });
 
-            // 列定義
+            // 列定義 (全24列: 種別・直送先を追加)
             ws.columns = [
                 { header: 'No.', key: 'no', width: 7 },
                 { header: '受注№', key: 'order_no', width: 15 },
                 { header: '商品コード', key: 'code', width: 14 },
                 { header: '品名', key: 'name', width: 38 },
+                { header: '種別', key: 'classification', width: 18 },
                 { header: '銘柄・ブランド', key: 'brand', width: 20 },
+                { header: '直送先', key: 'direct_customer', width: 22 },
                 { header: '形状', key: 'shape', width: 11 },
                 { header: '材質', key: 'material', width: 18 },
                 { header: '色数', key: 'colors', width: 14 },
@@ -431,9 +505,9 @@ function CatalogContent() {
             ];
 
             // 1行目: タイトル
-            ws.mergeCells('A1:V1');
+            ws.mergeCells('A1:X1');
             const titleCell = ws.getCell('A1');
-            titleCell.value = `【${compName} 様】 取扱商品一覧（材質・色数・量目明細付き）`;
+            titleCell.value = `【${compName} 様】 取扱商品一覧（種別・材質・色数・量目明細付き）`;
             titleCell.font = { name: 'Meiryo', size: 15, bold: true, color: { argb: 'FFFFFFFF' } };
             titleCell.fill = {
                 type: 'pattern',
@@ -444,9 +518,9 @@ function CatalogContent() {
             ws.getRow(1).height = 36;
 
             // 2行目: メタデータ
-            ws.mergeCells('A2:V2');
+            ws.mergeCells('A2:X2');
             const metaCell = ws.getCell('A2');
-            metaCell.value = `出力日: ${dateStr}  |  得意先コード: ${selectedCustomer.code}  |  対象品目数: ${filteredProducts.length}品目${repName ? `  |  担当営業: ${repName}` : ''}`;
+            metaCell.value = `出力日: ${dateStr}  |  得意先コード: ${selectedCustomer.code}  |  対象品目数: ${sortedForExport.length}品目${repName ? `  |  担当営業: ${repName}` : ''}`;
             metaCell.font = { name: 'Meiryo', size: 10, color: { argb: 'FF334155' } };
             metaCell.fill = {
                 type: 'pattern',
@@ -466,7 +540,9 @@ function CatalogContent() {
                 '受注№',
                 '商品コード',
                 '品名',
+                '種別',
                 '銘柄・ブランド',
+                '直送先',
                 '形状',
                 '材質',
                 '色数',
@@ -509,7 +585,7 @@ function CatalogContent() {
                 right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
             };
 
-            filteredProducts.forEach((p, idx) => {
+            sortedForExport.forEach((p, idx) => {
                 const rowIdx = 5 + idx;
                 const row = ws.getRow(rowIdx);
                 const isEven = idx % 2 === 1;
@@ -524,7 +600,9 @@ function CatalogContent() {
                     p.order_no_display && p.order_no_display !== '-' ? p.order_no_display : '',
                     p.product_code,
                     p.product_name,
+                    p.classification || '',
                     p.brand_name || '',
+                    p.direct_customer_name || '',
                     p.shape_type || (p.is_roll ? 'ロール' : '単袋'),
                     p.material_name || p.material_short || '',
                     p.color_display || '',
@@ -555,27 +633,27 @@ function CatalogContent() {
                         fgColor: { argb: baseBg }
                     };
 
-                    // 中央揃え: No(1), 受注No(2), 商品CD(3), 形状(6), 色数(8), サイズ(9), 単位(10), 受注日(14), 売上日(15)
-                    if ([1, 2, 3, 6, 8, 9, 10, 14, 15].includes(colNumber)) {
+                    // 中央揃え: No(1), 受注No(2), 商品CD(3), 形状(8), 色数(10), 量目(11), 単位(12), 受注日(16), 売上日(17)
+                    if ([1, 2, 3, 8, 10, 11, 12, 16, 17].includes(colNumber)) {
                         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                    } else if ([4, 5, 7, 22].includes(colNumber)) { // 左揃え: 品名(4), 銘柄(5), 材質(7), 備考(22)
+                    } else if ([4, 5, 6, 7, 9, 24].includes(colNumber)) { // 左揃え: 品名(4), 種別(5), 銘柄(6), 直送先(7), 材質(9), 備考(24)
                         cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 0.5 };
-                    } else if (colNumber === 11 || colNumber === 12) { // 単価(11), 原単価(12)
+                    } else if (colNumber === 13 || colNumber === 14) { // 単価(13), 原単価(14)
                         cell.alignment = { vertical: 'middle', horizontal: 'right' };
                         cell.numFmt = '¥#,##0.00;[Red]-¥#,##0.00;"-"';
-                    } else if (colNumber === 13) { // 粗利率(13)
+                    } else if (colNumber === 15) { // 粗利率(15)
                         cell.alignment = { vertical: 'middle', horizontal: 'right' };
                         cell.numFmt = '0.0%;[Red]-0.0%;"-"';
-                    } else if ([16, 17, 18].includes(colNumber)) { // 数量(16,17,18)
+                    } else if ([18, 19, 20].includes(colNumber)) { // 数量(18,19,20)
                         cell.alignment = { vertical: 'middle', horizontal: 'right' };
                         cell.numFmt = '#,##0;[Red]-#,##0;"-"';
-                    } else if (colNumber === 19) { // 金額(19)
+                    } else if (colNumber === 21) { // 金額(21)
                         cell.alignment = { vertical: 'middle', horizontal: 'right' };
                         cell.numFmt = '¥#,##0;[Red]-¥#,##0;"-"';
-                    } else if (colNumber === 20) { // 経過月数(20)
+                    } else if (colNumber === 22) { // 経過月数(22)
                         cell.alignment = { vertical: 'middle', horizontal: 'right' };
                         cell.numFmt = '0"ヶ月"';
-                    } else if (colNumber === 21) { // アラート(21)
+                    } else if (colNumber === 23) { // アラート(23)
                         cell.alignment = { vertical: 'middle', horizontal: 'center' };
                         if (p.alert_level === 'danger') {
                             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
@@ -591,7 +669,7 @@ function CatalogContent() {
             // オートフィルター設定
             ws.autoFilter = {
                 from: { row: 4, column: 1 },
-                to: { row: 4 + filteredProducts.length, column: 22 }
+                to: { row: 4 + sortedForExport.length, column: 24 }
             };
 
             const buffer = await workbook.xlsx.writeBuffer();
@@ -899,7 +977,7 @@ function CatalogContent() {
         <div className="space-y-6 max-w-[1600px] mx-auto pb-16">
             {/* Top Customer Selector Bar */}
             <div className="bg-white rounded-xl border border-sf-border shadow-sm p-5">
-                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <div className="p-3 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl text-white shadow-md">
                             <ShoppingBag size={24} />
@@ -914,138 +992,287 @@ function CatalogContent() {
                         </div>
                     </div>
 
-                    {/* Customer Dropdown / Selector */}
-                    <div className="relative w-full lg:w-96">
-                        <div
-                            onClick={() => setShowCustomerDropdown(!showCustomerDropdown)}
-                            className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors"
-                        >
-                            <div className="flex items-center gap-2 truncate">
-                                <Building2 size={16} className="text-blue-600 flex-shrink-0" />
-                                {selectedCustomer ? (
-                                    <div className="flex items-center gap-1.5 truncate">
-                                        {selectedCustomer.is_rep_customer && (
-                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
-                                                担当
+                    {/* Selectors: 得意先 ＋ 直送先（右隣） */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full xl:w-auto">
+                        {/* Customer Dropdown / Selector */}
+                        <div className="relative w-full sm:w-72 md:w-80">
+                            <div
+                                onClick={() => {
+                                    setShowCustomerDropdown(!showCustomerDropdown);
+                                    setShowDirectDestDropdown(false);
+                                }}
+                                className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors shadow-xs"
+                            >
+                                <div className="flex items-center gap-2 truncate">
+                                    <Building2 size={16} className="text-blue-600 flex-shrink-0" />
+                                    {selectedCustomer ? (
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            {selectedCustomer.is_rep_customer && (
+                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
+                                                    担当
+                                                </span>
+                                            )}
+                                            <span className="text-sm font-semibold text-gray-800 truncate">
+                                                {selectedCustomer.name}
                                             </span>
-                                        )}
-                                        <span className="text-sm font-semibold text-gray-800 truncate">
-                                            {selectedCustomer.name}
-                                        </span>
-                                        <span className="text-xs text-gray-500 font-mono shrink-0">(CD: {selectedCustomer.code})</span>
-                                    </div>
-                                ) : (
-                                    <span className="text-sm text-gray-400">得意先を選択してください...</span>
-                                )}
-                            </div>
-                            <ChevronDown size={16} className="text-gray-500 flex-shrink-0" />
-                        </div>
-
-                        {/* Customer Dropdown Modal */}
-                        {showCustomerDropdown && (
-                            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-sf-border shadow-2xl z-50 max-h-96 flex flex-col overflow-hidden animate-fadeIn">
-                                {/* Search input & Tab Selector */}
-                                <div className="p-3 bg-slate-50 border-b border-gray-200 space-y-2">
-                                    <div className="relative">
-                                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            value={customerSearchQuery}
-                                            onChange={e => setCustomerSearchQuery(e.target.value)}
-                                            placeholder="得意先名またはコードで検索..."
-                                            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                            autoFocus
-                                        />
-                                    </div>
-                                    
-                                    {/* Scope Tabs: 担当顧客 vs 全社 */}
-                                    <div className="flex items-center gap-1.5 p-0.5 bg-slate-200/80 rounded-lg text-xs">
-                                        <button
-                                            type="button"
-                                            onClick={() => setCustomerScopeTab('rep')}
-                                            className={`flex-1 py-1 px-2 rounded-md font-bold text-center transition-all flex items-center justify-center gap-1 ${
-                                                customerScopeTab === 'rep'
-                                                    ? 'bg-white text-blue-700 shadow-xs'
-                                                    : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                        >
-                                            <Sparkles size={12} className="text-amber-500" />
-                                            <span>{repName ? `${repName} 担当` : '担当顧客'} ({repCustomersCount}件)</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setCustomerScopeTab('all')}
-                                            className={`flex-1 py-1 px-2 rounded-md font-bold text-center transition-all flex items-center justify-center gap-1 ${
-                                                customerScopeTab === 'all'
-                                                    ? 'bg-white text-slate-800 shadow-xs'
-                                                    : 'text-gray-600 hover:text-gray-900'
-                                            }`}
-                                        >
-                                            <Building2 size={12} className="text-gray-500" />
-                                            <span>全社顧客 ({customers.length}件)</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Customer List */}
-                                <div className="overflow-y-auto flex-1 divide-y divide-gray-100 max-h-64">
-                                    {filteredCustomersList.length === 0 ? (
-                                        <div className="p-6 text-center text-xs text-gray-400">
-                                            該当する得意先が見つかりませんでした
+                                            <span className="text-xs text-gray-500 font-mono shrink-0">(CD: {selectedCustomer.code})</span>
                                         </div>
                                     ) : (
-                                        filteredCustomersList.map(c => (
-                                            <div
-                                                key={c.code}
-                                                onClick={() => {
-                                                    setSelectedCustomer(c);
-                                                    setShowCustomerDropdown(false);
-                                                    setCustomerSearchQuery('');
-                                                }}
-                                                className={`p-3 text-xs cursor-pointer flex justify-between items-center hover:bg-blue-50/80 transition-colors ${
-                                                    selectedCustomer?.code === c.code ? 'bg-blue-50 font-bold border-l-4 border-blue-600 pl-2' : 'text-gray-700'
+                                        <span className="text-sm text-gray-400">得意先を選択...</span>
+                                    )}
+                                </div>
+                                <ChevronDown size={16} className="text-gray-500 flex-shrink-0" />
+                            </div>
+
+                            {/* Customer Dropdown Modal */}
+                            {showCustomerDropdown && (
+                                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-sf-border shadow-2xl z-50 max-h-96 flex flex-col overflow-hidden animate-fadeIn">
+                                    {/* Search input & Tab Selector */}
+                                    <div className="p-3 bg-slate-50 border-b border-gray-200 space-y-2">
+                                        <div className="relative">
+                                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                value={customerSearchQuery}
+                                                onChange={e => setCustomerSearchQuery(e.target.value)}
+                                                placeholder="得意先名またはコードで検索..."
+                                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                autoFocus
+                                            />
+                                        </div>
+                                        
+                                        {/* Scope Tabs: 担当顧客 vs 全社 */}
+                                        <div className="flex items-center gap-1.5 p-0.5 bg-slate-200/80 rounded-lg text-xs">
+                                            <button
+                                                type="button"
+                                                onClick={() => setCustomerScopeTab('rep')}
+                                                className={`flex-1 py-1 px-2 rounded-md font-bold text-center transition-all flex items-center justify-center gap-1 ${
+                                                    customerScopeTab === 'rep'
+                                                        ? 'bg-white text-blue-700 shadow-xs'
+                                                        : 'text-gray-600 hover:text-gray-900'
                                                 }`}
                                             >
-                                                <div className="min-w-0 pr-2">
-                                                    <div className="font-semibold text-sf-text flex items-center gap-1.5 truncate">
-                                                        {c.is_rep_customer && (
-                                                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
-                                                                ★ 担当
-                                                            </span>
-                                                        )}
-                                                        <span className="truncate">{c.name}</span>
-                                                        {c.rank && (
-                                                            <span className="text-[10px] px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded shrink-0">
-                                                                {c.rank}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-[11px] text-gray-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
-                                                        <span>CD: {c.code}</span>
-                                                        <span>|</span>
-                                                        <span>商品: {c.product_count}品目</span>
-                                                        {c.primary_rep && !c.is_rep_customer && (
-                                                            <>
-                                                                <span>|</span>
-                                                                <span className="text-gray-500">担当: {c.primary_rep}</span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="text-right shrink-0">
-                                                    <div className="font-bold text-gray-800 font-mono">
-                                                        {Number(c.total_sales).toLocaleString()}円
-                                                    </div>
-                                                    <div className="text-[10px] text-gray-400">
-                                                        最新: {c.last_sales_date || '-'}
-                                                    </div>
-                                                </div>
+                                                <Sparkles size={12} className="text-amber-500" />
+                                                <span>{repName ? `${repName} 担当` : '担当顧客'} ({repCustomersCount}件)</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setCustomerScopeTab('all')}
+                                                className={`flex-1 py-1 px-2 rounded-md font-bold text-center transition-all flex items-center justify-center gap-1 ${
+                                                    customerScopeTab === 'all'
+                                                        ? 'bg-white text-slate-800 shadow-xs'
+                                                        : 'text-gray-600 hover:text-gray-900'
+                                                }`}
+                                            >
+                                                <Building2 size={12} className="text-gray-500" />
+                                                <span>全社顧客 ({customers.length}件)</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Customer List */}
+                                    <div className="overflow-y-auto flex-1 divide-y divide-gray-100 max-h-64">
+                                        {filteredCustomersList.length === 0 ? (
+                                            <div className="p-6 text-center text-xs text-gray-400">
+                                                該当する得意先が見つかりませんでした
                                             </div>
-                                        ))
+                                        ) : (
+                                            filteredCustomersList.map(c => (
+                                                <div
+                                                    key={c.code}
+                                                    onClick={() => {
+                                                        setSelectedCustomer(c);
+                                                        setShowCustomerDropdown(false);
+                                                        setCustomerSearchQuery('');
+                                                    }}
+                                                    className={`p-3 text-xs cursor-pointer flex justify-between items-center hover:bg-blue-50/80 transition-colors ${
+                                                        selectedCustomer?.code === c.code ? 'bg-blue-50 font-bold border-l-4 border-blue-600 pl-2' : 'text-gray-700'
+                                                    }`}
+                                                >
+                                                    <div className="min-w-0 pr-2">
+                                                        <div className="font-semibold text-sf-text flex items-center gap-1.5 truncate">
+                                                            {c.is_rep_customer && (
+                                                                <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 shrink-0">
+                                                                    ★ 担当
+                                                                </span>
+                                                            )}
+                                                            <span className="truncate">{c.name}</span>
+                                                            {c.rank && (
+                                                                <span className="text-[10px] px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded shrink-0">
+                                                                    {c.rank}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                                            <span>CD: {c.code}</span>
+                                                            <span>|</span>
+                                                            <span>商品: {c.product_count}品目</span>
+                                                            {c.primary_rep && !c.is_rep_customer && (
+                                                                <>
+                                                                    <span>|</span>
+                                                                    <span className="text-gray-500">担当: {c.primary_rep}</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                        <div className="font-bold text-gray-800 font-mono">
+                                                            {Number(c.total_sales).toLocaleString()}円
+                                                        </div>
+                                                        <div className="text-[10px] text-gray-400">
+                                                            最新: {c.last_sales_date || '-'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Direct Destination Selector (得意先の右隣・キーワード検索＋サジェスト) */}
+                        <div className="relative w-full sm:w-64 md:w-72">
+                            <div
+                                onClick={() => {
+                                    if (directDests.length > 0) {
+                                        setShowDirectDestDropdown(!showDirectDestDropdown);
+                                        setShowCustomerDropdown(false);
+                                    }
+                                }}
+                                className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg border transition-colors shadow-xs ${
+                                    directDests.length === 0
+                                        ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                                        : selectedDirectDest !== 'all'
+                                        ? 'bg-indigo-50 border-indigo-300 text-indigo-950 font-semibold cursor-pointer ring-1 ring-indigo-400/50'
+                                        : 'bg-slate-50 border-slate-300 hover:bg-slate-100 cursor-pointer text-gray-700'
+                                }`}
+                                title={directDests.length === 0 ? "この得意先には登録された直送先（納品先）がありません" : "直送先をキーワード検索・選択"}
+                            >
+                                <div className="flex items-center gap-2 truncate">
+                                    <MapPin size={16} className={selectedDirectDest !== 'all' ? 'text-indigo-600 flex-shrink-0' : 'text-gray-400 flex-shrink-0'} />
+                                    <div className="flex items-center gap-1.5 truncate">
+                                        <span className="text-xs font-medium text-gray-500 shrink-0">直送先:</span>
+                                        {directDests.length === 0 ? (
+                                            <span className="text-xs text-gray-400 truncate">なし (単独納品)</span>
+                                        ) : selectedDirectDest === 'all' ? (
+                                            <span className="text-xs font-semibold text-gray-700 truncate">
+                                                すべて ({directDests.length}箇所)
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-bold text-indigo-700 truncate">
+                                                {selectedDirectDest}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                    {selectedDirectDest !== 'all' && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedDirectDest('all');
+                                                setDirectDestQuery('');
+                                            }}
+                                            className="p-1 hover:bg-indigo-200 text-indigo-700 rounded transition-colors"
+                                            title="直送先選択を解除（すべて表示）"
+                                        >
+                                            <X size={13} />
+                                        </button>
+                                    )}
+                                    {directDests.length > 0 && (
+                                        <ChevronDown size={15} className={`text-gray-400 transition-transform ${showDirectDestDropdown ? 'rotate-180' : ''}`} />
                                     )}
                                 </div>
                             </div>
-                        )}
+
+                            {/* Direct Destination Suggest Dropdown Modal */}
+                            {showDirectDestDropdown && directDests.length > 0 && (
+                                <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-sf-border shadow-2xl z-50 max-h-80 flex flex-col overflow-hidden animate-fadeIn">
+                                    {/* Search Input for Suggestions */}
+                                    <div className="p-2.5 bg-slate-50 border-b border-gray-200">
+                                        <div className="relative">
+                                            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                value={directDestQuery}
+                                                onChange={e => setDirectDestQuery(e.target.value)}
+                                                placeholder="直送先名またはコードで検索..."
+                                                className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-medium"
+                                                autoFocus
+                                            />
+                                            {directDestQuery && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDirectDestQuery('')}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Suggestions List */}
+                                    <div className="overflow-y-auto flex-1 divide-y divide-gray-100 max-h-60 text-xs">
+                                        {/* Option: すべての直送先 */}
+                                        <div
+                                            onClick={() => {
+                                                setSelectedDirectDest('all');
+                                                setShowDirectDestDropdown(false);
+                                                setDirectDestQuery('');
+                                            }}
+                                            className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${
+                                                selectedDirectDest === 'all'
+                                                    ? 'bg-indigo-50 text-indigo-900 font-bold border-l-4 border-indigo-600 pl-2'
+                                                    : 'hover:bg-gray-50 text-gray-700'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Building2 size={13} className="text-gray-400" />
+                                                <span>すべての直送先を表示</span>
+                                            </div>
+                                            <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-mono">
+                                                {directDests.length} 箇所
+                                            </span>
+                                        </div>
+
+                                        {filteredDirectDests.length === 0 ? (
+                                            <div className="p-4 text-center text-xs text-gray-400">
+                                                「{directDestQuery}」に一致する直送先はありません
+                                            </div>
+                                        ) : (
+                                            filteredDirectDests.map((d, i) => (
+                                                <div
+                                                    key={i}
+                                                    onClick={() => {
+                                                        setSelectedDirectDest(d.name);
+                                                        setShowDirectDestDropdown(false);
+                                                        setDirectDestQuery('');
+                                                    }}
+                                                    className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${
+                                                        selectedDirectDest === d.name
+                                                            ? 'bg-indigo-50 text-indigo-900 font-bold border-l-4 border-indigo-600 pl-2'
+                                                            : 'hover:bg-gray-50 text-gray-700'
+                                                    }`}
+                                                >
+                                                    <div className="truncate mr-2">
+                                                        <span className="block truncate font-medium text-gray-800">{d.name}</span>
+                                                        {d.code && (
+                                                            <span className="text-[10px] text-gray-400 font-mono block">CD: {d.code}</span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium shrink-0 font-mono">
+                                                        {d.order_count} 件
+                                                    </span>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -1117,44 +1344,6 @@ function CatalogContent() {
 
                     {/* View Switcher & Action Buttons */}
                     <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
-                        {/* Direct Destination Selector (when available) */}
-                        {directDests.length > 0 && (
-                            <div className="relative flex items-center gap-1.5">
-                                <span className="text-xs font-bold text-gray-500 flex items-center gap-1 shrink-0">
-                                    <Building2 size={13} className="text-indigo-600" />
-                                    直送先:
-                                </span>
-                                <div className="relative">
-                                    <select
-                                        value={selectedDirectDest}
-                                        onChange={e => setSelectedDirectDest(e.target.value)}
-                                        className={`pl-2.5 pr-7 py-2 text-xs border rounded-lg appearance-none font-medium cursor-pointer transition-all ${
-                                            selectedDirectDest !== 'all'
-                                                ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold ring-2 ring-indigo-500/20'
-                                                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
-                                        }`}
-                                    >
-                                        <option value="all">すべての直送先 ({directDests.length}箇所)</option>
-                                        {directDests.map((d, i) => (
-                                            <option key={i} value={d.name}>
-                                                {d.name} ({d.order_count}件)
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                </div>
-                                {selectedDirectDest !== 'all' && (
-                                    <button
-                                        onClick={() => setSelectedDirectDest('all')}
-                                        className="p-1 text-[11px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded flex items-center gap-0.5"
-                                        title="直送先絞り込みを解除"
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
                         {/* Sort Dropdown */}
                         <div className="relative">
                             <select
@@ -1387,8 +1576,16 @@ function CatalogContent() {
                                         </div>
                                     )}
                                     {/* Material, Color & Capacity Specs */}
-                                    {(p.material_name || p.color_display || p.capacity_display) && (
+                                    {(p.classification || p.material_name || p.color_display || p.capacity_display || p.direct_customer_name) && (
                                         <div className="flex flex-wrap items-center gap-1 mt-1.5 text-[10.5px]">
+                                            {p.classification && (
+                                                <span 
+                                                    className="px-1.5 py-0.5 bg-sky-50 text-sky-800 rounded border border-sky-200 font-medium inline-flex items-center gap-0.5" 
+                                                    title={`種別: ${p.classification}`}
+                                                >
+                                                    🏷️ {p.classification}
+                                                </span>
+                                            )}
                                             {p.material_name && (
                                                 <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200 font-medium">
                                                     {p.material_name}
@@ -1402,6 +1599,15 @@ function CatalogContent() {
                                             {p.capacity_display && (
                                                 <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 rounded border border-amber-200 font-mono font-medium">
                                                     ⚖️ {p.capacity_display}
+                                                </span>
+                                            )}
+                                            {p.direct_customer_name && (
+                                                <span 
+                                                    className="px-1.5 py-0.5 bg-emerald-50 text-emerald-800 rounded border border-emerald-200 font-medium inline-flex items-center gap-0.5 max-w-full truncate" 
+                                                    title={`直送先: ${p.direct_customer_name}`}
+                                                >
+                                                    <MapPin size={10} className="text-emerald-600 flex-shrink-0" />
+                                                    <span className="truncate">直送: {p.direct_customer_name}</span>
                                                 </span>
                                             )}
                                         </div>
@@ -1502,11 +1708,24 @@ function CatalogContent() {
                                         </td>
                                         <td className="py-2.5 px-4">
                                             <div className="font-medium text-sf-text">{p.product_name}</div>
-                                            {p.brand_name && (
-                                                <span className="inline-block mt-0.5 px-1.5 py-0.2 bg-blue-50 text-blue-700 text-[10px] rounded border border-blue-200">
-                                                    🏷️ {p.brand_name}
-                                                </span>
-                                            )}
+                                            <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                                {p.classification && (
+                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 bg-sky-50 text-sky-800 text-[10px] rounded border border-sky-200 font-medium" title={`種別: ${p.classification}`}>
+                                                        🏷️ {p.classification}
+                                                    </span>
+                                                )}
+                                                {p.brand_name && (
+                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 bg-blue-50 text-blue-700 text-[10px] rounded border border-blue-200">
+                                                        🏷️ {p.brand_name}
+                                                    </span>
+                                                )}
+                                                {p.direct_customer_name && (
+                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 bg-emerald-50 text-emerald-800 text-[10px] rounded border border-emerald-200 font-medium" title={`直送先: ${p.direct_customer_name}`}>
+                                                        <MapPin size={9} className="text-emerald-600 flex-shrink-0" />
+                                                        直送: {p.direct_customer_name}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="py-2.5 px-3 whitespace-nowrap">
                                             <span className="text-gray-700 font-medium">
@@ -1610,7 +1829,17 @@ function CatalogContent() {
                                                     <h4 className="font-bold text-sm text-sf-text truncate">{item.product.product_name}</h4>
                                                 </div>
                                                 <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                    {item.product.classification && (
+                                                        <span className="text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 text-[11px] font-medium">
+                                                            {item.product.classification}
+                                                        </span>
+                                                    )}
                                                     {item.product.brand_name && <span>🏷️ {item.product.brand_name}</span>}
+                                                    {item.product.direct_customer_name && (
+                                                        <span className="text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 text-[11px] font-medium">
+                                                            直送: {item.product.direct_customer_name}
+                                                        </span>
+                                                    )}
                                                     <span>単価: <strong>{item.product.latest_unit_price.toLocaleString()}円</strong></span>
                                                     <span>コード: {item.product.product_code}</span>
                                                 </div>

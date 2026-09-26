@@ -15,8 +15,7 @@ import {
     Building2,
     ClipboardList,
     FileBarChart2,
-    ShoppingBag,
-    Truck
+    ShoppingBag
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -142,7 +141,6 @@ export default function Sidebar() {
         { name: '新規日報作成', href: '/reports/batch', icon: ClipboardList },
         { name: '得意先一覧', href: '/customers', icon: Users },
         { name: '商品検索・カタログ', href: '/catalog', icon: ShoppingBag },
-        { name: '受注残・納期管理', href: '/orders-backlog', icon: Truck },
         { name: 'カレンダー', href: '/calendar', icon: Calendar },
         { name: 'デザイン検索', href: '/design-search', icon: Package },
         { name: '量販店調査検索', href: '/mass-retailer-survey', icon: Building2 },

@@ -475,16 +475,20 @@ export const getBacklogOrders = async (params: {
 export interface DirectDestOption {
     name: string;
     code: string;
+    sample_customer?: string;
     order_count: number;
 }
 
 export const getCatalogDirectDests = async (params?: {
     customer_code?: string;
     sales_rep?: string;
+    query?: string;
+    limit?: number;
 }): Promise<{ success: boolean; direct_dests: DirectDestOption[]; count: number }> => {
     const response = await api.get(`${API_URL}/catalog/direct-dests`, { params });
     return response.data;
 };
+
 
 
 

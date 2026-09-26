@@ -59,10 +59,12 @@ async def sync_worker_loop():
 import sales_importer
 
 async def sales_importer_background():
-    """起動時にAS/400の売上CSVをバックグラウンドで取り込み・更新"""
+    """起動時にAS/400の売上CSVをバックグラウンドで取り込み・更新（日報や画像の初期ロード完了後に安全に実行）"""
     try:
-        await asyncio.sleep(2) # サーバー起動処理を優先
+        await asyncio.sleep(10) # 起動直後の日報データ・画像取得を最優先
         await asyncio.to_thread(sales_importer.import_as400_sales_csv)
+    except asyncio.CancelledError:
+        pass
     except Exception as e:
         logging.warning(f"Background AS/400 sales import error: {e}")
 

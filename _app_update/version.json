@@ -1,11 +1,11 @@
 {
-  "version": "2.5.23",
+  "version": "2.5.24",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.23.exe",
-  "fileSize": 49169464,
-  "sha256": "f5f53ad7885f1ee5a25d7ca9259c6d47203c69404c5b1addf3b5858326ec9a75",
+  "fileName": "DailyReportServer_v2.5.24.exe",
+  "fileSize": 49168534,
+  "sha256": "45e9868c38d477a5d887341adbee76b7d89371e046b355c651ad234311cb09d3",
   "forceUpdate": false,
   "releaseNotes": [
-    "ロール製品の数量単位を「ｍ」、単袋・他を「枚」に正確に統一"
+    "売上DBを日報原本DBから完全分離・高速WAL化し、起動時の負荷およびタイムアウトエラーを解消"
   ]
 }

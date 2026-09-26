@@ -192,6 +192,7 @@ def resolve_sales_csv_path() -> str:
 
 SALES_CSV_PATH = resolve_sales_csv_path()
 SQLITE_CACHE_DB = _RAW_CONFIG.get('sqlite_cache_db', os.path.join(DATA_DIR, 'shadow_cache.db'))
+SALES_CACHE_DB = _RAW_CONFIG.get('sales_cache_db', os.path.join(DATA_DIR, 'sales_cache.db'))
 
 # Global DataFrame to hold sales data
 global_sales_df = None

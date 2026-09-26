@@ -54,6 +54,17 @@ async def upload_sales_csv(file: UploadFile = File(...)):
 
 
 
+def sanitize_json_obj(obj):
+    if isinstance(obj, dict):
+        return {k: sanitize_json_obj(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [sanitize_json_obj(v) for v in obj]
+    elif pd.isna(obj):
+        return None
+    elif hasattr(obj, 'item'):
+        return obj.item()
+    return obj
+
 @router.get("/api/sales/all")
 async def get_all_sales_data():
     """
@@ -87,7 +98,7 @@ async def get_all_sales_data():
                 "sales_rep": row.get('担当者') or (row.iloc[8] if len(row) > 8 else None),
             })
             
-        return records
+        return sanitize_json_obj(records)
 
     except Exception as e:
         logging.error(f"Error retrieving all sales data: {e}")
@@ -115,10 +126,16 @@ async def get_sales_data(customer_code: str):
                 matched_row = config.global_sales_df[config.global_sales_df['得意先コード'] == target_code]
                 if not matched_row.empty:
                     row = matched_row.iloc[0]
-                    as400_summary["rank"] = row.get('順位') if pd.notna(row.get('順位')) else None
-                    if not as400_summary.get("rank_class") and pd.notna(row.get('ランク')):
-                        as400_summary["rank_class"] = row.get('ランク')
-            return as400_summary
+                    rank_val = row.get('順位')
+                    if pd.notna(rank_val):
+                        try:
+                            as400_summary["rank"] = int(rank_val)
+                        except Exception:
+                            as400_summary["rank"] = str(rank_val)
+                    rank_cls = row.get('ランク')
+                    if not as400_summary.get("rank_class") and pd.notna(rank_cls):
+                        as400_summary["rank_class"] = str(rank_cls)
+            return sanitize_json_obj(as400_summary)
     except Exception as e:
         logging.error(f"Error querying AS400 sales cache for {target_code}: {e}")
 
@@ -158,7 +175,7 @@ async def get_sales_data(customer_code: str):
             "recent_orders": [],
             "updated_at": datetime.now().isoformat()
         }
-        return data
+        return sanitize_json_obj(data)
 
     except Exception as e:
         logging.error(f"Error retrieving sales data: {e}")

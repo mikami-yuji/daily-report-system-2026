@@ -1,11 +1,13 @@
 {
-  "version": "2.5.24",
+  "version": "2.5.25",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.24.exe",
-  "fileSize": 49168534,
-  "sha256": "45e9868c38d477a5d887341adbee76b7d89371e046b355c651ad234311cb09d3",
+  "fileName": "DailyReportServer_v2.5.25.exe",
+  "fileSize": 49169504,
+  "sha256": "b39669eb123d7407f956b2086739f53230ffcc2a6ea44ad2bc5963db1271960d",
   "forceUpdate": false,
   "releaseNotes": [
-    "売上DBを日報原本DBから完全分離・高速WAL化し、起動時の負荷およびタイムアウトエラーを解消"
+    "基幹AS400売上データ連携高速化",
+    "フリーズ・タイムアウト解消",
+    "数量単位（ロールｍ・単袋枚）自動判別"
   ]
 }

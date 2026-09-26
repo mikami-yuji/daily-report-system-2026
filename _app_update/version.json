@@ -1,12 +1,11 @@
 {
-  "version": "2.5.26",
+  "version": "2.5.27",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.26.exe",
-  "fileSize": 49174135,
-  "sha256": "d925c841a2ff246a3a26892eb477d11f3cb5f9ea4b54ffeb047defe2920b86f6",
+  "fileName": "DailyReportServer_v2.5.27.exe",
+  "fileSize": 49171844,
+  "sha256": "51b0bdaddacb927daf3c60a08167d59b31f27f587be44148835fed53944c7ec3",
   "forceUpdate": false,
   "releaseNotes": [
-    "基幹売上明細（AS/400）手動同期対応",
-    "設定画面連携"
+    "設定画面の旧手動CSVアップロード欄を削除し、AS400手動同期へ一本化"
   ]
 }

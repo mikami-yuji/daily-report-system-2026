@@ -1,6 +1,6 @@
 import React, { Fragment } from 'react';
 import { CustomerSummary } from './types';
-import { ChevronDown, ChevronRight, CornerDownRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { ChevronDown, ChevronRight, CornerDownRight, ArrowUp, ArrowDown, ArrowUpDown, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
 import { CustomerSortKey } from './CustomerFilters';
 import { getDaysSinceDate } from '@/lib/reportUtils';
@@ -113,6 +113,7 @@ export default function CustomerList({
                             <span>最終活動日</span>
                             {renderSortIcon('lastActivity')}
                         </th>
+                        <th className="px-4 py-3 text-center font-medium">カタログ</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -183,6 +184,16 @@ export default function CustomerList({
                                 <td className="px-4 py-3">
                                     {renderLastActivity(customer.lastActivity)}
                                 </td>
+                                <td className="px-4 py-3 text-center">
+                                    <Link
+                                        href={`/catalog?customer_code=${customer.code}`}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded border border-indigo-200 transition-colors shadow-sm"
+                                        title={`${customer.name} の商品カタログ・発注を開く`}
+                                    >
+                                        <ShoppingBag size={13} />
+                                        <span>カタログ</span>
+                                    </Link>
+                                </td>
                             </tr>
                             {/* Direct Delivery Rows (Sub Items) */}
                             {expandedRows.has(customer.id) && customer.subItems?.map(sub => (
@@ -235,6 +246,16 @@ export default function CustomerList({
                                     </td>
                                     <td className="px-4 py-3 text-xs">
                                         {renderLastActivity(sub.lastActivity)}
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <Link
+                                            href={`/catalog?customer_code=${sub.code}`}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium rounded border border-gray-200 transition-colors"
+                                            title={`${sub.directDeliveryName} の商品カタログを開く`}
+                                        >
+                                            <ShoppingBag size={11} />
+                                            <span>カタログ</span>
+                                        </Link>
                                     </td>
                                 </tr>
                             ))}

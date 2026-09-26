@@ -69,6 +69,11 @@ def check_for_update() -> Dict[str, Any]:
         "checked_at": time.strftime("%Y-%m-%d %H:%M:%S")
     }
 
+    # 開発環境（Pythonスクリプト実行時）は自動アップデート通知を行わない（EXE実行時のみ通知）
+    if not getattr(sys, 'frozen', False):
+        result["reason"] = "dev_mode_skip_update"
+        return result
+
     update_dir = get_update_dir()
     if not update_dir:
         result["reason"] = "update_dir_not_found"

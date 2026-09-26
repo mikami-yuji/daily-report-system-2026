@@ -86,3 +86,6 @@ includes_search.txt
 backend/mikami_response.json
 backend/morita_response.json
 backend/dummy_global_sales.csv
+scratch/
+scratch_*.*
+

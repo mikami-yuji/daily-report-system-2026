@@ -34,6 +34,7 @@ import routes_sales
 import routes_stats
 import routes_proxy
 import routes_updater
+import routes_catalog
 import sync_queue
 
 logging.info("Server initialized successfully.")
@@ -101,6 +102,7 @@ app.include_router(routes_sales.router)
 app.include_router(routes_stats.router)
 app.include_router(routes_proxy.router)
 app.include_router(routes_updater.router)
+app.include_router(routes_catalog.router)
 
 # Mount static files
 STATIC_DIR = os.path.join(config.BUNDLE_DIR, "static")

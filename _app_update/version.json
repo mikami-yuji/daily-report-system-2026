@@ -1,13 +1,6 @@
 {
-  "version": "2.5.29",
-  "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.29.exe",
-  "fileSize": 49177372,
-  "sha256": "658ca77a04dc459db68827f642b448e595d5227072107e90aa48c69fb8422df1",
-  "forceUpdate": false,
-  "releaseNotes": [
-    "売上日の納期基準移行",
-    "製造ロス反映出来高数量採用",
-    "実効売上単価(印刷代・製版代合算)算出"
-  ]
+  "version": "2.5.43",
+  "sha256": "90220b9d0112ebe05c9f0a445548f59c401ec56a6ea14d80fd97b3a42717633f",
+  "size": 49203625,
+  "release_notes": "受注残・納期管理および商品カタログに直送先（納品先）絞り込み枠を追加"
 }

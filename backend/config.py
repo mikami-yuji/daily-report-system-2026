@@ -165,6 +165,12 @@ DESIGN_DIR = _RAW_CONFIG.get(
     r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\03：デザインデータ'
 )
 
+# 商品画像ディレクトリ (Asahipack01)
+PRODUCT_IMAGE_DIR = _RAW_CONFIG.get(
+    'product_image_dir',
+    r'\\Asahipack01\画像'
+)
+
 # 企画課デザインビューアURL（config.json で上書き可能）
 VIEWER_URL = _RAW_CONFIG.get('viewer_url', 'http://192.168.1.5:8888').rstrip('/')
 

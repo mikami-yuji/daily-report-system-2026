@@ -52,6 +52,8 @@ type DesignRequest = {
 };
 
 type SalesOrderItem = {
+    order_no?: number | string;
+    branch_no?: number | string;
     order_date: string;
     delivery_date?: string;
     sales_date?: string;
@@ -81,6 +83,7 @@ type MonthlySalesItem = {
 
 type SalesData = {
     found: boolean;
+    fiscal_year?: string;
     rank?: string | number;
     rank_class?: string;
     sales_amount?: string | number;
@@ -400,6 +403,17 @@ function CustomerDetailContent() {
                                 <span className="text-sm font-semibold text-blue-900">{currentTarget}</span>
                             </div>
                         )}
+                    </div>
+
+                    {/* Catalog Link Button */}
+                    <div className="flex items-center gap-2">
+                        <Link
+                            href={`/catalog?customer_code=${customerCode}`}
+                            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+                        >
+                            <ShoppingBag size={16} />
+                            <span>商品カタログ・発注</span>
+                        </Link>
                     </div>
                 </div>
 
@@ -813,7 +827,12 @@ function CustomerDetailContent() {
                                     {/* Sales Info */}
                                     <div className="space-y-4">
                                         <div className="flex justify-between items-end border-b border-gray-100 pb-2">
-                                            <span className="text-sf-text-weak text-sm">今期売上金額</span>
+                                            <div>
+                                                <span className="text-sf-text-weak text-sm">今期売上金額</span>
+                                                <span className="text-[11px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded ml-2 border border-blue-100">
+                                                    {salesData.fiscal_year || '当期 (2月〜1月)'}
+                                                </span>
+                                            </div>
                                             <span className="text-2xl font-bold text-sf-text">
                                                 {Number(salesData.sales_amount).toLocaleString()}
                                                 <span className="text-sm font-normal ml-1">円</span>
@@ -828,7 +847,7 @@ function CustomerDetailContent() {
                                         </div>
                                         <div className="grid grid-cols-2 gap-4 mt-4 pt-2 border-t border-gray-100">
                                             <div className="text-right">
-                                                <p className="text-xs text-sf-text-weak">前年売上</p>
+                                                <p className="text-xs text-sf-text-weak">前期売上 (前年度通期)</p>
                                                 <p className="font-medium text-gray-700">
                                                     {Number(salesData.sales_last_year || 0).toLocaleString()}円
                                                 </p>
@@ -837,7 +856,7 @@ function CustomerDetailContent() {
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-xs text-sf-text-weak">前年粗利</p>
+                                                <p className="text-xs text-sf-text-weak">前期粗利</p>
                                                 <p className="font-medium text-gray-700">
                                                     {Number(salesData.profit_last_year || 0).toLocaleString()}円
                                                 </p>
@@ -845,22 +864,23 @@ function CustomerDetailContent() {
                                         </div>
                                         <div className="grid grid-cols-2 gap-4 mt-2 pt-2 border-t border-dashed border-gray-200">
                                             <div className="text-right">
-                                                <p className="text-xs text-sf-text-weak">前々年売上</p>
+                                                <p className="text-xs text-sf-text-weak">前々期売上 (前々年度通期)</p>
                                                 <p className="font-medium text-gray-500">
                                                     {Number(salesData.sales_2y_ago || 0).toLocaleString()}円
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-xs text-sf-text-weak">前々年粗利</p>
+                                                <p className="text-xs text-sf-text-weak">前々期粗利</p>
                                                 <p className="font-medium text-gray-500">
                                                     {Number(salesData.profit_2y_ago || 0).toLocaleString()}円
                                                 </p>
                                             </div>
                                         </div>
                                         {salesData.updated_at && (
-                                            <p className="text-xs text-right text-gray-300 mt-2">
-                                                データ更新: {mounted && salesData.updated_at ? new Date(salesData.updated_at).toLocaleDateString() : ''}
-                                            </p>
+                                            <div className="flex justify-between items-center text-xs text-gray-400 mt-2">
+                                                <span className="text-[11px] text-gray-500">※決算期: 2月1日〜翌年1月31日</span>
+                                                <span>データ更新: {mounted && salesData.updated_at ? new Date(salesData.updated_at).toLocaleDateString() : ''}</span>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -990,6 +1010,7 @@ function CustomerDetailContent() {
                                         <thead className="bg-gray-50 text-xs text-sf-text-weak uppercase border-b border-sf-border">
                                             <tr>
                                                 <th className="py-2.5 px-4 font-semibold">売上日 (納期)</th>
+                                                <th className="py-2.5 px-4 font-semibold">受注No</th>
                                                 <th className="py-2.5 px-4 font-semibold">商品名称 / 銘柄・ブランド</th>
                                                 <th className="py-2.5 px-4 font-semibold text-right">売上数量</th>
                                                 <th className="py-2.5 px-4 font-semibold text-right">実効単価</th>
@@ -1003,6 +1024,18 @@ function CustomerDetailContent() {
                                                 <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
                                                     <td className="py-3 px-4 font-mono text-xs whitespace-nowrap font-medium text-blue-700">
                                                         {order.sales_date || order.delivery_date || order.order_date}
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono text-xs whitespace-nowrap font-medium text-gray-700">
+                                                        {order.order_no && Number(order.order_no) > 0 ? (
+                                                            <span>
+                                                                {order.order_no}
+                                                                {order.branch_no && Number(order.branch_no) > 0 ? (
+                                                                    <span className="text-gray-500 font-normal">-{String(order.branch_no).padStart(2, '0')}</span>
+                                                                ) : ''}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-gray-400">-</span>
+                                                        )}
                                                     </td>
                                                     <td className="py-3 px-4">
                                                         <div className="font-medium text-sf-text">{order.product_name}</div>

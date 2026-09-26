@@ -1,0 +1,9 @@
+{
+  "version": "2.5.41",
+  "release_date": "2026-09-26",
+  "min_version": "1.0.0",
+  "download_url": "\\\\Asahipack02\\社内書類ｎｅｗ\\01：部署別　営業部\\02：営業日報\\2026年度\\_app_update\\DailyReportServer.exe",
+  "sha256": "4acba345b805008ca38c26b1a5f9ec701f938deac4efe7c07e34c45f65c24d90",
+  "size": 49200602,
+  "changelog": "商品カタログおよび受注残・納期管理への「材質・色数・サイズ・仕様」情報の追加、およびExcel出力対応"
+}

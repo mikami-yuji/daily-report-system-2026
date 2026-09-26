@@ -9,6 +9,8 @@ import re
 import traceback
 import math
 import io
+import time
+import threading
 import requests
 from datetime import datetime, timedelta
 import pandas as pd
@@ -248,6 +250,154 @@ def serve_design_image(path: str):
     except Exception as e:
          logging.error(f"Error in serve_design_image: {e}", exc_info=True)
          raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# --- Asahipack01 Product Image Storage & Resolution ---
+_PRODUCT_IMAGE_CACHE: Dict[str, List[str]] = {}
+_PRODUCT_IMAGE_LOCK = threading.Lock()
+_PRODUCT_IMAGE_LAST_SCAN = 0.0
+
+def get_product_image_index() -> Dict[str, List[str]]:
+    global _PRODUCT_IMAGE_LAST_SCAN, _PRODUCT_IMAGE_CACHE
+    now = time.time()
+    if _PRODUCT_IMAGE_CACHE and (now - _PRODUCT_IMAGE_LAST_SCAN < 1800):
+        return _PRODUCT_IMAGE_CACHE
+        
+    with _PRODUCT_IMAGE_LOCK:
+        if _PRODUCT_IMAGE_CACHE and (now - _PRODUCT_IMAGE_LAST_SCAN < 1800):
+            return _PRODUCT_IMAGE_CACHE
+        
+        img_dir = config.PRODUCT_IMAGE_DIR
+        new_cache: Dict[str, List[str]] = {}
+        valid_exts = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
+        try:
+            if config.is_network_path_accessible(img_dir, timeout=1.0) and os.path.exists(img_dir):
+                for f in os.listdir(img_dir):
+                    if f.startswith('.'):
+                        continue
+                    name, ext = os.path.splitext(f)
+                    if ext.lower() in valid_exts:
+                        k_full = name.lower()
+                        if k_full not in new_cache:
+                            new_cache[k_full] = []
+                        new_cache[k_full].append(f)
+                        
+                        base_num = re.sub(r'[a-zA-Z]+$', '', name).lower()
+                        if base_num and base_num != k_full:
+                            if base_num not in new_cache:
+                                new_cache[base_num] = []
+                            new_cache[base_num].append(f)
+                            
+                _PRODUCT_IMAGE_CACHE = new_cache
+                _PRODUCT_IMAGE_LAST_SCAN = now
+                logging.info(f"Product image index built: {len(new_cache)} keys from {img_dir}")
+        except Exception as e:
+            logging.warning(f"Failed to scan PRODUCT_IMAGE_DIR ({img_dir}): {e}")
+            
+        return _PRODUCT_IMAGE_CACHE
+
+
+def resolve_product_image_data(product_code: Any, product_name: str = "", order_no: Any = 0) -> Dict[str, Any]:
+    """
+    商品コード、商品名、受注Noから \\Asahipack01\\画像 内の画像を特定
+    """
+    idx = get_product_image_index()
+    if not idx:
+        return {"image_url": None, "image_name": None, "image_variants": []}
+        
+    code_str = str(product_code).strip().lstrip('0')
+    sub_code = code_str[2:] if code_str.startswith('70') else code_str
+    
+    # 候補キーのリスト（優先度順）
+    candidate_keys = []
+    
+    # 1. 70プレフィックス除去コード（表面 A, 全体 C, 通常）
+    if sub_code:
+        candidate_keys.extend([f"{sub_code.lower()}a", f"{sub_code.lower()}c", sub_code.lower()])
+    
+    # 2. 完全コード
+    if code_str and code_str != sub_code:
+        candidate_keys.extend([f"{code_str.lower()}a", f"{code_str.lower()}c", code_str.lower()])
+        
+    # 3. 商品名中の括弧内コード (例: (049415C))
+    if product_name:
+        m = re.search(r'\(([A-Za-z0-9]+)\)', product_name)
+        if m:
+            p_paren = m.group(1).lower()
+            candidate_keys.extend([p_paren, f"{p_paren}a", f"{p_paren}c"])
+            
+    # 4. 受注No
+    if order_no and str(order_no).strip() != '0':
+        ord_str = str(order_no).strip().lower()
+        candidate_keys.extend([f"{ord_str}a", f"{ord_str}c", ord_str])
+        
+    found_files = []
+    seen = set()
+    for k in candidate_keys:
+        matches = idx.get(k)
+        if matches:
+            for f in matches:
+                if f not in seen:
+                    seen.add(f)
+                    found_files.append(f)
+                    
+    if not found_files:
+        return {"image_url": None, "image_name": None, "image_variants": []}
+        
+    # 優先順位: A (表面) -> C (カタログ/全体) -> B -> その他
+    def sort_variants(fname: str) -> int:
+        u = fname.upper()
+        if 'A.' in u or u.endswith('A.JPG'): return 0
+        if 'C.' in u or u.endswith('C.JPG'): return 1
+        if 'B.' in u or u.endswith('B.JPG'): return 2
+        return 3
+        
+    found_files.sort(key=sort_variants)
+    
+    primary_name = found_files[0]
+    primary_url = f"/api/images/product/{primary_name}"
+    variants = [f"/api/images/product/{fn}" for fn in found_files]
+    
+    return {
+        "image_url": primary_url,
+        "image_name": primary_name,
+        "image_variants": variants
+    }
+
+
+@router.get("/api/images/product/{filename}")
+def serve_product_image(filename: str):
+    r"""
+    Serve product image directly from \\Asahipack01\画像.
+    """
+    img_dir = config.PRODUCT_IMAGE_DIR
+    clean_filename = os.path.basename(filename)
+    if not clean_filename or clean_filename.startswith('.'):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+        
+    safe_path = os.path.join(img_dir, clean_filename)
+        
+    if not os.path.exists(safe_path):
+        raise HTTPException(status_code=404, detail="Product image not found")
+        
+    ext = os.path.splitext(clean_filename)[1].lower()
+    media_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.bmp': 'image/bmp'
+    }
+    media_type = media_types.get(ext, 'image/jpeg')
+    
+    return FileResponse(
+        safe_path, 
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=604800, immutable"
+        }
+    )
 
 
 

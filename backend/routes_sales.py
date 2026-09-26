@@ -132,6 +132,39 @@ async def trigger_sales_sync():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/sales/backlog")
+async def get_sales_backlog(
+    sales_rep: Optional[str] = None,
+    customer_code: Optional[str] = None,
+    direct_dest: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    keyword: Optional[str] = None,
+    limit: int = 500,
+    offset: int = 0
+):
+    """
+    AS/400の受注残・納期管理データを取得（納期ステータス別判定・サマリー集計付き）
+    """
+    try:
+        res = sales_importer.query_as400_backlog_orders(
+            sales_rep=sales_rep,
+            customer_code=customer_code,
+            direct_dest=direct_dest,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            keyword=keyword,
+            limit=limit,
+            offset=offset
+        )
+        return sanitize_json_obj(res)
+    except Exception as e:
+        logging.error(f"Error querying sales backlog: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
@@ -203,6 +236,8 @@ async def get_sales_data(customer_code: str):
     except Exception as e:
         logging.error(f"Error retrieving sales data: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+
+
 
 
 

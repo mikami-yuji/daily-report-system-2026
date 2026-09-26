@@ -1,8 +1,8 @@
 # UTF-8
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 5, 29, 0),
-    prodvers=(2, 5, 29, 0),
+    filevers=(2, 5, 35, 0),
+    prodvers=(2, 5, 35, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,12 +18,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', '株式会社アサヒパック'),
             StringStruct('FileDescription', '営業日報システム サーバー'),
-            StringStruct('FileVersion', '2.5.29.0'),
+            StringStruct('FileVersion', '2.5.35.0'),
             StringStruct('InternalName', 'DailyReportServer'),
             StringStruct('LegalCopyright', 'Copyright (C) 2026 株式会社アサヒパック All Rights Reserved.'),
             StringStruct('OriginalFilename', 'DailyReportServer.exe'),
             StringStruct('ProductName', '営業日報システム'),
-            StringStruct('ProductVersion', '2.5.29.0')
+            StringStruct('ProductVersion', '2.5.35.0')
           ]
         ),
         StringTable(
@@ -31,12 +31,12 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Asahipack Co., Ltd.'),
             StringStruct('FileDescription', 'Daily Report System Server'),
-            StringStruct('FileVersion', '2.5.29.0'),
+            StringStruct('FileVersion', '2.5.35.0'),
             StringStruct('InternalName', 'DailyReportServer'),
             StringStruct('LegalCopyright', 'Copyright (C) 2026 Asahipack Co., Ltd. All Rights Reserved.'),
             StringStruct('OriginalFilename', 'DailyReportServer.exe'),
             StringStruct('ProductName', 'Daily Report System'),
-            StringStruct('ProductVersion', '2.5.29.0')
+            StringStruct('ProductVersion', '2.5.35.0')
           ]
         )
       ]

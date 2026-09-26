@@ -24,26 +24,36 @@ def test_batch_report_create_input_model():
     assert batch_input.reports[0].訪問先名 == "テスト得意先A"
     assert batch_input.reports[1].訪問先名 == "テスト得意先B"
 
-def test_add_batch_reports_empty():
+def test_add_batch_reports_empty(tmp_path):
     """空リスト時のレスポンス検証"""
-    batch_input = models.BatchReportCreateInput(reports=[])
-    res = routes_reports.add_batch_reports(batch_input, BackgroundTasks(), "non_existent.xlsx")
-    assert res["count"] == 0
-    assert res["management_numbers"] == []
+    orig_db = config.SQLITE_CACHE_DB
+    config.SQLITE_CACHE_DB = str(tmp_path / "test_empty.db")
+    try:
+        batch_input = models.BatchReportCreateInput(reports=[])
+        res = routes_reports.add_batch_reports(batch_input, BackgroundTasks(), "non_existent.xlsx")
+        assert res["count"] == 0
+        assert res["management_numbers"] == []
+    finally:
+        config.SQLITE_CACHE_DB = orig_db
 
-def test_add_batch_reports_offline_queueing():
+def test_add_batch_reports_offline_queueing(tmp_path):
     """ファイルが存在しない場合の安全退避キュー登録テスト"""
-    reports_data = [
-        models.ReportInput(日付="26/08/18", 訪問先名="テスト得意先A", 行動内容="訪問（商談）"),
-        models.ReportInput(日付="26/08/18", 訪問先名="テスト得意先B", 行動内容="電話")
-    ]
-    batch_input = models.BatchReportCreateInput(reports=reports_data)
-    res = routes_reports.add_batch_reports(batch_input, BackgroundTasks(), "non_existent_file_xyz.xlsx")
-    assert res["offline"] is True
-    assert res["count"] == 2
-    assert len(res["task_ids"]) == 2
-    assert len(res["management_numbers"]) == 2
-    assert res["management_numbers"][0] < 0
+    orig_db = config.SQLITE_CACHE_DB
+    config.SQLITE_CACHE_DB = str(tmp_path / "test_queue.db")
+    try:
+        reports_data = [
+            models.ReportInput(日付="26/08/18", 訪問先名="テスト得意先A", 行動内容="訪問（商談）"),
+            models.ReportInput(日付="26/08/18", 訪問先名="テスト得意先B", 行動内容="電話")
+        ]
+        batch_input = models.BatchReportCreateInput(reports=reports_data)
+        res = routes_reports.add_batch_reports(batch_input, BackgroundTasks(), "non_existent_file_xyz.xlsx")
+        assert res["offline"] is True
+        assert res["count"] == 2
+        assert len(res["task_ids"]) == 2
+        assert len(res["management_numbers"]) == 2
+        assert res["management_numbers"][0] < 0
+    finally:
+        config.SQLITE_CACHE_DB = orig_db
 
 def test_apply_batch_add_reports_to_excel():
     """Excelファイルへの一括書き込みテスト"""

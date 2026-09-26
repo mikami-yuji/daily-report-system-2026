@@ -394,3 +394,97 @@ export const clearCache = async (filename?: string): Promise<{ status: string; m
     return response.data;
 };
 
+export interface BacklogSummary {
+    total_count: number;
+    confirmed_count: number;
+    asap_count: number;
+    provisional_count: number;
+    delayed_count: number;
+    total_amount: number;
+}
+
+export interface BacklogOrder {
+    id: number;
+    order_no: number;
+    branch_no: number;
+    order_no_display: string;
+    order_date: string;
+    delivery_date: string;
+    arrival_date: string;
+    customer_code: string;
+    customer_name: string;
+    direct_customer_code?: string;
+    direct_customer_name?: string;
+    product_code: string;
+    product_name: string;
+    brand_name?: string;
+    shape_type?: string;
+    unit: string;
+    order_quantity: number;
+    allocated_quantity: number;
+    unit_price: number;
+    cost_price: number;
+    amount: number;
+    profit: number;
+    sales_rep: string;
+    delivery_status: 'confirmed' | 'asap' | 'provisional' | 'delayed';
+    delivery_status_label: string;
+    shipping_note?: string;
+    finish_note?: string;
+    print_note?: string;
+    special_note?: string;
+    material_name?: string;
+    material_short?: string;
+    colors_front?: number;
+    colors_back?: number;
+    colors_total?: number;
+    color_display?: string;
+    size_width?: number;
+    size_pitch?: number;
+    size_display?: string;
+    weight?: number;
+    capacity_display?: string;
+    is_complete_flag: number;
+}
+
+export interface BacklogResponse {
+    summary: BacklogSummary;
+    orders: BacklogOrder[];
+    count: number;
+    reps: string[];
+    direct_dests?: string[];
+    limit: number;
+    offset: number;
+}
+
+export const getBacklogOrders = async (params: {
+    sales_rep?: string;
+    customer_code?: string;
+    direct_dest?: string;
+    status?: string;
+    start_date?: string;
+    end_date?: string;
+    keyword?: string;
+    limit?: number;
+    offset?: number;
+}): Promise<BacklogResponse> => {
+    const response = await api.get(`${API_URL}/sales/backlog`, { params });
+    return response.data;
+};
+
+export interface DirectDestOption {
+    name: string;
+    code: string;
+    order_count: number;
+}
+
+export const getCatalogDirectDests = async (params?: {
+    customer_code?: string;
+    sales_rep?: string;
+}): Promise<{ success: boolean; direct_dests: DirectDestOption[]; count: number }> => {
+    const response = await api.get(`${API_URL}/catalog/direct-dests`, { params });
+    return response.data;
+};
+
+
+

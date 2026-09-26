@@ -1,11 +1,11 @@
 {
-  "version": "2.5.22",
+  "version": "2.5.23",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.22.exe",
-  "fileSize": 49167643,
-  "sha256": "0b478adad5590e46e06d1383a38cbd53957a0514bb8d7413fbf9892a34ba07cf",
+  "fileName": "DailyReportServer_v2.5.23.exe",
+  "fileSize": 49169464,
+  "sha256": "f5f53ad7885f1ee5a25d7ca9259c6d47203c69404c5b1addf3b5858326ec9a75",
   "forceUpdate": false,
   "releaseNotes": [
-    "基幹システム(AS/400)全社売上明細データの自動取り込み・顧客詳細での直近受注履歴表示に対応"
+    "ロール製品の数量単位を「ｍ」、単袋・他を「枚」に正確に統一"
   ]
 }

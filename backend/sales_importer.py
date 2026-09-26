@@ -73,6 +73,8 @@ def init_sales_db(db_path: Optional[str] = None):
                 product_code TEXT,
                 product_name TEXT,
                 brand_name TEXT,
+                shape_type TEXT,
+                unit TEXT,
                 quantity REAL,
                 unit_price REAL,
                 cost_price REAL,
@@ -84,6 +86,14 @@ def init_sales_db(db_path: Optional[str] = None):
                 csv_mtime REAL
             )
         """)
+        
+        # 既存テーブルへのカラム追加互換
+        cursor.execute("PRAGMA table_info(as400_sales_orders)")
+        cols = [col[1] for col in cursor.fetchall()]
+        if 'unit' not in cols:
+            cursor.execute("ALTER TABLE as400_sales_orders ADD COLUMN unit TEXT")
+        if 'shape_type' not in cols:
+            cursor.execute("ALTER TABLE as400_sales_orders ADD COLUMN shape_type TEXT")
         
         # インデックス
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_cust_code ON as400_sales_orders (customer_code)")
@@ -192,6 +202,12 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
 
             title = str(main_row.get('タイトル', '')).strip() if pd.notna(main_row.get('タイトル')) else ''
 
+            # T列（index 19）による形状区分と単位の判定
+            shape_type = str(main_row.iloc[19]).strip() if len(main_row) > 19 and pd.notna(main_row.iloc[19]) else ''
+            # ロールの場合は「ｍ」、単袋＋その他は「枚」で統一
+            is_roll = ('ロール' in shape_type) or ('ロール' in prod_name) or ('RZ' in prod_name) or ('RA' in prod_name) or ('RZ' in title) or ('RA' in title)
+            unit = 'ｍ' if is_roll else '枚'
+
             records.append((
                 int(jno) if str(jno).isdigit() else 0,
                 int(eda) if str(eda).isdigit() else 0,
@@ -202,6 +218,8 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 prod_code,
                 prod_name,
                 brand_name,
+                shape_type,
+                unit,
                 qty,
                 uprice,
                 cprice,
@@ -221,9 +239,10 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 INSERT INTO as400_sales_orders (
                     order_no, branch_no, order_date, customer_code, customer_name,
                     customer_rank, product_code, product_name, brand_name,
+                    shape_type, unit,
                     quantity, unit_price, cost_price, amount, profit,
                     sales_rep, delivery_date, title, csv_mtime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, records)
 
             # メタ情報更新
@@ -252,7 +271,7 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
 
         # 直近10件の受注明細履歴
         cursor.execute("""
-            SELECT order_date, product_name, brand_name, quantity, unit_price, amount, sales_rep, delivery_date
+            SELECT order_date, product_name, brand_name, shape_type, unit, quantity, unit_price, amount, sales_rep, delivery_date
             FROM as400_sales_orders
             WHERE customer_code = ? OR customer_code = ?
             ORDER BY order_date DESC
@@ -265,6 +284,8 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
                 "order_date": r["order_date"],
                 "product_name": r["product_name"],
                 "brand_name": r["brand_name"],
+                "shape_type": r["shape_type"] or "",
+                "unit": r["unit"] or "枚",
                 "quantity": r["quantity"],
                 "unit_price": r["unit_price"],
                 "amount": r["amount"],

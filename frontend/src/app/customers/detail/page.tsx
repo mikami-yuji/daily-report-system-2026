@@ -58,6 +58,7 @@ type SalesOrderItem = {
     quantity: number;
     unit_price: number;
     amount: number;
+    unit?: string;
     sales_rep?: string;
     delivery_date?: string;
 };
@@ -892,7 +893,7 @@ function CustomerDetailContent() {
                                                     </td>
                                                     <td className="py-3 px-4 text-right font-medium whitespace-nowrap">
                                                         {Number(order.quantity).toLocaleString()}
-                                                        <span className="text-xs text-gray-500 ml-1">枚</span>
+                                                        <span className="text-xs text-gray-500 ml-1">{order.unit || '枚'}</span>
                                                     </td>
                                                     <td className="py-3 px-4 text-right text-sf-text-weak whitespace-nowrap">
                                                         {order.unit_price > 0 ? `${Number(order.unit_price).toLocaleString()}円` : '-'}

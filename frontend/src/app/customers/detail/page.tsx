@@ -63,6 +63,17 @@ type SalesOrderItem = {
     delivery_date?: string;
 };
 
+type MonthlySalesItem = {
+    month: string;
+    month_label: string;
+    sales: number;
+    profit: number;
+    orders: number;
+    last_year_sales: number;
+    last_year_orders?: number;
+    yoy_growth?: number | null;
+};
+
 type SalesData = {
     found: boolean;
     rank?: string | number;
@@ -77,6 +88,7 @@ type SalesData = {
     customer_name?: string;
     last_order_date?: string;
     recent_orders?: SalesOrderItem[];
+    monthly_sales?: MonthlySalesItem[];
     message?: string;
     updated_at?: string;
 };
@@ -849,6 +861,110 @@ function CustomerDetailContent() {
                                 </div>
                             )}
                         </div>
+
+                        {/* 月別売上推移グラフ ＆ 実績（基幹AS/400連携） */}
+                        {salesData && salesData.monthly_sales && salesData.monthly_sales.length > 0 && (
+                            <div className="bg-white rounded border border-sf-border shadow-sm p-6 space-y-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-sf-border gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <BarChart3 size={18} className="text-sf-light-blue" />
+                                        <h4 className="font-semibold text-base text-sf-text">月別売上推移 (直近12ヶ月・前年同月比較)</h4>
+                                    </div>
+                                    <span className="text-xs text-sf-text-weak">
+                                        青：当期売上 ／ 灰：前年同月売上
+                                    </span>
+                                </div>
+
+                                {/* 棒グラフ */}
+                                <div style={{ width: '100%', height: 300 }}>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <BarChart data={salesData.monthly_sales} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="month_label" tick={{ fontSize: 11 }} />
+                                            <YAxis 
+                                                tick={{ fontSize: 11 }} 
+                                                tickFormatter={(v) => `${(v / 10000).toLocaleString()}万`}
+                                            />
+                                            <Tooltip 
+                                                contentStyle={{ 
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+                                                    border: '1px solid #e2e8f0', 
+                                                    borderRadius: '6px',
+                                                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                                                    fontSize: '12px'
+                                                }}
+                                                formatter={(value: any, name: any) => [
+                                                    `${Number(value || 0).toLocaleString()}円`,
+                                                    name === 'sales' ? '当期売上' : (name === 'last_year_sales' ? '前年同月売上' : name)
+                                                ]}
+                                                labelFormatter={(label) => `年月: 20${label}`}
+                                            />
+                                            <Legend 
+                                                verticalAlign="top" 
+                                                height={36} 
+                                                formatter={(value) => value === 'sales' ? '当期売上' : (value === 'last_year_sales' ? '前年同月売上' : value)}
+                                            />
+                                            <Bar dataKey="sales" name="sales" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="last_year_sales" name="last_year_sales" fill="#CBD5E1" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+
+                                {/* 月別実績一覧テーブル */}
+                                <div className="border border-sf-border rounded overflow-hidden">
+                                    <div className="bg-gray-50 px-4 py-2 border-b border-sf-border flex justify-between items-center">
+                                        <h5 className="text-xs font-semibold text-sf-text">月別実績数値一覧</h5>
+                                        <span className="text-[11px] text-sf-text-weak">※直近月順</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-xs">
+                                            <thead className="bg-gray-50 border-b border-sf-border text-sf-text-weak">
+                                                <tr>
+                                                    <th className="py-2 px-3 font-semibold">対象月</th>
+                                                    <th className="py-2 px-3 font-semibold text-right">当期売上</th>
+                                                    <th className="py-2 px-3 font-semibold text-right">前年同月売上</th>
+                                                    <th className="py-2 px-3 font-semibold text-right">前年比(YoY)</th>
+                                                    <th className="py-2 px-3 font-semibold text-right">受注件数</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {salesData.monthly_sales.slice().reverse().map((item, idx) => {
+                                                    const isPositive = item.yoy_growth !== null && item.yoy_growth !== undefined && item.yoy_growth >= 100;
+                                                    const isNegative = item.yoy_growth !== null && item.yoy_growth !== undefined && item.yoy_growth < 100 && item.last_year_sales > 0;
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                                            <td className="py-2.5 px-3 font-medium text-gray-800 font-mono">
+                                                                {item.month}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right font-semibold text-sf-text">
+                                                                {Number(item.sales).toLocaleString()}円
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right text-gray-500">
+                                                                {item.last_year_sales > 0 ? `${Number(item.last_year_sales).toLocaleString()}円` : '-'}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right font-medium">
+                                                                {item.yoy_growth !== null && item.yoy_growth !== undefined ? (
+                                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] ${
+                                                                        isPositive ? 'bg-green-100 text-green-800' : (isNegative ? 'bg-red-100 text-red-700' : 'text-gray-600')
+                                                                    }`}>
+                                                                        {item.yoy_growth}%
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-gray-400">-</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right text-gray-600">
+                                                                {item.orders > 0 ? `${item.orders} 件` : '-'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* 直近の受注・納品明細履歴（基幹AS/400連携） */}
                         {salesData && salesData.recent_orders && salesData.recent_orders.length > 0 && (

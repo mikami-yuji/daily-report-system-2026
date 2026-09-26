@@ -1,11 +1,11 @@
 {
-  "version": "2.5.27",
+  "version": "2.5.28",
   "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.27.exe",
-  "fileSize": 49171844,
-  "sha256": "51b0bdaddacb927daf3c60a08167d59b31f27f587be44148835fed53944c7ec3",
+  "fileName": "DailyReportServer_v2.5.28.exe",
+  "fileSize": 49176221,
+  "sha256": "f95b8bde2d8e2c29a5fbc6a4418d9c0d4c64072f78aa40a0d7e2435de3c7b8ea",
   "forceUpdate": false,
   "releaseNotes": [
-    "設定画面の旧手動CSVアップロード欄を削除し、AS400手動同期へ一本化"
+    "得意先詳細画面への月別売上推移グラフ＆一覧テーブル追加"
   ]
 }

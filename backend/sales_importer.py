@@ -345,6 +345,52 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
         last_order = cursor.fetchone()
         last_order_date = last_order["last_order_date"] if last_order else None
 
+        # 月別売上集計（直近12ヶ月 + 前年同月実績比較）
+        cursor.execute("""
+            SELECT SUBSTR(order_date, 1, 7) as ym, SUM(amount) as sales, SUM(profit) as profit, COUNT(*) as orders
+            FROM as400_sales_orders
+            WHERE customer_code = ? OR customer_code = ?
+            GROUP BY ym
+            ORDER BY ym ASC
+        """, (clean_code, f"00{clean_code}"))
+
+        all_months_dict = {}
+        for r in cursor.fetchall():
+            all_months_dict[r["ym"]] = {
+                "sales": r["sales"] or 0.0,
+                "profit": r["profit"] or 0.0,
+                "orders": r["orders"] or 0
+            }
+
+        today = datetime.now()
+        monthly_sales = []
+        for i in range(11, -1, -1):
+            year = today.year
+            month = today.month - i
+            while month <= 0:
+                month += 12
+                year -= 1
+            ym = f"{year:04d}-{month:02d}"
+            ly_ym = f"{year - 1:04d}-{month:02d}"
+
+            curr_data = all_months_dict.get(ym, {"sales": 0.0, "profit": 0.0, "orders": 0})
+            ly_data = all_months_dict.get(ly_ym, {"sales": 0.0, "profit": 0.0, "orders": 0})
+
+            c_sales = curr_data["sales"]
+            ly_sales = ly_data["sales"]
+            yoy_growth = round((c_sales / ly_sales) * 100, 1) if ly_sales > 0 else (None if c_sales == 0 else 100.0)
+
+            monthly_sales.append({
+                "month": ym,
+                "month_label": f"{ym[2:4]}/{ym[5:7]}",
+                "sales": c_sales,
+                "profit": curr_data["profit"],
+                "orders": curr_data["orders"],
+                "last_year_sales": ly_sales,
+                "last_year_orders": ly_data["orders"],
+                "yoy_growth": yoy_growth
+            })
+
         return {
             "found": len(history) > 0 or (sales_amount > 0),
             "customer_code": clean_code,
@@ -357,6 +403,7 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
             "sales_yoy": yoy,
             "last_order_date": last_order_date,
             "recent_orders": history,
+            "monthly_sales": monthly_sales,
             "updated_at": datetime.now().isoformat()
         }
 

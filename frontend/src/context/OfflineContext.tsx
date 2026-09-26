@@ -48,6 +48,7 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
     const [cachedReports, setCachedReports] = useState<Report[]>([]);
 
     const prevPendingCountRef = useRef<number>(0);
+    const isSyncingRef = useRef<boolean>(false);
 
     // サーバーの同期状態チェック
     const checkServerSyncStatus = useCallback(async () => {
@@ -201,70 +202,91 @@ export function OfflineProvider({ children }: { children: ReactNode }): React.JS
     };
 
     const syncReports = async () => {
+        // 多重実行防止（排他制御）
+        if (isSyncingRef.current) {
+            console.log('Sync already in progress, skipping.');
+            return;
+        }
+
         const pending = offlineReportsRef.current.filter(r => r.status === 'pending' || r.status === 'error');
         if (pending.length === 0) return;
 
+        isSyncingRef.current = true;
         const toastId = toast.loading(`${pending.length}件のデータを同期中...`);
 
         let successCount = 0;
         let failCount = 0;
 
-        // Process sequentially to avoid overwhelming the server
-        for (const report of pending) {
-            try {
-                // Update status to syncing
-                setOfflineReports(prev => prev.map(r =>
-                    r.id === report.id ? { ...r, status: 'syncing' } : r
-                ));
-
-                let response;
-                if (report.type === 'update' && report.reportId) {
-                    response = await fetch(`/api/reports/${report.reportId}?filename=${encodeURIComponent(report.filename)}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(report.data),
+        try {
+            // Process sequentially to avoid overwhelming the server
+            for (const report of pending) {
+                try {
+                    // Update status to syncing
+                    setOfflineReports(prev => {
+                        const updated = prev.map(r => r.id === report.id ? { ...r, status: 'syncing' as const } : r);
+                        offlineReportsRef.current = updated;
+                        return updated;
                     });
-                } else {
-                    response = await fetch(`/api/reports?filename=${encodeURIComponent(report.filename)}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify(report.data),
+
+                    let response;
+                    if (report.type === 'update' && report.reportId) {
+                        response = await fetch(`/api/reports/${report.reportId}?filename=${encodeURIComponent(report.filename)}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(report.data),
+                        });
+                    } else {
+                        response = await fetch(`/api/reports?filename=${encodeURIComponent(report.filename)}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(report.data),
+                        });
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(`Server error: ${response.status}`);
+                    }
+
+                    // 成功時は即座にキューから確実に削除（ステート・Ref・localStorage を即時反映）
+                    setOfflineReports(prev => {
+                        const next = prev.filter(r => r.id !== report.id);
+                        localStorage.setItem('offlineReports', JSON.stringify(next));
+                        offlineReportsRef.current = next;
+                        return next;
                     });
+                    successCount++;
+
+                } catch (error) {
+                    console.error('Sync failed for report', report.id, error);
+                    // Update status to error
+                    setOfflineReports(prev => {
+                        const next = prev.map(r => r.id === report.id ? { ...r, status: 'error' as const } : r);
+                        localStorage.setItem('offlineReports', JSON.stringify(next));
+                        offlineReportsRef.current = next;
+                        return next;
+                    });
+                    failCount++;
                 }
-
-                if (!response.ok) {
-                    throw new Error('Server error');
-                }
-
-                // Remove from queue on success
-                removeOfflineReport(report.id);
-                successCount++;
-
-            } catch (error) {
-                console.error('Sync failed for report', report.id, error);
-                // Update status to error
-                setOfflineReports(prev => prev.map(r =>
-                    r.id === report.id ? { ...r, status: 'error' } : r
-                ));
-                failCount++;
             }
-        }
 
-        if (successCount > 0) {
-            toast.success(`${successCount}件の同期が完了しました`, { id: toastId });
-            await queryClient.invalidateQueries({ queryKey: ['reports'] });
-            await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-            await queryClient.invalidateQueries({ queryKey: ['stats'] });
-        }
-        if (failCount > 0) {
-            toast.error(`${failCount}件の同期に失敗しました`, { id: toastId });
-        }
-        if (successCount === 0 && failCount === 0) {
-            toast.dismiss(toastId);
+            if (successCount > 0) {
+                toast.success(`${successCount}件の同期が完了しました`, { id: toastId });
+                await queryClient.invalidateQueries({ queryKey: ['reports'] });
+                await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+                await queryClient.invalidateQueries({ queryKey: ['stats'] });
+            }
+            if (failCount > 0) {
+                toast.error(`${failCount}件の同期に失敗しました（復旧時に自動で再試行されます）`, { id: toastId });
+            }
+            if (successCount === 0 && failCount === 0) {
+                toast.dismiss(toastId);
+            }
+        } finally {
+            isSyncingRef.current = false;
         }
     };
 

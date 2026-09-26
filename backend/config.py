@@ -42,7 +42,7 @@ import time
 _HOST_CACHE = {}
 _HOST_CACHE_LOCK = threading.Lock()
 
-def is_network_path_accessible(path: str, timeout: float = 0.4) -> bool:
+def is_network_path_accessible(path: str, timeout: float = 1.5) -> bool:
     r"""
     パスがネットワーク共有（UNCパス \\Host\Share）の場合、Windows OSのSMBタイムアウト待ち（30〜60秒）
     でプロセスがフリーズするのを防ぐため、事前にSMBポート（445）へのソケット接続を高速プローブ。
@@ -72,7 +72,7 @@ def is_network_path_accessible(path: str, timeout: float = 0.4) -> bool:
         result = [False]
         def probe():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(min(timeout, 0.25))
+            s.settimeout(min(timeout, 1.2))
             try:
                 err = s.connect_ex((host, 445))
                 if err == 0:
@@ -90,8 +90,8 @@ def is_network_path_accessible(path: str, timeout: float = 0.4) -> bool:
         th.join(timeout=timeout)
 
         with _HOST_CACHE_LOCK:
-            # Wi-Fi切断を即座に検知できるようTTLを短縮（3秒）
-            ttl = 3.0 if result[0] else 2.0
+            # 社内接続判定を安定させるためTTLを設定
+            ttl = 5.0 if result[0] else 2.0
             _HOST_CACHE[host] = (result[0], time.time() + ttl)
 
         return result[0]
@@ -111,13 +111,13 @@ def resolve_excel_dir() -> str:
         if not os.path.isabs(path):
             path = os.path.abspath(os.path.join(BASE_DIR, path))
             logging.info(f"Resolved relative path to absolute: {path}")
-        if is_network_path_accessible(path, timeout=0.4):
+        if is_network_path_accessible(path, timeout=1.5):
             logging.info(f"Using configured Excel path: {path}")
             return path
         else:
             logging.warning(f"Configured Excel path not accessible: {path}")
 
-    if is_network_path_accessible(DEFAULT_NETWORK_PATH, timeout=0.4):
+    if is_network_path_accessible(DEFAULT_NETWORK_PATH, timeout=1.5):
         logging.info(f"Fallback 1: Using network shared directory: {DEFAULT_NETWORK_PATH}")
         return DEFAULT_NETWORK_PATH
 
@@ -135,6 +135,29 @@ def resolve_excel_dir() -> str:
     return local_data_path
 
 EXCEL_DIR = resolve_excel_dir()
+
+def get_excel_file_path(filename: str) -> str:
+    """Excelファイルのパスを解決し、社内共有フォルダ復帰時は自動的に原本パスへ自己復帰する"""
+    global EXCEL_DIR
+    filename = os.path.basename(filename)
+    current_path = os.path.join(EXCEL_DIR, filename)
+    if os.path.exists(current_path):
+        return current_path
+
+    # 現在のフォルダにファイルが存在しない場合（ローカルフォールバック時など）、共有フォルダを再確認
+    configured_dir = _RAW_CONFIG.get('excel_dir') or DEFAULT_NETWORK_PATH
+    if not os.path.isabs(configured_dir):
+        configured_dir = os.path.abspath(os.path.join(BASE_DIR, configured_dir))
+    
+    target_network_path = os.path.join(configured_dir, filename)
+    if is_network_path_accessible(target_network_path, timeout=1.5):
+        if os.path.exists(target_network_path):
+            logging.info(f"Self-healing: Restored EXCEL_DIR to {configured_dir}")
+            EXCEL_DIR = configured_dir
+            return target_network_path
+
+    return current_path
+
 
 # デザインデータディレクトリ（config.json で上書き可能）
 DESIGN_DIR = _RAW_CONFIG.get(
@@ -157,7 +180,7 @@ def resolve_sales_csv_path() -> str:
     custom_path = _RAW_CONFIG.get('sales_csv_path')
     if custom_path:
         try:
-            if is_network_path_accessible(custom_path, timeout=0.3):
+            if is_network_path_accessible(custom_path, timeout=1.5):
                 if os.path.exists(custom_path):
                     return custom_path
             else:

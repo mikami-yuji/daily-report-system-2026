@@ -300,7 +300,7 @@ export default function DesignImageHoverButton({
 
     return (
         <div 
-            className="relative inline-flex items-center"
+            className="relative inline-flex items-center shrink-0 whitespace-nowrap"
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
         >
@@ -308,15 +308,15 @@ export default function DesignImageHoverButton({
                 ref={buttonRef}
                 type="button"
                 onClick={handleClick}
-                className={`inline-flex items-center gap-1 font-bold rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer select-none ${
-                    size === 'md' ? 'px-2.5 py-1 text-xs' : 'px-2 py-0.5 text-[11px]'
+                className={`inline-flex items-center justify-center gap-1 font-bold rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-xs transition-all hover:scale-105 active:scale-95 cursor-pointer select-none whitespace-nowrap shrink-0 ${
+                    size === 'md' ? 'h-7 min-w-[74px] px-2.5 text-xs' : 'h-6 min-w-[66px] px-2 text-[11px]'
                 } ${className}`}
                 title="クリックで拡大プレビュー（マウスを乗せるとサムネイル表示）"
             >
                 <ImageIcon size={size === 'md' ? 14 : 12} className="text-white shrink-0" />
-                <span>画像</span>
-                {displayCount > 1 && (
-                    <span className="bg-blue-800/80 text-[10px] px-1 py-0.2 rounded-full font-mono">
+                <span className="shrink-0 whitespace-nowrap leading-none">画像</span>
+                {displayCount > 0 && (
+                    <span className="min-w-[17px] h-4 px-1 inline-flex items-center justify-center rounded-full bg-blue-900/60 text-white text-[10px] font-mono font-bold leading-none shrink-0 tabular-nums">
                         {displayCount}
                     </span>
                 )}

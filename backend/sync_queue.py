@@ -41,6 +41,20 @@ def enqueue_sync_task(
     payload_json = json.dumps(payload, ensure_ascii=False)
     
     with _get_sqlite_conn() as conn:
+        # 重複チェック（同一内容の未処理タスクが既にキューにある場合は既存IDを返却）
+        existing_row = conn.execute(
+            """
+            SELECT id FROM sync_queue 
+            WHERE task_type = ? AND filename = ? AND payload_json = ? AND status IN ('pending', 'error')
+            LIMIT 1
+            """,
+            (task_type, filename, payload_json)
+        ).fetchone()
+        if existing_row:
+            existing_id = existing_row[0]
+            logging.info(f"Duplicate sync task detected. Reusing existing task #{existing_id} for {task_type}")
+            return existing_id
+
         cursor = conn.execute(
             """
             INSERT INTO sync_queue 
@@ -174,14 +188,14 @@ def check_file_server_connected(filename: Optional[str] = None) -> bool:
         
         # 1. ローカルフォールバック動作中の場合: 本来の共有パスが復旧していないか確認
         if os.path.abspath(config.EXCEL_DIR) in (local_data, simple_data):
-            if config.is_network_path_accessible(config.DEFAULT_NETWORK_PATH, timeout=0.25):
+            if config.is_network_path_accessible(config.DEFAULT_NETWORK_PATH, timeout=1.5):
                 logging.info(f"File server reconnection detected! Restoring EXCEL_DIR to {config.DEFAULT_NETWORK_PATH}")
                 config.EXCEL_DIR = config.DEFAULT_NETWORK_PATH
                 return True
             return False
         
         # 2. 共有パス設定中の場合: 共有パスへのアクセス可否を確認し、切断時は安全にローカルへ退避
-        is_conn = config.is_network_path_accessible(config.EXCEL_DIR, timeout=0.25)
+        is_conn = config.is_network_path_accessible(config.EXCEL_DIR, timeout=1.5)
         if not is_conn:
             logging.info(f"File server disconnection detected! Switching EXCEL_DIR to offline fallback: {local_data}")
             config.EXCEL_DIR = local_data
@@ -189,7 +203,7 @@ def check_file_server_connected(filename: Optional[str] = None) -> bool:
 
         if filename:
             target = os.path.join(config.EXCEL_DIR, os.path.basename(filename))
-            return config.is_network_path_accessible(target, timeout=0.25)
+            return config.is_network_path_accessible(target, timeout=1.5)
         return True
     except Exception:
         return False
@@ -225,7 +239,7 @@ def process_sync_queue() -> Dict[str, int]:
         payload = task["payload"]
         excel_file = os.path.join(config.EXCEL_DIR, filename)
 
-        if not config.is_network_path_accessible(excel_file, timeout=0.35):
+        if not config.is_network_path_accessible(excel_file, timeout=1.5):
             logging.warning(f"Sync task #{task_id}: Excel file '{excel_file}' not reachable yet.")
             failed_count += 1
             continue

@@ -41,6 +41,10 @@ Thumbs.db
 # Excel temporary files
 ~$*.xlsm
 ~$*.xlsx
+backend/data/*.xlsm
+backend/data/*.xlsx
+*.xlsm
+*.xlsx
 
 # Test files
 test_output.txt

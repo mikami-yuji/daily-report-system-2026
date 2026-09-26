@@ -658,8 +658,8 @@ export default function ReportsPage(): React.JSX.Element {
         if (!cleanNo) return null;
 
         return (
-            <span className="inline-flex items-center gap-1.5 font-semibold">
-                <span className="text-slate-700 font-mono">No.{cleanNo}</span>
+            <span className="inline-flex items-center gap-1.5 font-semibold shrink-0 whitespace-nowrap">
+                <span className="text-slate-700 font-mono shrink-0">No.{cleanNo}</span>
                 <DesignImageHoverButton
                     designNo={cleanNo}
                     selectedFile={selectedFile || undefined}

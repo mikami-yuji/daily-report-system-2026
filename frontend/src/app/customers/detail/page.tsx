@@ -615,8 +615,8 @@ function CustomerDetailContent() {
                                     <div key={req.designNo} className="bg-white rounded border border-sf-border shadow-sm overflow-hidden">
                                         <div className="p-4 border-b border-sf-border bg-gray-50 flex justify-between items-center">
                                             <div className="flex items-center gap-3">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-lg text-sf-light-blue">#{req.designNo}</span>
+                                                <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
+                                                    <span className="font-bold text-lg text-sf-light-blue shrink-0">#{req.designNo}</span>
                                                     <DesignImageHoverButton
                                                         designNo={req.designNo}
                                                         selectedFile={selectedFile || undefined}

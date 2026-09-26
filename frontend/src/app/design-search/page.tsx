@@ -1030,11 +1030,11 @@ const isInProgress = (status: string) => !isCompleted(status) && !isPendingOrRej
                                 <tr>
                                     <th className="px-4 py-3 text-left font-medium w-10"></th>
                                     <th
-                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group"
+                                        className="px-4 py-3 text-left font-medium cursor-pointer hover:bg-gray-100 transition-colors group whitespace-nowrap"
                                         onClick={() => handleSort('designNo')}
                                         title="デザインNo.で並び替え"
                                     >
-                                        <div className="inline-flex items-center gap-1.5">
+                                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                                             <span>デザインNo.</span>
                                             {sortConfig.key === 'designNo' ? (
                                                 sortConfig.order === 'asc' ? <ArrowUp size={13} className="text-sf-light-blue" /> : <ArrowDown size={13} className="text-sf-light-blue" />
@@ -1176,10 +1176,10 @@ const isInProgress = (status: string) => !isCompleted(status) && !isPendingOrRej
                                                         <ChevronDown size={16} className="text-gray-400" />
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-3 font-medium text-sf-light-blue">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="font-mono font-semibold">{req.designNo}</span>
-                                                        <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center">
+                                                <td className="px-4 py-3 font-medium text-sf-light-blue whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                                        <span className="font-mono font-semibold shrink-0">{req.designNo}</span>
+                                                        <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center shrink-0">
                                                             <DesignImageHoverButton
                                                                 designNo={req.designNo}
                                                                 selectedFile={selectedFile || undefined}
@@ -1215,12 +1215,12 @@ const isInProgress = (status: string) => !isCompleted(status) && !isPendingOrRej
                                                                         setPreviewPdfInitialIndex(0);
                                                                         setIsPdfModalOpen(true);
                                                                     }}
-                                                                    className="p-1 rounded hover:bg-red-50 text-red-500 transition-colors inline-flex items-center gap-0.5 cursor-pointer"
+                                                                    className="p-1 rounded hover:bg-red-50 text-red-500 transition-colors inline-flex items-center gap-0.5 cursor-pointer shrink-0"
                                                                     title={`PDF仕様書をプレビュー (${docsWithPdf.length}件の依頼書あり)`}
                                                                 >
-                                                                    <FileText size={16} />
+                                                                    <FileText size={16} className="shrink-0" />
                                                                     {docsWithPdf.length > 1 && (
-                                                                        <span className="text-[10px] font-black bg-red-100 text-red-700 px-1 py-0.2 rounded-full leading-tight">
+                                                                        <span className="text-[10px] font-black bg-red-100 text-red-700 px-1 py-0.2 rounded-full leading-tight shrink-0">
                                                                             {docsWithPdf.length}
                                                                         </span>
                                                                     )}

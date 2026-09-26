@@ -62,7 +62,7 @@ def trigger_sync_process() -> Dict[str, Any]:
 def list_excel_files() -> Dict[str, Any]:
     """List all Excel files in the directory (falls back to SQLite cache when offline)"""
     files = []
-    excel_dir_accessible = config.is_network_path_accessible(config.EXCEL_DIR, timeout=0.35)
+    excel_dir_accessible = config.is_network_path_accessible(config.EXCEL_DIR, timeout=1.5)
     
     if excel_dir_accessible:
         try:
@@ -933,8 +933,56 @@ def _find_report_row(ws, management_number: int) -> Optional[int]:
                     return row
     return None
 
+def _find_duplicate_report_mgmt(ws, report: models.ReportInput) -> Optional[int]:
+    """
+    同一日付、同一得意先（または社内業務）、同一面談者、同一商談内容、同一行動内容の日報が
+    すでに存在するか確認し、存在する場合はその管理番号を返す（重複防止・冪等性保証）。
+    """
+    req_date = str(report.日付 or '').strip()
+    if not req_date:
+        return None
+    req_action = str(report.行動内容 or '').strip()
+    req_customer_cd = str(report.得意先CD or '').strip() if report.得意先CD else ''
+    req_visit_name = str(report.訪問先名 or '').strip() if report.訪問先名 else ''
+    req_content = str(report.商談内容 or '').strip() if report.商談内容 else ''
+    req_interviewee = str(report.面談者 or '').strip() if report.面談者 else ''
+
+    # 直近の行から逆順に走査（直近の登録と一致する可能性が最も高いため高速）
+    for row in range(ws.max_row, 1, -1):
+        mgmt_val = ws.cell(row=row, column=excel_schema.DailyReportColumns.MANAGEMENT_NUMBER).value
+        if mgmt_val is None or not str(mgmt_val).isdigit():
+            continue
+
+        row_date = str(ws.cell(row=row, column=excel_schema.DailyReportColumns.DATE).value or '').strip()
+        if not row_date:
+            continue
+
+        # 日付が完全一致、または 26/09/25 と 2026/09/25 の表記ゆれに対応
+        if req_date == row_date or req_date.endswith(row_date) or row_date.endswith(req_date):
+            row_action = str(ws.cell(row=row, column=excel_schema.DailyReportColumns.ACTION_CONTENT).value or '').strip()
+            if req_action != row_action:
+                continue
+
+            row_content = str(ws.cell(row=row, column=excel_schema.DailyReportColumns.BUSINESS_CONTENT).value or '').strip()
+            if req_content != row_content:
+                continue
+
+            row_cust_cd = str(ws.cell(row=row, column=excel_schema.DailyReportColumns.CUSTOMER_CD).value or '').strip()
+            row_visit = str(ws.cell(row=row, column=excel_schema.DailyReportColumns.CUSTOMER_NAME).value or '').strip()
+            row_interviewee = str(ws.cell(row=row, column=excel_schema.DailyReportColumns.INTERVIEWEE).value or '').strip()
+
+            is_cust_match = (
+                (req_customer_cd and req_customer_cd == row_cust_cd) or
+                (req_visit_name and req_visit_name == row_visit) or
+                (not req_customer_cd and not req_visit_name and not row_cust_cd and not row_visit)
+            )
+
+            if is_cust_match and req_interviewee == row_interviewee:
+                return int(mgmt_val)
+    return None
+
 def _apply_add_report_to_excel(excel_file: str, report_data: Any) -> int:
-    """日報追加をExcelファイルに適用"""
+    """日報追加をExcelファイルに適用（二重登録・重複増殖防止ガード付き）"""
     if isinstance(report_data, dict):
         report = models.ReportInput(**report_data)
     else:
@@ -943,6 +991,12 @@ def _apply_add_report_to_excel(excel_file: str, report_data: Any) -> int:
     wb = openpyxl.load_workbook(excel_file, keep_vba=True)
     try:
         ws = wb['営業日報']
+        
+        # 冪等性チェック: 同一データが既に存在する場合は重複追加せず既存の管理番号を返す
+        dup_mgmt = _find_duplicate_report_mgmt(ws, report)
+        if dup_mgmt is not None:
+            logging.warning(f"Idempotency guard: duplicate report already exists (mgmt={dup_mgmt}). Skipping Excel write.")
+            return dup_mgmt
         
         # 得意先_Listから現目標を取得
         current_target = ""
@@ -1078,8 +1132,17 @@ def _apply_batch_add_reports_to_excel(excel_file: str, reports_data: List[Any]) 
 
         new_mgmt_nums = []
         style_source_row = max_mgmt_row if max_mgmt_row >= 2 else 2
+        any_added = False
 
         for report in parsed_reports:
+            # 冪等性チェック: 同一データが既に存在する場合は重複追加せず既存の管理番号を流用
+            dup_mgmt = _find_duplicate_report_mgmt(ws, report)
+            if dup_mgmt is not None:
+                logging.warning(f"Batch idempotency guard: duplicate report already exists (mgmt={dup_mgmt}). Skipping write.")
+                new_mgmt_nums.append(dup_mgmt)
+                continue
+
+            any_added = True
             max_mgmt_num += 1
             max_mgmt_row += 1
             new_mgmt_num = max_mgmt_num
@@ -1100,7 +1163,8 @@ def _apply_batch_add_reports_to_excel(excel_file: str, reports_data: List[Any]) 
                     copy_style(source_cell, target_cell)
             style_source_row = next_row
 
-        excel_io.safe_save_workbook_with_retry(wb, excel_file)
+        if any_added:
+            excel_io.safe_save_workbook_with_retry(wb, excel_file)
         return new_mgmt_nums
     finally:
         wb.close()
@@ -1309,7 +1373,7 @@ def add_report(
 ) -> Dict[str, Any]:
     filename = os.path.basename(filename)
     logging.info(f"DEBUG ADD_REPORT: Received payload: {report.model_dump()}")
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    excel_file = config.get_excel_file_path(filename)
 
     # 1. ファイルサーバー接続チェック（オフライン・瞬断時は安全キューに退避）
     if not os.path.exists(excel_file):
@@ -1366,7 +1430,7 @@ def add_batch_reports(
 ) -> Dict[str, Any]:
     """複数件の日報を1回のExcelファイル操作で一括追加（高速化・排他競合防止・オフライン安全退避付き）"""
     filename = os.path.basename(filename)
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    excel_file = config.get_excel_file_path(filename)
     reports = batch_input.reports
 
     if not reports:
@@ -1447,7 +1511,7 @@ def update_report_reply(management_number: int, reply: models.ReplyInput, backgr
             return {"success": True, "management_number": management_number, "message": "一時退避中の日報返信を更新しました"}
         raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
 
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    excel_file = config.get_excel_file_path(filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
     if not os.path.exists(excel_file):
@@ -1640,7 +1704,7 @@ def update_report_approval(management_number: int, approval: models.ApprovalInpu
 def batch_update_report_approval(batch_input: models.BatchApprovalInput, filename: str = config.DEFAULT_EXCEL_FILE):
     """複数件の日報をまとめて一括承認（排他制御・高速適用対応）"""
     filename = os.path.basename(filename)
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    excel_file = config.get_excel_file_path(filename)
 
     if not os.path.exists(excel_file):
         logging.warning(f"File server inaccessible for {excel_file}. Enqueueing batch approval tasks.")
@@ -1714,7 +1778,7 @@ def update_report(management_number: int, report: models.ReportInput, background
             }
         raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
 
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    excel_file = config.get_excel_file_path(filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
     if not os.path.exists(excel_file):
@@ -1778,7 +1842,7 @@ def delete_report(management_number: int, filename: str = config.DEFAULT_EXCEL_F
             }
         raise HTTPException(status_code=404, detail=f"Pending report {management_number} not found in sync queue")
 
-    excel_file = os.path.join(config.EXCEL_DIR, filename)
+    excel_file = config.get_excel_file_path(filename)
 
     # 1. ファイルサーバー接続チェック（オフライン時は安全キューに退避）
     if not os.path.exists(excel_file):

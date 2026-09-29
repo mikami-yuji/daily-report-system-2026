@@ -1,11 +1,12 @@
 {
-  "version": "2.5.66",
+  "version": "2.5.67",
   "releaseDate": "2026-09-29",
-  "fileName": "DailyReportServer_v2.5.66.exe",
-  "fileSize": 49542456,
-  "sha256": "0012a25d6feec511c942b657eea4cbe95b0f23070eb60271256331b54e9ddc7b",
+  "fileName": "DailyReportServer_v2.5.67.exe",
+  "fileSize": 49541808,
+  "sha256": "ff667af043325b9bf2e12431b66cef9a440f915bc8fd06552a416ff705579932",
   "forceUpdate": false,
   "releaseNotes": [
-    "システム不和の解消（localhost直接記述修正・ESLint/型エラー解消・月度初期値最適化）"
+    "SQLite同時書き込み耐性強化(WAL/busy_timeout統一/自動リトライ)",
+    "商品カタログ型定義・Excel出力処理のモジュール分離リファクタリング"
   ]
 }

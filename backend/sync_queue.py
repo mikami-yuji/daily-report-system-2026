@@ -7,12 +7,14 @@ from typing import Optional, List, Dict, Any
 
 import config
 
+import db_utils
+
 def _get_sqlite_conn():
     """SQLite接続を取得し、sync_queueテーブルを初期化"""
     db_path = config.SQLITE_CACHE_DB
     os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=10.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
+    db_utils.configure_sqlite_connection(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS sync_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

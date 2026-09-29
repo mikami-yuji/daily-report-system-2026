@@ -54,14 +54,16 @@ def find_latest_sales_csv(search_dir: Optional[str] = None) -> Optional[str]:
         return None
 
 
+import db_utils
+
+
 def get_sales_db_conn(db_path: Optional[str] = None):
     """売上専用SQLite DBへの接続を取得（WALモード・タイムアウト設定付き）"""
     target_db = db_path or config.SALES_CACHE_DB
     os.makedirs(os.path.dirname(os.path.abspath(target_db)), exist_ok=True)
     
     conn = sqlite3.connect(target_db, timeout=30.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA busy_timeout=10000;")
+    db_utils.configure_sqlite_connection(conn)
     return conn
 
 

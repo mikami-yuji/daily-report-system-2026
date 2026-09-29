@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, HTTPException
 
 import config
 import sales_importer
+import db_utils
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/catalog", tags=["catalog"])
@@ -88,7 +89,7 @@ def get_catalog_customers(
     file_customer_names = set()
     if file_name and os.path.exists(config.SQLITE_CACHE_DB):
         try:
-            with sqlite3.connect(config.SQLITE_CACHE_DB) as s_conn:
+            with db_utils.get_db_connection(config.SQLITE_CACHE_DB) as s_conn:
                 s_cur = s_conn.cursor()
                 s_cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='reports'")
                 if s_cur.fetchone():

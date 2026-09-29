@@ -13,12 +13,14 @@ import re
 
 CACHE = {}
 
+import db_utils
+
 def _get_sqlite_conn():
     """SQLiteキャッシュデータベースへの接続を取得"""
     db_path = config.SQLITE_CACHE_DB
     os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=10.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
+    db_utils.configure_sqlite_connection(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS _cache_meta (
             cache_id TEXT PRIMARY KEY,

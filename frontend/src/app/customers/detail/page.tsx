@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback, Suspense } from 'react';
-import { getReports, getCustomers, Report, searchDesignImages, DesignImage } from '@/lib/api';
+import { getReports, getCustomers, Report, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
 import DesignImageHoverButton, { prefetchDesignImagePresence } from '@/components/reports/DesignImageHoverButton';
@@ -36,7 +36,6 @@ import {
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { compareDates } from '@/lib/reportUtils';
-import toast from 'react-hot-toast';
 import { aggregateMonthlyActivities } from '@/lib/activityUtils';
 import { MonthlyActivityStats } from '@/types/activity';
 

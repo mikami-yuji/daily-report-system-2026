@@ -24,18 +24,26 @@ Write-Host "2. Adding to User Root and TrustedPublisher via certutil..."
 Write-Host "3. Signing files..."
 $targetFiles = @(
     "dist\DailyReportServer.exe",
-    "C:\Users\ASAHI\Desktop\DailyReportSystem\DailyReportServer.exe",
-    "_app_update\DailyReportServer_v2.5.29.exe",
-    "\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度\_app_update\DailyReportServer_v2.5.29.exe"
+    "C:\Users\ASAHI\Desktop\DailyReportSystem\DailyReportServer.exe"
 )
+# _app_update 内のすべての exe を対象に追加
+$localUpdates = Get-ChildItem -Path "_app_update\*.exe" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+$targetFiles += $localUpdates
+
+$uncUpdates = Get-ChildItem -Path "\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度\_app_update\*.exe" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }
+$targetFiles += $uncUpdates
 
 foreach ($f in $targetFiles) {
     if (Test-Path $f) {
         Write-Host "Signing: $f"
         Unblock-File -Path $f -ErrorAction SilentlyContinue
-        $sig = Set-AuthenticodeSignature -FilePath $f -Certificate $cert
-        $check = Get-AuthenticodeSignature -FilePath $f
-        Write-Host "  Sign Status: $($check.Status), Signer: $($check.SignerCertificate.Subject)"
+        try {
+            $sig = Set-AuthenticodeSignature -FilePath $f -Certificate $cert -ErrorAction Stop
+            $check = Get-AuthenticodeSignature -FilePath $f
+            Write-Host "  Sign Status: $($check.Status), Signer: $($check.SignerCertificate.Subject)"
+        } catch {
+            Write-Host "  Skipped (in use or error): $_"
+        }
     }
 }
 

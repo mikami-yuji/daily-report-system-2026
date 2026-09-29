@@ -35,6 +35,7 @@ import routes_stats
 import routes_proxy
 import routes_updater
 import routes_catalog
+import routes_sales_insights
 import sync_queue
 
 logging.info("Server initialized successfully.")
@@ -120,6 +121,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Include routers
 app.include_router(routes_reports.router)
 app.include_router(routes_images.router)
+app.include_router(routes_sales_insights.router)
 app.include_router(routes_sales.router)
 app.include_router(routes_stats.router)
 app.include_router(routes_proxy.router)

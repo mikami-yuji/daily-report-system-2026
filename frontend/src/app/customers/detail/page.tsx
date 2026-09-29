@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, Suspense } from 'react';
+import { useEffect, useState, useMemo, useCallback, Suspense } from 'react';
 import { getReports, getCustomers, Report, searchDesignImages, DesignImage } from '@/lib/api';
 import { useFile } from '@/context/FileContext';
 import DesignImagePreviewModal from '@/components/reports/DesignImagePreviewModal';
@@ -20,7 +20,6 @@ import {
     AlertTriangle,
     DollarSign,
     Database,
-    Image as ImageIcon,
     BarChart3,
     ShoppingBag
 } from 'lucide-react';
@@ -124,107 +123,39 @@ function CustomerDetailContent() {
     }, [reports]);
 
     // デザイン画像プレビュー用のステート
-    const [searchingImage, setSearchingImage] = useState<boolean>(false);
     const [imageResults, setImageResults] = useState<DesignImage[]>([]);
     const [showImageModal, setShowImageModal] = useState<boolean>(false);
     const [searchQueryDebug, setSearchQueryDebug] = useState<string>('');
 
-    // デザイン画像検索ハンドラ
-    const handleImageSearch = async (designNo: string | number, e: React.MouseEvent): Promise<void> => {
-        e.stopPropagation(); // アコーディオンの開閉を防ぐ
-        if (!designNo) return;
-
-        setSearchingImage(true);
-        setSearchQueryDebug(String(designNo));
-        try {
-            const result = await searchDesignImages(String(designNo), selectedFile || undefined);
-            if (result.images && result.images.length > 0) {
-                setImageResults(result.images);
-                setShowImageModal(true);
-                toast.success(`${result.images.length}件の画像が見つかりました`);
-            } else {
-                toast.error('画像が見つかりませんでした');
-                setImageResults([]);
-            }
-        } catch (error) {
-            console.error('Search error:', error);
-            toast.error('画像検索中にエラーが発生しました');
-        } finally {
-            setSearchingImage(false);
-        }
-    };
-
     useEffect(() => {
-        setMounted(true);
+        const timer = setTimeout(() => setMounted(true), 0);
+        return () => clearTimeout(timer);
     }, []);
 
     // Fetch sales data when tab is active
     useEffect(() => {
-        if (activeTab === 'sales' && customerCode) {
-            setSalesData(null); // Reset or show loading
-            fetch(`http://localhost:8001/api/sales/${customerCode}`)
-                .then(res => res.json())
-                .then(data => setSalesData(data))
-                .catch(err => console.error("Sales fetch error:", err));
-        }
+        let isMounted = true;
+        const loadSales = async () => {
+            if (activeTab === 'sales' && customerCode) {
+                setSalesData(null);
+                try {
+                    const res = await fetch(`/api/sales/${customerCode}`);
+                    const data = await res.json();
+                    if (isMounted) setSalesData(data);
+                } catch (err) {
+                    console.error("Sales fetch error:", err);
+                }
+            }
+        };
+        loadSales();
+        return () => {
+            isMounted = false;
+        };
     }, [activeTab, customerCode]);
 
 
 
-    useEffect(() => {
-        if (customerCode && selectedFile) {
-            getReports(selectedFile).then(data => {
-                // 得意先CDでフィルタリング
-                let customerReports = data.filter(r => String(r.得意先CD) === customerCode);
-
-                // 直送先CDが指定されている場合は直送先でもフィルタリング
-                if (ddCode) {
-                    customerReports = customerReports.filter(r => String(r.直送先CD || '') === ddCode);
-                }
-
-                customerReports.sort((a, b) => {
-                    return compareDates(String(b.日付 || ''), String(a.日付 || ''));
-                });
-
-                setReports(customerReports);
-
-                if (customerReports.length > 0) {
-                    setCustomerName(customerReports[0].訪問先名 || '名称不明');
-                    if (ddCode) {
-                        setDirectDeliveryName(customerReports[0].直送先名 || '直送先名不明');
-                    }
-                }
-
-                processDesignRequests(customerReports);
-                setLoading(false);
-            }).catch(err => {
-                console.error(err);
-                setLoading(false);
-            });
-        }
-    }, [customerCode, ddCode, selectedFile]);
-
-    // 得意先マスタから現目標を取得
-    useEffect(() => {
-        if (customerCode && selectedFile) {
-            getCustomers(selectedFile).then(customers => {
-                // 得意先CDでマッチする顧客を検索
-                const matchedCustomer = customers.find(c => {
-                    const custCD = String(c.得意先CD || '').trim();
-                    const ddCD = String(c.直送先CD || '').trim();
-                    return custCD === customerCode && (!ddCode || ddCD === ddCode);
-                });
-
-                if (matchedCustomer && matchedCustomer['現目標']) {
-                    setCurrentTarget(String(matchedCustomer['現目標']));
-                }
-            }).catch(err => {
-                console.error('Failed to fetch customers for target:', err);
-            });
-        }
-    }, [customerCode, ddCode, selectedFile]);
-
-    const processDesignRequests = (data: Report[]) => {
+    const processDesignRequests = useCallback((data: Report[]) => {
         const designMap = new Map<number, DesignRequest>();
 
         data.forEach(report => {
@@ -261,7 +192,60 @@ function CustomerDetailContent() {
         if (requests.length > 0) {
             prefetchDesignImagePresence(requests.map(r => r.designNo), selectedFile || undefined);
         }
-    };
+    }, [selectedFile]);
+
+    useEffect(() => {
+        if (customerCode && selectedFile) {
+            getReports(selectedFile).then(data => {
+                // 得意先CDでフィルタリング
+                let customerReports = data.filter(r => String(r.得意先CD) === customerCode);
+
+                // 直送先CDが指定されている場合は直送先でもフィルタリング
+                if (ddCode) {
+                    customerReports = customerReports.filter(r => String(r.直送先CD || '') === ddCode);
+                }
+
+                customerReports.sort((a, b) => {
+                    return compareDates(String(b.日付 || ''), String(a.日付 || ''));
+                });
+
+                setReports(customerReports);
+
+                if (customerReports.length > 0) {
+                    setCustomerName(customerReports[0].訪問先名 || '名称不明');
+                    if (ddCode) {
+                        setDirectDeliveryName(customerReports[0].直送先名 || '直送先名不明');
+                    }
+                }
+
+                processDesignRequests(customerReports);
+                setLoading(false);
+            }).catch(err => {
+                console.error(err);
+                setLoading(false);
+            });
+        }
+    }, [customerCode, ddCode, selectedFile, processDesignRequests]);
+
+    // 得意先マスタから現目標を取得
+    useEffect(() => {
+        if (customerCode && selectedFile) {
+            getCustomers(selectedFile).then(customers => {
+                // 得意先CDでマッチする顧客を検索
+                const matchedCustomer = customers.find(c => {
+                    const custCD = String(c.得意先CD || '').trim();
+                    const ddCD = String(c.直送先CD || '').trim();
+                    return custCD === customerCode && (!ddCode || ddCD === ddCode);
+                });
+
+                if (matchedCustomer && matchedCustomer['現目標']) {
+                    setCurrentTarget(String(matchedCustomer['現目標']));
+                }
+            }).catch(err => {
+                console.error('Failed to fetch customers for target:', err);
+            });
+        }
+    }, [customerCode, ddCode, selectedFile]);
 
     const getProgressBadge = (progress: string) => {
         const colorMap: Record<string, string> = {

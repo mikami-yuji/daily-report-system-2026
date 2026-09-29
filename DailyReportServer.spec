@@ -28,6 +28,7 @@ a = Analysis(
         'routes_stats',
         'routes_proxy',
         'routes_updater',
+        'routes_catalog',
         'updater',
         'version',
         'sales_importer',

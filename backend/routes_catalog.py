@@ -114,7 +114,7 @@ def get_catalog_customers(
                 MAX(sales_date) as last_sales_date,
                 SUM(amount) as total_sales,
                 GROUP_CONCAT(DISTINCT sales_rep) as all_reps
-            FROM as400_sales_orders
+            FROM as400_all_orders
             WHERE customer_name IS NOT NULL AND customer_name != ''
             GROUP BY customer_code
             HAVING order_count > 0
@@ -209,7 +209,7 @@ def get_catalog_direct_dests(
         where_str = f"WHERE {' AND '.join(where_clauses)}"
         cursor.execute(f"""
             SELECT DISTINCT direct_customer_name, direct_customer_code, MAX(customer_name) as sample_customer, COUNT(*) as order_count
-            FROM as400_sales_orders
+            FROM as400_all_orders
             {where_str}
             GROUP BY direct_customer_name
             ORDER BY order_count DESC, direct_customer_name ASC
@@ -301,7 +301,7 @@ def get_catalog_products(
                 SUM(amount) as total_amount,
                 MAX(customer_name) as sample_customer_name,
                 MAX(sales_rep) as sample_sales_rep
-            FROM as400_sales_orders
+            FROM as400_all_orders
             {where_str}
             GROUP BY product_code, product_name, brand_name, shape_type, unit
         """
@@ -324,8 +324,9 @@ def get_catalog_products(
                 SELECT order_no, branch_no, order_date, delivery_date, sales_date, unit_price, cost_price, quantity, order_quantity, sales_rep, title,
                        material_name, material_short, colors_front, colors_back, colors_total, color_display,
                        size_width, size_pitch, weight, capacity_display, finish_note, print_note,
-                       direct_customer_name, direct_customer_code, classification
-                FROM as400_sales_orders
+                       direct_customer_name, direct_customer_code, classification,
+                       jan_code, print_fee, print_cost, print_content
+                FROM as400_all_orders
                 WHERE product_code = ? AND product_name = ?
             """
             detail_params = [p_code, p_name]
@@ -335,13 +336,47 @@ def get_catalog_products(
             if direct_dest and direct_dest not in ('all', '全員', '全体', ''):
                 detail_query += " AND (direct_customer_name LIKE ? OR direct_customer_code = ?)"
                 detail_params.extend([f"%{direct_dest.strip()}%", direct_dest.strip()])
-            detail_query += " ORDER BY sales_date DESC, order_date DESC LIMIT 1"
+            detail_query += " ORDER BY sales_date DESC, order_date DESC LIMIT 5"
             
             cursor.execute(detail_query, detail_params)
-            latest_detail = cursor.fetchone()
+            recent_details = cursor.fetchall()
+            latest_detail = recent_details[0] if recent_details else None
             
             order_no = latest_detail["order_no"] if latest_detail else 0
             branch_no = latest_detail["branch_no"] if latest_detail else 0
+            past_order_nos = [d["order_no"] for d in recent_details if d["order_no"] and d["order_no"] != order_no]
+
+            # 過去の注文日リスト（重複排除・降順）から発注サイクル・再発注推奨を自動算出
+            all_detail_dates = []
+            for d in recent_details:
+                od = str(d["order_date"] or d["sales_date"] or "").strip()
+                if od and len(od) == 10:
+                    all_detail_dates.append(od)
+            unique_order_dates = sorted(list(set(all_detail_dates)), reverse=True)
+            
+            is_reorder_due = False
+            reorder_cycle_days = None
+            days_since_last_order = None
+            reorder_suggest_text = ""
+            
+            today_date = datetime.now().date()
+            if unique_order_dates:
+                try:
+                    last_od_obj = datetime.strptime(unique_order_dates[0], '%Y-%m-%d').date()
+                    days_since_last_order = (today_date - last_od_obj).days
+                    
+                    if len(unique_order_dates) >= 2:
+                        d_objs = [datetime.strptime(d, '%Y-%m-%d').date() for d in unique_order_dates]
+                        diffs = [(d_objs[i] - d_objs[i+1]).days for i in range(len(d_objs)-1) if (d_objs[i] - d_objs[i+1]).days > 0]
+                        if diffs:
+                            reorder_cycle_days = round(sum(diffs) / len(diffs))
+                            # 判定: サイクルが14日以上、経過日数がサイクルの80%〜(200%または+90日)、かつ1年以内のアクティブ商品
+                            if reorder_cycle_days >= 14 and days_since_last_order >= int(reorder_cycle_days * 0.8) and days_since_last_order <= max(int(reorder_cycle_days * 2.0), reorder_cycle_days + 90) and days_since_last_order <= 365:
+                                is_reorder_due = True
+                                reorder_suggest_text = f"平均{reorder_cycle_days}日周期 (前回から{days_since_last_order}日経過)"
+                except Exception as e:
+                    pass
+
             unit_price = latest_detail["unit_price"] if latest_detail else 0.0
             cost_price = latest_detail["cost_price"] if latest_detail else 0.0
             last_qty = latest_detail["quantity"] if latest_detail else 0.0
@@ -353,7 +388,40 @@ def get_catalog_products(
             direct_code = latest_detail["direct_customer_code"] if latest_detail and latest_detail["direct_customer_code"] else ""
             classification = latest_detail["classification"] if latest_detail and latest_detail["classification"] else ""
             
-            # スペック情報（材質、色数、量目、サイズ、備考）
+            jan_code = str(latest_detail["jan_code"] or "").strip() if latest_detail and "jan_code" in latest_detail.keys() else ""
+            print_fee = float(latest_detail["print_fee"] or 0.0) if latest_detail and "print_fee" in latest_detail.keys() else 0.0
+            print_cost = float(latest_detail["print_cost"] or 0.0) if latest_detail and "print_cost" in latest_detail.keys() else 0.0
+            print_content = str(latest_detail["print_content"] or "").strip() if latest_detail and "print_content" in latest_detail.keys() else ""
+
+            # 商品本体の単価と原価（本体行の単価・原価そのもの）
+            product_unit_price = unit_price
+            product_cost_price = cost_price
+            total_unit_price = round(unit_price + print_fee, 2)
+            total_cost_price = round(cost_price + print_cost, 2)
+
+            # ç¨®å¥ã®æ­£è¦åï¼3Fã­ã¼ã«ãã¬ã­ã½ã»ã·ã«ã¯çã¯SPæ±ããå¥æ³¨ãããªå¥æ³¨ãæ¢è£½åï¼
+            # 種別の正規化（自動変換）
+            c_raw = classification.strip()
+            c_norm = c_raw.replace('（', '(').replace('）', ')')
+            if 'シルク' in c_norm:
+                classification_display = 'シルク'
+            elif any(k in c_norm for k in ['3F', '３Ｆ', 'ロールフレキソ', 'SP', 'ＳＰ']):
+                classification_display = 'SP'
+            elif 'オクダ・ヌマタオフセット版' in c_norm or 'オフセット' in c_norm:
+                classification_display = 'オフセット'
+            elif 'シール(フルオーダー)' in c_norm or '別注シール' in c_norm:
+                classification_display = '別注シール'
+            elif 'シール(セミオーダー)' in c_norm or c_norm == 'シール':
+                classification_display = 'シール'
+            elif 'ポリ別注' in c_norm:
+                classification_display = 'ポリ別注'
+            elif '別注' in c_norm:
+                classification_display = '別注'
+            elif '既製品' in c_norm:
+                classification_display = '既製品'
+            else:
+                classification_display = c_raw
+
             mat_name = latest_detail["material_name"] if latest_detail and latest_detail["material_name"] else ""
             mat_short = latest_detail["material_short"] if latest_detail and latest_detail["material_short"] else ""
             c_front = latest_detail["colors_front"] if latest_detail and latest_detail["colors_front"] is not None else 0
@@ -401,16 +469,24 @@ def get_catalog_products(
             # ロール判定
             is_roll = ('ロール' in s_type) or ('ロール' in p_name) or ('RZ' in p_name) or ('RA' in p_name)
             
-            # 粗利率計算
-            margin_rate = round(((unit_price - cost_price) / unit_price) * 100, 1) if unit_price > 0 and cost_price > 0 else None
+            # 粗利率計算（本体＋印刷代の総売上単価、本体＋印刷原価の総仕入原価で計算）
+            margin_rate = round(((total_unit_price - total_cost_price) / total_unit_price) * 100, 1) if total_unit_price > 0 and total_cost_price > 0 else None
             
-            # 商品画像解決 (\\Asahipack01\\画像)
+            # 商品画像解決 (\\Asahipack01\\画像) - 受注No最優先
             import routes_images
-            img_data = routes_images.resolve_product_image_data(p_code, p_name, order_no)
+            img_data = routes_images.resolve_product_image_data(p_code, p_name, order_no, past_order_nos=past_order_nos)
             
+            # 品名（表示名）として「タイトル」を採用するルールの拡張
+            if classification_display in ['別注', '別注品', 'ポリ別注', 'SP', 'シルク', '別注シール', 'シール', 'オフセット']:
+                display_product_name = title if title else p_name
+            elif classification_display == '既製品':
+                display_product_name = p_name if p_name else title
+            else:
+                display_product_name = title if title else p_name
             products.append({
                 "product_code": p_code,
-                "product_name": p_name,
+                "product_name": display_product_name,
+                "raw_product_name": p_name,
                 "brand_name": b_name or "",
                 "shape_type": s_type,
                 "is_roll": is_roll,
@@ -421,8 +497,8 @@ def get_catalog_products(
                 "latest_order_date": order_date,
                 "latest_delivery_date": delivery_date,
                 "latest_sales_date": latest_s_date,
-                "latest_unit_price": unit_price,
-                "latest_cost_price": cost_price,
+                "latest_unit_price": total_unit_price,
+                "latest_cost_price": total_cost_price,
                 "margin_rate": margin_rate,
                 "last_quantity": last_qty,
                 "orders_count": row["orders_count"],
@@ -449,9 +525,20 @@ def get_catalog_products(
                 "direct_customer_name": direct_name,
                 "direct_customer_code": direct_code,
                 "classification": classification,
+                "classification_display": classification_display,
+                "jan_code": jan_code,
+                "product_unit_price": product_unit_price,
+                "product_cost_price": product_cost_price,
+                "print_fee": print_fee,
+                "print_cost": print_cost,
+                "print_content": print_content,
                 "image_url": img_data["image_url"],
                 "image_name": img_data["image_name"],
-                "image_variants": img_data["image_variants"]
+                "image_variants": img_data["image_variants"],
+                "is_reorder_due": is_reorder_due,
+                "reorder_cycle_days": reorder_cycle_days,
+                "days_since_last_order": days_since_last_order,
+                "reorder_suggest_text": reorder_suggest_text
             })
             
         # 4. ソート処理
@@ -470,10 +557,12 @@ def get_catalog_products(
             
         # 5. ファセット集計（種別・アラート件数）
         shape_facets = {}
-        alert_facets = {"warning": 0, "danger": 0, "active": 0}
+        alert_facets = {"warning": 0, "danger": 0, "active": 0, "reorder": 0}
         for p in products:
             st = p["shape_type"] or "未分類"
             shape_facets[st] = shape_facets.get(st, 0) + 1
+            if p.get("is_reorder_due"):
+                alert_facets["reorder"] += 1
             if p["alert_level"] == "danger":
                 alert_facets["danger"] += 1
             elif p["alert_level"] == "warning":

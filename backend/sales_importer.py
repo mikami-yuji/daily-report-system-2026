@@ -110,6 +110,10 @@ def init_sales_db(db_path: Optional[str] = None):
                 capacity_display TEXT,
                 finish_note TEXT,
                 print_note TEXT,
+                jan_code TEXT,
+                print_fee REAL,
+                print_cost REAL,
+                print_content TEXT,
                 csv_mtime REAL
             )
         """)
@@ -140,6 +144,7 @@ def init_sales_db(db_path: Optional[str] = None):
                 amount REAL,
                 profit REAL,
                 sales_rep TEXT,
+                title TEXT,
                 delivery_status TEXT,
                 delivery_status_label TEXT,
                 shipping_note TEXT,
@@ -156,6 +161,10 @@ def init_sales_db(db_path: Optional[str] = None):
                 size_pitch REAL,
                 weight REAL,
                 capacity_display TEXT,
+                jan_code TEXT,
+                print_fee REAL,
+                print_cost REAL,
+                print_content TEXT,
                 is_complete_flag INTEGER,
                 csv_mtime REAL
             )
@@ -172,7 +181,8 @@ def init_sales_db(db_path: Optional[str] = None):
             ("colors_front", "INTEGER"), ("colors_back", "INTEGER"), ("colors_total", "INTEGER"),
             ("color_display", "TEXT"), ("size_width", "REAL"), ("size_pitch", "REAL"),
             ("weight", "REAL"), ("capacity_display", "TEXT"),
-            ("finish_note", "TEXT"), ("print_note", "TEXT")
+            ("finish_note", "TEXT"), ("print_note", "TEXT"),
+            ("jan_code", "TEXT"), ("print_fee", "REAL"), ("print_cost", "REAL"), ("print_content", "TEXT")
         ]:
             if col not in existing_cols:
                 try:
@@ -183,11 +193,13 @@ def init_sales_db(db_path: Optional[str] = None):
         cursor.execute("PRAGMA table_info(as400_backlog_orders)")
         existing_b_cols = {row[1] for row in cursor.fetchall()}
         for col, c_type in [
+            ("title", "TEXT"),
             ("classification", "TEXT"),
             ("material_name", "TEXT"), ("material_short", "TEXT"),
             ("colors_front", "INTEGER"), ("colors_back", "INTEGER"), ("colors_total", "INTEGER"),
             ("color_display", "TEXT"), ("size_width", "REAL"), ("size_pitch", "REAL"),
-            ("weight", "REAL"), ("capacity_display", "TEXT")
+            ("weight", "REAL"), ("capacity_display", "TEXT"),
+            ("jan_code", "TEXT"), ("print_fee", "REAL"), ("print_cost", "REAL"), ("print_content", "TEXT")
         ]:
             if col not in existing_b_cols:
                 try:
@@ -217,6 +229,7 @@ def init_sales_db(db_path: Optional[str] = None):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_backlog_rep ON as400_backlog_orders (sales_rep)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_backlog_deliv ON as400_backlog_orders (delivery_date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_backlog_status ON as400_backlog_orders (delivery_status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_as400_backlog_no_branch ON as400_backlog_orders (order_no, branch_no)")
         
         # メタ情報テーブル（最新取り込みCSVのタイムスタンプ管理）
         cursor.execute("""
@@ -225,6 +238,44 @@ def init_sales_db(db_path: Optional[str] = None):
                 value TEXT
             )
         """)
+
+        # 3. 売上＋未売上受注残を統合したオール受注ビュー（カタログ・商品一覧用）
+        cursor.execute("DROP VIEW IF EXISTS as400_all_orders")
+        cursor.execute("""
+            CREATE VIEW as400_all_orders AS
+            SELECT 
+                order_no, branch_no, order_date, delivery_date, 
+                sales_date, customer_code, customer_name, customer_rank,
+                direct_customer_code, direct_customer_name, classification,
+                product_code, product_name, brand_name, shape_type, unit,
+                quantity, order_quantity, unit_price, cost_price, amount, profit,
+                sales_rep, title, material_name, material_short,
+                colors_front, colors_back, colors_total, color_display,
+                size_width, size_pitch, weight, capacity_display,
+                finish_note, print_note, jan_code, print_fee, print_cost, print_content,
+                'sales' as order_source
+            FROM as400_sales_orders
+
+            UNION ALL
+
+            SELECT 
+                b.order_no, b.branch_no, b.order_date, b.delivery_date, 
+                COALESCE(b.delivery_date, b.order_date) as sales_date, b.customer_code, b.customer_name, '' as customer_rank,
+                b.direct_customer_code, b.direct_customer_name, b.classification,
+                b.product_code, b.product_name, b.brand_name, b.shape_type, b.unit,
+                COALESCE(b.order_quantity, b.allocated_quantity, 0) as quantity, b.order_quantity, b.unit_price, b.cost_price, b.amount, b.profit,
+                b.sales_rep, COALESCE(b.title, '') as title, b.material_name, b.material_short,
+                b.colors_front, b.colors_back, b.colors_total, b.color_display,
+                b.size_width, b.size_pitch, b.weight, b.capacity_display,
+                b.finish_note, b.print_note, b.jan_code, b.print_fee, b.print_cost, b.print_content,
+                'backlog' as order_source
+            FROM as400_backlog_orders b
+            WHERE NOT EXISTS (
+                SELECT 1 FROM as400_sales_orders s 
+                WHERE s.order_no = b.order_no AND s.branch_no = b.branch_no AND s.order_no > 0
+            )
+        """)
+        conn.commit()
         conn.commit()
 
 
@@ -420,12 +471,60 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
         else:
             df['売上回数_num'] = 1
 
-        # 1. 銘柄行（コード 999999999）のマッピングを一瞬で作成
-        brand_df = df[df['商品コード'].astype(str).str.strip() == '999999999']
-        brand_map = dict(zip(zip(brand_df['受注№'], brand_df['受注枝番']), brand_df['商品名称'].astype(str).str.strip()))
-
         # 2. 受注行№の重複排除
         df_unique = df.drop_duplicates(subset=['受注№', '受注枝番', '受注行№'], keep='first').copy()
+
+        # 1-b. 印刷代行（商品コード 900... または 999999999 の印刷関連行）のマッピング作成
+        # 同一 (受注№, 受注枝番) に紐づく印刷代行から「印刷代（売上単価）」「印刷原価（原単価）」「印刷内容」を抽出・合算
+        c_code_str = df_unique['商品コード'].astype(str).str.strip()
+        is_900_series = c_code_str.str.startswith('900') & (c_code_str != '900000011')
+        is_dummy_999 = (c_code_str == '999999999') & (pd.to_numeric(df_unique['受注行№'], errors='coerce').fillna(0) > 1)
+
+        print_df = df_unique[is_900_series | is_dummy_999].copy()
+        print_fee_map = {}
+        print_cost_map = {}
+        print_names_map = {}
+
+        # 除外キーワード（部品・送料・キャンペーン等の非印刷行）
+        ex_keywords = ['部品', '送料', '便', '運賃', 'ヤマト', 'ポスター', 'キャンペーン', 'セール', 'カタログ', '名刺', 'サービス']
+        # 印刷判定キーワード
+        print_keywords = ['印刷', '刷', '版', 'シルク', 'オフセット', 'ロール', '凸版', 'リバース', '色', '箔押', 'グラビア', 'フレキソ', '名入', 'ネーム', '加工', '販売者']
+
+        for _, pr in print_df.iterrows():
+            p_jno = pr.get('受注№')
+            p_eda = pr.get('受注枝番')
+            p_key = (p_jno, p_eda)
+            p_name = str(pr.get('商品名称', '')).replace('\t', '').strip()
+            pr_code = str(pr.get('商品コード', '')).strip()
+
+            if any(ex in p_name for ex in ex_keywords):
+                continue
+
+            # 900シリーズまたは印刷キーワードが含まれる場合に対象とする
+            is_valid_print = False
+            if pr_code.startswith('900'):
+                is_valid_print = True
+            elif any(kw in p_name for kw in print_keywords):
+                is_valid_print = True
+
+            if is_valid_print:
+                u_price = float(pr.get('売上単価', 0)) if pd.notna(pr.get('売上単価')) else 0.0
+                c_price = float(pr.get('原単価（下代）', 0)) if pd.notna(pr.get('原単価（下代）')) else 0.0
+
+                if u_price > 0 or c_price > 0 or any(kw in p_name for kw in print_keywords):
+                    print_fee_map[p_key] = round(print_fee_map.get(p_key, 0.0) + u_price, 2)
+                    print_cost_map[p_key] = round(print_cost_map.get(p_key, 0.0) + c_price, 2)
+
+                    if p_key not in print_names_map:
+                        print_names_map[p_key] = []
+                    if p_name and p_name not in print_names_map[p_key]:
+                        print_names_map[p_key].append(p_name)
+
+        print_content_map = {k: " / ".join(v) for k, v in print_names_map.items()}
+
+        # 1. 銘柄行（コード 999999999 で印刷行を除外したもの）のマッピングを作成
+        brand_df = df_unique[(df_unique['商品コード'].astype(str).str.strip() == '999999999') & ~is_dummy_999]
+        brand_map = dict(zip(zip(brand_df['受注№'], brand_df['受注枝番']), brand_df['商品名称'].astype(str).str.strip()))
 
         # 3. 各行の有効数量と原価の計算
         df_unique['引当数_num'] = pd.to_numeric(df_unique['引当数'], errors='coerce').fillna(0)
@@ -510,6 +609,17 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
             finish_note = str(row.get('仕上備考', '')).strip() if pd.notna(row.get('仕上備考')) else ''
             print_note = str(row.get('印刷備考', '')).strip() if pd.notna(row.get('印刷備考')) else ''
 
+            # JANコード抽出（8〜14桁の半角数字列のみを有効、未登録は空文字）
+            raw_jan = str(row.get('ＪＡＮコード', '')).replace('\t', '').strip()
+            if raw_jan.endswith('.0'):
+                raw_jan = raw_jan[:-2]
+            jan_code = raw_jan if (raw_jan.isdigit() and 8 <= len(raw_jan) <= 14) else ''
+
+            # 印刷代および印刷内容
+            p_fee = float(print_fee_map.get(key, 0.0))
+            p_cost = float(print_cost_map.get(key, 0.0))
+            p_content = str(print_content_map.get(key, ''))
+
             sales_records.append((
                 int(jno) if str(jno).isdigit() else 0,
                 int(eda) if str(eda).isdigit() else 0,
@@ -547,6 +657,10 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 cap_disp,
                 finish_note,
                 print_note,
+                jan_code,
+                p_fee,
+                p_cost,
+                p_content,
                 current_mtime
             ))
 
@@ -624,6 +738,15 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
             status_code, status_label = classify_delivery_status(delivery_date, arrival_date, shipping_note, special_note)
             mat_name, mat_short, c_front, c_back, c_total, c_disp, s_w, s_p, w_val, cap_disp = extract_material_and_colors(row)
 
+            raw_jan_b = str(row.get('ＪＡＮコード', '')).replace('\t', '').strip()
+            if raw_jan_b.endswith('.0'):
+                raw_jan_b = raw_jan_b[:-2]
+            jan_code_b = raw_jan_b if (raw_jan_b.isdigit() and 8 <= len(raw_jan_b) <= 14) else ''
+
+            p_fee_b = float(print_fee_map.get(key, 0.0))
+            p_cost_b = float(print_cost_map.get(key, 0.0))
+            p_content_b = str(print_content_map.get(key, ''))
+
             backlog_records.append((
                 int(jno) if str(jno).isdigit() else 0,
                 int(eda) if str(eda).isdigit() else 0,
@@ -647,6 +770,7 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 amount,
                 profit,
                 sales_rep,
+                title,
                 status_code,
                 status_label,
                 shipping_note,
@@ -663,6 +787,10 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                 s_p,
                 w_val,
                 cap_disp,
+                jan_code_b,
+                p_fee_b,
+                p_cost_b,
+                p_content_b,
                 is_complete,
                 current_mtime
             ))
@@ -683,8 +811,9 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                     product_code, product_name, brand_name, shape_type, unit, order_quantity, quantity,
                     unit_price, cost_price, amount, profit, sales_rep, title,
                     material_name, material_short, colors_front, colors_back, colors_total, color_display,
-                    size_width, size_pitch, weight, capacity_display, finish_note, print_note, csv_mtime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    size_width, size_pitch, weight, capacity_display, finish_note, print_note,
+                    jan_code, print_fee, print_cost, print_content, csv_mtime
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, sales_records)
 
             # 受注残データ更新
@@ -696,11 +825,13 @@ def import_as400_sales_csv(csv_path: Optional[str] = None, force: bool = False) 
                     classification,
                     product_code, product_name, brand_name, shape_type, unit,
                     order_quantity, allocated_quantity, unit_price, cost_price, amount, profit,
-                    sales_rep, delivery_status, delivery_status_label,
+                    sales_rep, title, delivery_status, delivery_status_label,
                     shipping_note, finish_note, print_note, special_note,
                     material_name, material_short, colors_front, colors_back, colors_total, color_display,
-                    size_width, size_pitch, weight, capacity_display, is_complete_flag, csv_mtime
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    size_width, size_pitch, weight, capacity_display,
+                    jan_code, print_fee, print_cost, print_content,
+                    is_complete_flag, csv_mtime
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, backlog_records)
 
             cursor.execute("INSERT OR REPLACE INTO as400_sales_meta (key, value) VALUES ('last_mtime', ?)", (str(current_mtime),))

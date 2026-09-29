@@ -1,7 +1,3 @@
 # Daily Report System Application Version
-__version__ = "2.5.49"
-__build_date__ = "2026-09-26"
-
-
-
-
+__version__ = "2.5.66"
+__build_date__ = "2026-09-29"

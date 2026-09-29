@@ -1,11 +1,11 @@
 {
-  "version": "2.5.49",
-  "releaseDate": "2026-09-26",
-  "fileName": "DailyReportServer_v2.5.49.exe",
-  "fileSize": 49517809,
-  "sha256": "d673e3b44891d8e5c9aea888adfe332905ae8bbca487708c0ea68c08851093dc",
+  "version": "2.5.66",
+  "releaseDate": "2026-09-29",
+  "fileName": "DailyReportServer_v2.5.66.exe",
+  "fileSize": 49542456,
+  "sha256": "0012a25d6feec511c942b657eea4cbe95b0f23070eb60271256331b54e9ddc7b",
   "forceUpdate": false,
   "releaseNotes": [
-    "種別（カラムDの文字1）バッジ追加・Excel列追加・第一キー種別ソート対応"
+    "システム不和の解消（localhost直接記述修正・ESLint/型エラー解消・月度初期値最適化）"
   ]
 }

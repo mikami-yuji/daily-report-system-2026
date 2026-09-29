@@ -1,14 +1,9 @@
 'use client';
 
 import { useEffect, useState, useMemo, Suspense } from 'react';
-import Link from 'next/link';
 import {
     Truck,
     Search,
-    Filter,
-    Calendar,
-    ArrowUpDown,
-    Download,
     FileSpreadsheet,
     Clock,
     AlertTriangle,
@@ -17,10 +12,8 @@ import {
     Eye,
     RefreshCw,
     Building2,
-    Tag,
     ChevronDown,
     X,
-    Sparkles,
     UserCheck,
     HelpCircle,
     ShoppingBag
@@ -190,14 +183,28 @@ function OrdersBacklogContent() {
         setActiveImageIdx(0);
 
         try {
-            const query = order.order_no ? String(order.order_no) : order.product_code;
-            const res = await searchDesignImages(query, selectedFile || undefined);
-            if (res.images && res.images.length > 0) {
-                setImageVariants(res.images);
-            } else if (order.product_code) {
-                const res2 = await searchDesignImages(order.product_code, selectedFile || undefined);
-                setImageVariants(res2.images || []);
+            const queriesToTry: string[] = [];
+            if (order.order_no) queriesToTry.push(String(order.order_no));
+
+            // 別注品（70始まり）の場合は初回受注Noも検索対象とする
+            // ※ 規格品（70以外）は商品コードが昔の別注品受注番号と重複するためクエリに追加しない
+            const cleanCode = String(order.product_code || '').trim().replace(/^0+/, '');
+            if (cleanCode.startsWith('70')) {
+                const initialOrderNo = cleanCode.slice(2).replace(/^0+/, '');
+                if (initialOrderNo && !queriesToTry.includes(initialOrderNo)) {
+                    queriesToTry.push(initialOrderNo);
+                }
             }
+
+            let found: DesignImage[] = [];
+            for (const q of queriesToTry) {
+                const res = await searchDesignImages(q, selectedFile || undefined);
+                if (res.images && res.images.length > 0) {
+                    found = res.images;
+                    break;
+                }
+            }
+            setImageVariants(found);
         } catch (err) {
             console.error('Image search failed:', err);
         } finally {

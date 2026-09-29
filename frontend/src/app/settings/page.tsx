@@ -131,7 +131,7 @@ export default function SettingsPage(): React.JSX.Element {
 
     const fetchAS400Status = async () => {
         try {
-            const res = await fetch('http://localhost:8001/api/sales/sync-status');
+            const res = await fetch('/api/sales/sync-status');
             if (res.ok) {
                 const data = await res.json();
                 setAs400Status(data);
@@ -149,7 +149,7 @@ export default function SettingsPage(): React.JSX.Element {
         setAs400Error(null);
         const tId = toast.loading('基幹売上明細（AS/400）を同期しています...');
         try {
-            const res = await fetch('http://localhost:8001/api/sales/sync', {
+            const res = await fetch('/api/sales/sync', {
                 method: 'POST'
             });
             const data = await res.json();

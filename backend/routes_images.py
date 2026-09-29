@@ -297,40 +297,63 @@ def get_product_image_index() -> Dict[str, List[str]]:
         return _PRODUCT_IMAGE_CACHE
 
 
-def resolve_product_image_data(product_code: Any, product_name: str = "", order_no: Any = 0) -> Dict[str, Any]:
+def resolve_product_image_data(product_code: Any, product_name: str = "", order_no: Any = 0, past_order_nos: Optional[List[Any]] = None) -> Dict[str, Any]:
     """
-    商品コード、商品名、受注Noから \\Asahipack01\\画像 内の画像を特定
+    受注No、商品コード、商品名から \\Asahipack01\\画像 内の画像を特定
+    ※ Asahipack01 の画像ファイル群（約14万件）は「受注番号（order_no）」で命名されています。
+    ※ カタログ画像は規格品・別注品を問わず「受注No」を最優先で検索します。
+    ※ 規格品コードそのもので Asahipack01 を検索すると過去の別注品受注Noと衝突するため、
+       コードそのものではなく受注No（order_no）で検索を行います。
     """
     idx = get_product_image_index()
     if not idx:
         return {"image_url": None, "image_name": None, "image_variants": []}
         
-    code_str = str(product_code).strip().lstrip('0')
-    sub_code = code_str[2:] if code_str.startswith('70') else code_str
+    code_str = str(product_code).strip() if product_code else ""
+    clean_code = code_str.lstrip('0')
     
-    # 候補キーのリスト（優先度順）
+    # 70で始まるコードは別注品（特注品）: 例 701220407 -> 初回受注番号 1220407
+    is_custom_order = clean_code.startswith('70') or code_str.startswith('70')
+    
     candidate_keys = []
     
-    # 1. 70プレフィックス除去コード（表面 A, 全体 C, 通常）
-    if sub_code:
-        candidate_keys.extend([f"{sub_code.lower()}a", f"{sub_code.lower()}c", sub_code.lower()])
-    
-    # 2. 完全コード
-    if code_str and code_str != sub_code:
-        candidate_keys.extend([f"{code_str.lower()}a", f"{code_str.lower()}c", code_str.lower()])
-        
-    # 3. 商品名中の括弧内コード (例: (049415C))
-    if product_name:
-        m = re.search(r'\(([A-Za-z0-9]+)\)', product_name)
-        if m:
-            p_paren = m.group(1).lower()
-            candidate_keys.extend([p_paren, f"{p_paren}a", f"{p_paren}c"])
+    # 1. 受注No（最優先: カタログ画像検索は受注Noで実施）
+    # 最新の受注No、および過去の直近受注Noを候補キーに追加
+    all_order_nos = []
+    if order_no and str(order_no).strip() not in ('0', '', 'None'):
+        all_order_nos.append(order_no)
+    if past_order_nos:
+        for p_ord in past_order_nos:
+            if p_ord and str(p_ord).strip() not in ('0', '', 'None') and p_ord not in all_order_nos:
+                all_order_nos.append(p_ord)
+
+    for o_no in all_order_nos:
+        ord_str = str(o_no).strip().lower()
+        ord_clean = re.sub(r'[^0-9a-z]', '', ord_str)
+        if ord_clean:
+            candidate_keys.extend([f"{ord_clean}a", f"{ord_clean}c", ord_clean])
+        if ord_str != ord_clean and ord_str:
+            candidate_keys.extend([f"{ord_str}a", f"{ord_str}c", ord_str])
             
-    # 4. 受注No
-    if order_no and str(order_no).strip() != '0':
-        ord_str = str(order_no).strip().lower()
-        candidate_keys.extend([f"{ord_str}a", f"{ord_str}c", ord_str])
-        
+    # 2. 別注品（70始まり）の初回受注No (コードから70を除去した番号)
+    if is_custom_order:
+        raw_sub = clean_code[2:] if clean_code.startswith('70') else code_str[2:]
+        sub_code = raw_sub.lstrip('0')
+        if sub_code:
+            sub_lower = sub_code.lower()
+            candidate_keys.extend([f"{sub_lower}a", f"{sub_lower}c", sub_lower])
+            
+    # 3. 商品名中の括弧内品番・記号 (例: (049415C), (WB-17) 等)
+    if product_name:
+        matches = re.findall(r'[（\(]([A-Za-z0-9\-]+)[）\)]', product_name)
+        for m_str in matches:
+            m_clean = m_str.strip().lower()
+            # 単なる数字のみで4〜8桁のものは古い別注品受注Noと衝突する危険があるため除外
+            if m_clean.isdigit() and 4 <= len(m_clean) <= 8:
+                continue
+            if len(m_clean) >= 2:
+                candidate_keys.extend([m_clean, f"{m_clean}a", f"{m_clean}c"])
+                
     found_files = []
     seen = set()
     for k in candidate_keys:

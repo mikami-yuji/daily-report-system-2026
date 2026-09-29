@@ -4,9 +4,13 @@ import { useState, useMemo } from 'react';
 import { useSales } from '@/hooks/useQueryHooks';
 import { SalesData } from '@/lib/api';
 import SalesTable from '@/components/sales/SalesTable';
-import { Search, RotateCcw } from 'lucide-react';
+import ActionableSalesInsights from '@/components/sales/ActionableSalesInsights';
+import { Search, RotateCcw, Target, BarChart3 } from 'lucide-react';
 
 export default function SalesAnalysisPage(): React.JSX.Element {
+    // 表示モード: 'actionable'（実戦営業アクション指標）または 'all'（全得意先売上明細）
+    const [viewMode, setViewMode] = useState<'actionable' | 'all'>('actionable');
+
     // React Queryでデータ取得（自動キャッシュ）
     const { data: rawSalesData = [], isLoading } = useSales();
 
@@ -158,11 +162,12 @@ export default function SalesAnalysisPage(): React.JSX.Element {
 
     return (
         <div className="space-y-6 animate-fadeIn">
-            <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-sf-border mb-4">
+            {/* Header */}
+            <div className="flex justify-between items-center bg-white p-6 rounded-lg shadow-sm border border-sf-border mb-2">
                 <div>
                     <h1 className="text-2xl font-bold text-sf-text">売上分析</h1>
                     <p className="text-sm text-sf-text-weak mt-1">
-                        全得意先の売上・粗利・前年比を分析します。
+                        全得意先の売上明細およびフォロー優先度の高い顧客・商品を分析します。
                     </p>
                 </div>
                 <div className="flex gap-3">
@@ -176,161 +181,197 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                 </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* 今年売上 */}
-                <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">売上合計（今年）</div>
-                    <div className="text-xl font-bold text-sf-text">{formatCurrency(totals.sales)}円</div>
-                    <div className={`text-xs mt-1 ${totals.salesYoY >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        前年比 {totals.salesYoY >= 0 ? '+' : ''}{totals.salesYoY.toFixed(1)}%
-                    </div>
-                </div>
-                {/* 前年売上 */}
-                <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">売上合計（前年）</div>
-                    <div className="text-xl font-bold text-gray-500">{formatCurrency(totals.salesLastYear)}円</div>
-                    <div className="text-xs mt-1 text-gray-400">
-                        差額 {totals.sales - totals.salesLastYear >= 0 ? '+' : ''}{formatCurrency(totals.sales - totals.salesLastYear)}円
-                    </div>
-                </div>
-                {/* 今年粗利 */}
-                <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">粗利合計（今年）</div>
-                    <div className="text-xl font-bold text-emerald-600">{formatCurrency(totals.profit)}円</div>
-                    <div className={`text-xs mt-1 ${totals.profitYoY >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        前年比 {totals.profitYoY >= 0 ? '+' : ''}{totals.profitYoY.toFixed(1)}%
-                    </div>
-                </div>
-                {/* 前年粗利 */}
-                <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
-                    <div className="text-xs text-gray-500 mb-1">粗利合計（前年）</div>
-                    <div className="text-xl font-bold text-gray-500">{formatCurrency(totals.profitLastYear)}円</div>
-                    <div className="text-xs mt-1 text-gray-400">
-                        差額 {totals.profit - totals.profitLastYear >= 0 ? '+' : ''}{formatCurrency(totals.profit - totals.profitLastYear)}円
-                    </div>
-                </div>
+            {/* Main Navigation Tabs */}
+            <div className="flex border-b border-sf-border gap-2 bg-white px-4 pt-3 rounded-t-lg shadow-sm">
+                <button
+                    onClick={() => setViewMode('actionable')}
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                        viewMode === 'actionable'
+                            ? 'border-sf-primary text-sf-primary bg-blue-50/50 rounded-t'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <Target size={18} />
+                    <span>営業アクション指標</span>
+                </button>
+                <button
+                    onClick={() => setViewMode('all')}
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                        viewMode === 'all'
+                            ? 'border-sf-primary text-sf-primary bg-blue-50/50 rounded-t'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <BarChart3 size={18} />
+                    <span>全得意先売上明細</span>
+                </button>
             </div>
 
-            {/* Filter Bar */}
-            <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm flex flex-wrap items-center gap-4">
-                {/* Search */}
-                <div className="relative flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder="得意先名、またはコードで検索..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20 transition-all"
-                    />
-                </div>
+            {/* Tab 1: 実戦営業アクション指標 */}
+            {viewMode === 'actionable' && (
+                <ActionableSalesInsights />
+            )}
 
-                {/* Rank Filter */}
-                <select
-                    value={filterRank}
-                    onChange={(e) => setFilterRank(e.target.value)}
-                    className="border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20"
-                >
-                    <option value="all">全ランク</option>
-                    {uniqueRanks.map(r => (
-                        <option key={r} value={r}>{r}</option>
-                    ))}
-                </select>
-
-                {/* Area Filter */}
-                <select
-                    value={filterArea}
-                    onChange={(e) => setFilterArea(e.target.value)}
-                    className="border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20"
-                    disabled={uniqueAreas.length === 0}
-                >
-                    <option value="all">全エリア</option>
-                    {uniqueAreas.length > 0 ? (
-                        uniqueAreas.map(a => (
-                            <option key={a} value={a}>{a}</option>
-                        ))
-                    ) : (
-                        <option disabled>エリア情報なし</option>
-                    )}
-                </select>
-
-                {/* Sales Rep Filter */}
-                <select
-                    value={filterSalesRep}
-                    onChange={(e) => setFilterSalesRep(e.target.value)}
-                    className="border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20"
-                    disabled={uniqueSalesReps.length === 0}
-                >
-                    <option value="all">全担当者</option>
-                    {uniqueSalesReps.length > 0 ? (
-                        uniqueSalesReps.map(rep => (
-                            <option key={rep} value={rep}>{rep}</option>
-                        ))
-                    ) : (
-                        <option disabled>担当者情報なし</option>
-                    )}
-                </select>
-
-                <div className="text-sm text-gray-500 whitespace-nowrap">
-                    {filteredAndSortedData.length} 件
-                </div>
-            </div>
-
-            {/* Table */}
-            {
-                isLoading ? (
-                    <div className="text-center py-20 text-gray-400">
-                        データを読み込み中...
+            {/* Tab 2: 全得意先売上明細テーブル */}
+            {viewMode === 'all' && (
+                <div className="space-y-6">
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {/* 今年売上 */}
+                        <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
+                            <div className="text-xs text-gray-500 mb-1">売上合計（今年）</div>
+                            <div className="text-xl font-bold text-sf-text">{formatCurrency(totals.sales)}円</div>
+                            <div className={`text-xs mt-1 ${totals.salesYoY >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                前年比 {totals.salesYoY >= 0 ? '+' : ''}{totals.salesYoY.toFixed(1)}%
+                            </div>
+                        </div>
+                        {/* 前年売上 */}
+                        <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
+                            <div className="text-xs text-gray-500 mb-1">売上合計（前年）</div>
+                            <div className="text-xl font-bold text-gray-500">{formatCurrency(totals.salesLastYear)}円</div>
+                            <div className="text-xs mt-1 text-gray-400">
+                                差額 {totals.sales - totals.salesLastYear >= 0 ? '+' : ''}{formatCurrency(totals.sales - totals.salesLastYear)}円
+                            </div>
+                        </div>
+                        {/* 今年粗利 */}
+                        <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
+                            <div className="text-xs text-gray-500 mb-1">粗利合計（今年）</div>
+                            <div className="text-xl font-bold text-emerald-600">{formatCurrency(totals.profit)}円</div>
+                            <div className={`text-xs mt-1 ${totals.profitYoY >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                前年比 {totals.profitYoY >= 0 ? '+' : ''}{totals.profitYoY.toFixed(1)}%
+                            </div>
+                        </div>
+                        {/* 前年粗利 */}
+                        <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm">
+                            <div className="text-xs text-gray-500 mb-1">粗利合計（前年）</div>
+                            <div className="text-xl font-bold text-gray-500">{formatCurrency(totals.profitLastYear)}円</div>
+                            <div className="text-xs mt-1 text-gray-400">
+                                差額 {totals.profit - totals.profitLastYear >= 0 ? '+' : ''}{formatCurrency(totals.profit - totals.profitLastYear)}円
+                            </div>
+                        </div>
                     </div>
-                ) : (
-                    <SalesTable
-                        data={paginatedData}
-                        sortField={sortField}
-                        sortDirection={sortDirection}
-                        onSort={handleSort}
-                    />
-                )
-            }
 
-            {/* ページネーション */}
-            {
-                totalPages > 1 && (
-                    <div className="p-3 bg-white border border-sf-border rounded flex justify-center items-center gap-2">
-                        <button
-                            onClick={() => setCurrentPage(1)}
-                            disabled={currentPage === 1}
-                            className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                    {/* Filter Bar */}
+                    <div className="bg-white p-4 rounded-lg border border-sf-border shadow-sm flex flex-wrap items-center gap-4">
+                        {/* Search */}
+                        <div className="relative flex-1 min-w-[200px]">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="得意先名、またはコードで検索..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-sf-border rounded focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20 transition-all"
+                            />
+                        </div>
+
+                        {/* Rank Filter */}
+                        <select
+                            value={filterRank}
+                            onChange={(e) => setFilterRank(e.target.value)}
+                            className="border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20"
                         >
-                            ««
-                        </button>
-                        <button
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                            disabled={currentPage === 1}
-                            className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                            <option value="all">全ランク</option>
+                            {uniqueRanks.map(r => (
+                                <option key={r} value={r}>{r}</option>
+                            ))}
+                        </select>
+
+                        {/* Area Filter */}
+                        <select
+                            value={filterArea}
+                            onChange={(e) => setFilterArea(e.target.value)}
+                            className="border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20"
+                            disabled={uniqueAreas.length === 0}
                         >
-                            «
-                        </button>
-                        <span className="px-4 text-sm text-sf-text">
-                            {currentPage} / {totalPages} ページ
-                        </span>
-                        <button
-                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                            <option value="all">全エリア</option>
+                            {uniqueAreas.length > 0 ? (
+                                uniqueAreas.map(a => (
+                                    <option key={a} value={a}>{a}</option>
+                                ))
+                            ) : (
+                                <option disabled>エリア情報なし</option>
+                            )}
+                        </select>
+
+                        {/* Sales Rep Filter */}
+                        <select
+                            value={filterSalesRep}
+                            onChange={(e) => setFilterSalesRep(e.target.value)}
+                            className="border border-sf-border rounded px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-sf-light-blue/20"
+                            disabled={uniqueSalesReps.length === 0}
                         >
-                            »
-                        </button>
-                        <button
-                            onClick={() => setCurrentPage(totalPages)}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
-                        >
-                            »»
-                        </button>
+                            <option value="all">全担当者</option>
+                            {uniqueSalesReps.length > 0 ? (
+                                uniqueSalesReps.map(rep => (
+                                    <option key={rep} value={rep}>{rep}</option>
+                                ))
+                            ) : (
+                                <option disabled>担当者情報なし</option>
+                            )}
+                        </select>
+
+                        <div className="text-sm text-gray-500 whitespace-nowrap">
+                            {filteredAndSortedData.length} 件
+                        </div>
                     </div>
-                )
-            }
-        </div >
+
+                    {/* Table */}
+                    {
+                        isLoading ? (
+                            <div className="text-center py-20 text-gray-400">
+                                データを読み込み中...
+                            </div>
+                        ) : (
+                            <SalesTable
+                                data={paginatedData}
+                                sortField={sortField}
+                                sortDirection={sortDirection}
+                                onSort={handleSort}
+                            />
+                        )
+                    }
+
+                    {/* ページネーション */}
+                    {
+                        totalPages > 1 && (
+                            <div className="p-3 bg-white border border-sf-border rounded flex justify-center items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                >
+                                    ««
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                >
+                                    «
+                                </button>
+                                <span className="px-4 text-sm text-sf-text">
+                                    {currentPage} / {totalPages} ページ
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                >
+                                    »
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 rounded border border-gray-300 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                                >
+                                    »»
+                                </button>
+                            </div>
+                        )
+                    }
+                </div>
+            )}
+        </div>
     );
 }

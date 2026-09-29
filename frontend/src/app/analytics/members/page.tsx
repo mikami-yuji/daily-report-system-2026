@@ -19,7 +19,14 @@ export default function DailyReportPointsTablePage() {
 
     // --- Tab 2: 活動集計用のステート ---
     const [loadingSummary, setLoadingSummary] = useState(false);
-    const [selectedMonth, setSelectedMonth] = useState<string>('26/05'); // デフォルトは5月（26/05）
+    const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const code = `${yy}/${mm}`;
+        const validCodes = ['26/02', '26/03', '26/04', '26/05', '26/06', '26/07', '26/08', '26/09', '26/10', '26/11', '26/12', '27/01'];
+        return validCodes.includes(code) ? code : '26/09';
+    });
     const [teamSummaryRecords, setTeamSummaryRecords] = useState<TeamSummaryRecord[]>([]);
     const [sortField, setSortField] = useState<keyof TeamSummaryRecord | 'total'>('staff');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -45,7 +52,7 @@ export default function DailyReportPointsTablePage() {
         setMounted(true);
         // 初回ロード時に日報点数表と活動集計の両方をロード
         fetchPointsTable(7);
-        fetchTeamSummary('26/05');
+        fetchTeamSummary(selectedMonth);
     }, []);
 
     // 日報点数表データ取得

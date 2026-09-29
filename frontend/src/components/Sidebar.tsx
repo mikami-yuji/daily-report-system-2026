@@ -69,9 +69,9 @@ function SyncStatus({ collapsed }: { collapsed: boolean }) {
             );
         }
         return (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50 text-emerald-700 text-xs border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="font-medium">社内サーバー: 接続中</span>
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-emerald-50 text-emerald-700 text-[11px] border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
+                <span className="font-medium truncate">社内サーバー: 接続中</span>
             </div>
         );
     }
@@ -155,24 +155,24 @@ export default function Sidebar() {
 
     return (
         <div
-            className={`bg-white border-r border-sf-border h-screen flex flex-col transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'
+            className={`bg-white border-r border-sf-border h-screen flex flex-col transition-all duration-300 ${collapsed ? 'w-14' : 'w-[195px]'
                 }`}
         >
             {/* App Header in Sidebar */}
-            <div className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-sf-border bg-sf-blue text-white">
-                {!collapsed && <span className="font-bold text-lg truncate">Sales Support</span>}
+            <div className="h-12 flex-shrink-0 flex items-center justify-between px-3 border-b border-sf-border bg-sf-blue text-white">
+                {!collapsed && <span className="font-bold text-base tracking-tight truncate">Sales Support</span>}
                 <button
                     onClick={() => setCollapsed(!collapsed)}
-                    className="p-1 hover:bg-white/10 rounded"
+                    className="p-1 hover:bg-white/10 rounded transition-colors"
                     title={collapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
                     aria-label={collapsed ? "サイドバーを開く" : "サイドバーを閉じる"}
                 >
-                    {collapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
+                    {collapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
                 </button>
             </div>
 
             {/* Navigation (Scrollable & Compact) */}
-            <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar py-2 space-y-0.5">
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar py-1.5 space-y-0.5">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href;
                     return (
@@ -180,21 +180,21 @@ export default function Sidebar() {
                             key={item.href}
                             href={item.href}
                             prefetch={false}
-                            className={`flex items-center px-3.5 py-2 text-sm font-medium transition-colors border-l-4 ${isActive
+                            className={`flex items-center px-2.5 py-1.5 text-[13px] font-medium transition-colors border-l-4 ${isActive
                                 ? 'border-sf-light-blue text-sf-light-blue bg-blue-50 font-semibold'
                                 : 'border-transparent text-sf-text-weak hover:bg-gray-50 hover:text-sf-text'
                                 }`}
                             title={collapsed ? item.name : undefined}
                         >
-                            <item.icon size={18} className={collapsed ? 'mx-auto' : 'mr-3 flex-shrink-0'} />
-                            {!collapsed && <span className="truncate">{item.name}</span>}
+                            <item.icon size={17} className={collapsed ? 'mx-auto' : 'mr-2.5 flex-shrink-0'} />
+                            {!collapsed && <span className="truncate tracking-tight">{item.name}</span>}
                         </Link>
                     );
                 })}
             </nav>
 
             {/* Footer / User Info (Simplified) */}
-            <div className="p-3 border-t border-sf-border flex-shrink-0">
+            <div className="p-2 border-t border-sf-border flex-shrink-0">
                 <SyncStatus collapsed={collapsed} />
             </div>
         </div>

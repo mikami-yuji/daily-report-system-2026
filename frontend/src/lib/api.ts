@@ -489,6 +489,126 @@ export const getCatalogDirectDests = async (params?: {
     return response.data;
 };
 
+// ----------------------------------------------------------------------
+// 新版商品＆リピート受注分析（ｍベース・金額ベース）
+// ----------------------------------------------------------------------
+export interface ShinbanSummary {
+    shinban_count: number;
+    shinban_meters: number;
+    shinban_amount: number;
+    repeat_count: number;
+    repeat_meters: number;
+    repeat_amount: number;
+    total_meters: number;
+    total_amount: number;
+    repeat_rate_meters: number;
+    repeat_rate_amount: number;
+}
 
+export interface ShinbanMonthlyValues {
+    shinban_meters: number;
+    shinban_amount: number;
+    repeat_meters: number;
+    repeat_amount: number;
+    total_meters: number;
+    total_amount: number;
+}
 
+export interface ShinbanSalesRepRanking {
+    sales_rep: string;
+    shinban_count: number;
+    shinban_meters: number;
+    shinban_amount: number;
+    repeat_count: number;
+    repeat_meters: number;
+    repeat_amount: number;
+    total_meters: number;
+    total_amount: number;
+    repeat_rate_meters: number;
+    repeat_rate_amount: number;
+    monthly?: Record<string, ShinbanMonthlyValues>;
+}
 
+export interface ShinbanSalesRepMatrixRow {
+    sales_rep: string;
+    monthly: Record<string, ShinbanMonthlyValues>;
+    total: ShinbanMonthlyValues & { repeat_rate_meters: number; repeat_rate_amount: number };
+}
+
+export interface ShinbanSalesRepMatrix {
+    months: string[];
+    rows: ShinbanSalesRepMatrixRow[];
+    monthly_totals: Record<string, ShinbanMonthlyValues>;
+    overall_total: ShinbanMonthlyValues;
+}
+
+export interface ShinbanMonthlyMaterial {
+    month: string;
+    meters: Record<string, number>;
+    amount: Record<string, number>;
+    total_meters: number;
+    total_amount: number;
+}
+
+export interface ShinbanMaterialSummary {
+    material_group: string;
+    count: number;
+    meters: number;
+    amount: number;
+    share_meters: number;
+    share_amount: number;
+}
+
+export interface ShinbanRepeatItem {
+    order_no: number;
+    branch_no: number;
+    order_date: string;
+    product_name: string;
+    title: string;
+    unit: string;
+    quantity: number;
+    meters: number;
+    amount: number;
+}
+
+export interface ShinbanDetailOrder {
+    order_no: number;
+    branch_no: number;
+    order_date: string;
+    customer_code: string;
+    customer_name: string;
+    sales_rep: string;
+    classification: string;
+    product_code: string;
+    product_name: string;
+    title: string;
+    material_group: string;
+    unit: string;
+    quantity: number;
+    size_pitch: number;
+    meters: number;
+    amount: number;
+    repeat_count: number;
+    repeat_meters: number;
+    repeat_amount: number;
+    repeats: ShinbanRepeatItem[];
+}
+
+export interface ShinbanAnalysisResponse {
+    summary: ShinbanSummary;
+    sales_rep_ranking: ShinbanSalesRepRanking[];
+    sales_rep_matrix?: ShinbanSalesRepMatrix;
+    monthly_materials: ShinbanMonthlyMaterial[];
+    material_summary: ShinbanMaterialSummary[];
+    detail_orders: ShinbanDetailOrder[];
+}
+
+export const getShinbanAnalysis = async (params?: {
+    start_date?: string;
+    end_date?: string;
+    category?: string;
+    sales_rep?: string;
+}): Promise<ShinbanAnalysisResponse> => {
+    const response = await api.get(`${API_URL}/sales/shinban-analysis`, { params });
+    return response.data;
+};

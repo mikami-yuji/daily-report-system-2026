@@ -1002,22 +1002,20 @@ def get_customer_sales_summary(customer_code: str) -> Dict[str, Any]:
                 "orders": r["orders"] or 0
             }
 
+        # 当期（2月〜翌年1月）の12ヶ月集計
         monthly_sales = []
-        for i in range(11, -1, -1):
-            year = today.year
-            month = today.month - i
-            while month <= 0:
-                month += 12
-                year -= 1
-            ym = f"{year:04d}-{month:02d}"
-            ly_ym = f"{year - 1:04d}-{month:02d}"
+        for m in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 1]:
+            y = current_fy if m >= 2 else current_fy + 1
+            ly_y = y - 1
+            ym = f"{y:04d}-{m:02d}"
+            ly_ym = f"{ly_y:04d}-{m:02d}"
 
             curr_data = all_months_dict.get(ym, {"sales": 0.0, "profit": 0.0, "orders": 0})
             ly_data = all_months_dict.get(ly_ym, {"sales": 0.0, "profit": 0.0, "orders": 0})
 
             c_sales = curr_data["sales"]
             ly_sales = ly_data["sales"]
-            yoy_growth = round((c_sales / ly_sales) * 100, 1) if ly_sales > 0 else (None if c_sales == 0 else 100.0)
+            yoy_growth = round((c_sales / ly_sales) * 100, 1) if (ly_sales > 0 and c_sales > 0) else (None if c_sales == 0 else 100.0)
 
             monthly_sales.append({
                 "month": ym,

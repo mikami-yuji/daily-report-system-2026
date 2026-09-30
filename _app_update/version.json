@@ -1,11 +1,12 @@
 {
-  "version": "2.5.69",
-  "releaseDate": "2026-09-30",
-  "fileName": "DailyReportServer_v2.5.69.exe",
-  "fileSize": 49548782,
-  "sha256": "dcac436ef9069606118193d67feda927cf39aef9b83c5baa737d625eafa09029",
+  "version": "2.5.76",
+  "releaseDate": "2026-10-01",
+  "fileName": "DailyReportServer_v2.5.76.exe",
+  "fileSize": 49569645,
+  "sha256": "8f2518c8385c3babef37e778f94ca71a58e100fd1e2580b544bd22003af8c85b",
   "forceUpdate": false,
   "releaseNotes": [
-    "適正利益乖離分析に会社ごと（得意先別）の集計・表示切り替え・Excel出力を追加"
+    "担当営業別の月別推移マトリクス表示機能（新版・リピート・合計のｍ数および金額）を追加",
+    "担当別月別実績CSV出力機能を追加"
   ]
 }

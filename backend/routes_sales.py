@@ -225,6 +225,30 @@ async def get_sales_backlog(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/sales/shinban-analysis")
+async def get_shinban_analysis(
+    start_date: str = "2026-02-01",
+    end_date: str = "2027-01-31",
+    category: str = "all",
+    sales_rep: Optional[str] = None
+):
+    """
+    今期新版商品およびリピート受注（ｍベース・金額ベース）の分析データを返却
+    """
+    try:
+        import shinban_analyzer
+        result = shinban_analyzer.analyze_shinban_and_repeats(
+            start_date=start_date,
+            end_date=end_date,
+            category_filter=category,
+            sales_rep_filter=sales_rep
+        )
+        return sanitize_json_obj(result)
+    except Exception as e:
+        logging.error(f"Error analyzing shinban and repeats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
 @router.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
@@ -296,9 +320,3 @@ async def get_sales_data(customer_code: str):
     except Exception as e:
         logging.error(f"Error retrieving sales data: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
-
-
-
-
-
-

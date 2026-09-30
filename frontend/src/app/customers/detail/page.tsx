@@ -115,6 +115,7 @@ function CustomerDetailContent() {
     const [salesData, setSalesData] = useState<SalesData | null>(null);
     const [currentTarget, setCurrentTarget] = useState('');  // 得意先の現目標
     const [mounted, setMounted] = useState(false);
+    const [monthlySortOrder, setMonthlySortOrder] = useState<'asc' | 'desc'>('asc');
 
     // 月別活動数の集計データ
     const monthlyActivityData = useMemo((): MonthlyActivityStats[] => {
@@ -876,7 +877,7 @@ function CustomerDetailContent() {
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-sf-border gap-2">
                                     <div className="flex items-center gap-2">
                                         <BarChart3 size={18} className="text-sf-light-blue" />
-                                        <h4 className="font-semibold text-base text-sf-text">月別売上推移 (直近12ヶ月・前年同月比較)</h4>
+                                        <h4 className="font-semibold text-base text-sf-text">月別売上推移 (当期 2月〜翌1月・前年同月比較)</h4>
                                     </div>
                                     <span className="text-xs text-sf-text-weak">
                                         青：当期売上 ／ 灰：前年同月売上
@@ -922,7 +923,17 @@ function CustomerDetailContent() {
                                 <div className="border border-sf-border rounded overflow-hidden">
                                     <div className="bg-gray-50 px-4 py-2 border-b border-sf-border flex justify-between items-center">
                                         <h5 className="text-xs font-semibold text-sf-text">月別実績数値一覧</h5>
-                                        <span className="text-[11px] text-sf-text-weak">※直近月順</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[11px] text-sf-text-weak">※当期 (2月〜翌年1月)</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setMonthlySortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                                className="text-[10px] px-2 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-100 text-gray-700 font-medium transition-colors cursor-pointer"
+                                                title="並び順を切り替え"
+                                            >
+                                                {monthlySortOrder === 'asc' ? '期首順 (2月〜1月) ▼' : '直近月順 (1月〜2月) ▲'}
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full text-left text-xs">
@@ -936,7 +947,10 @@ function CustomerDetailContent() {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {salesData.monthly_sales.slice().reverse().map((item, idx) => {
+                                                {(monthlySortOrder === 'desc' 
+                                                    ? salesData.monthly_sales.slice().reverse() 
+                                                    : salesData.monthly_sales
+                                                ).map((item, idx) => {
                                                     const isPositive = item.yoy_growth !== null && item.yoy_growth !== undefined && item.yoy_growth >= 100;
                                                     const isNegative = item.yoy_growth !== null && item.yoy_growth !== undefined && item.yoy_growth < 100 && item.last_year_sales > 0;
                                                     return (
@@ -968,6 +982,37 @@ function CustomerDetailContent() {
                                                     );
                                                 })}
                                             </tbody>
+                                            {(() => {
+                                                const totalSales = salesData.monthly_sales.reduce((acc, m) => acc + (m.sales || 0), 0);
+                                                const totalLastSales = salesData.monthly_sales.reduce((acc, m) => acc + (m.last_year_sales || 0), 0);
+                                                const totalOrders = salesData.monthly_sales.reduce((acc, m) => acc + (m.orders || 0), 0);
+                                                const totalYoy = totalLastSales > 0 ? Math.round((totalSales / totalLastSales) * 1000) / 10 : null;
+                                                return (
+                                                    <tfoot className="bg-blue-50/60 font-bold border-t-2 border-gray-300 text-xs">
+                                                        <tr>
+                                                            <td className="py-2.5 px-3 text-gray-900 font-semibold">当期累計</td>
+                                                            <td className="py-2.5 px-3 text-right text-sf-text font-bold">
+                                                                {Number(totalSales).toLocaleString()}円
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right text-gray-600 font-semibold">
+                                                                {totalLastSales > 0 ? `${Number(totalLastSales).toLocaleString()}円` : '-'}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right">
+                                                                {totalYoy !== null ? (
+                                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] ${
+                                                                        totalYoy >= 100 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'
+                                                                    }`}>
+                                                                        {totalYoy}%
+                                                                    </span>
+                                                                ) : '-'}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right text-gray-700">
+                                                                {totalOrders > 0 ? `${totalOrders} 件` : '-'}
+                                                            </td>
+                                                        </tr>
+                                                    </tfoot>
+                                                );
+                                            })()}
                                         </table>
                                     </div>
                                 </div>

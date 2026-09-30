@@ -19,8 +19,20 @@ import config
 import cache
 import models
 import excel_schema
+import sales_importer
 
 router = APIRouter()
+
+def extract_staff_name_py(filename: str) -> str:
+    import re
+    match = re.search(r'【(.+?)】', filename)
+    if not match: return "不明"
+    content = match.group(1)
+    name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
+    if name_with_paren: return name_with_paren.group(1) + name_with_paren.group(2)
+    surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
+    if surname: return surname.group(1)
+    return content[:4]
 
 @router.get("/api/analytics/team-summary")
 def get_team_summary(month: str = None):
@@ -55,17 +67,6 @@ def get_team_summary(month: str = None):
             logging.info(f"Offline mode: Scanning {len(target_files)} cached files for team summary.")
 
         logging.info(f"Scanning {len(target_files)} files for aggregation.")
-
-        def extract_staff_name_py(filename: str) -> str:
-            import re
-            match = re.search(r'【(.+?)】', filename)
-            if not match: return "不明"
-            content = match.group(1)
-            name_with_paren = re.search(r'^(.+?)（(.+?)）', content)
-            if name_with_paren: return name_with_paren.group(1) + name_with_paren.group(2)
-            surname = re.search(r'^([^\s\u4e00-\u9fa5]*[\u4e00-\u9fa5]+?)(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)?$', content)
-            if surname: return surname.group(1)
-            return content[:4]
 
         summary_results = []
 
@@ -322,7 +323,8 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
         "totalDesignProposals": 0, "totalDesignCompleted": 0, "totalDesignRejected": 0,
         "uniqueCustomers": 0, "activeDays": 0,
         "areaBreakdown": [], "priorityCustomers": [], "designProgress": [],
-        "topCustomers": [], "topCallCustomers": [], "dailyActivity": []
+        "topCustomers": [], "topCallCustomers": [], "dailyActivity": [],
+        "prioritySalesTotal": None, "salesSummary": None, "salesPeriodLabel": ""
     }
     if not month:
         return empty_response
@@ -478,6 +480,248 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
                 })
             priorityCustomers.sort(key=lambda x: x['total'], reverse=True)
 
+        # -------------------------------------------------------------------------
+        # 売上集計期間の計算および担当者売上サマリー・重点顧客売上集計
+        # -------------------------------------------------------------------------
+        sales_map = {}
+        dd_sales_map = {}
+        sales_period_label = "2月〜直近"
+        priority_sales_total = None
+        sales_summary = None
+
+        try:
+            sales_importer.init_sales_db()
+            with sales_importer.get_sales_db_conn() as conn:
+                cur = conn.cursor()
+                
+                # 本日以前の最新確定売上日を取得（未売上・未来納期日を除外）
+                today_str = datetime.now().strftime('%Y-%m-%d')
+                cur.execute("""
+                    SELECT MAX(COALESCE(sales_date, delivery_date, order_date)) 
+                    FROM as400_sales_orders 
+                    WHERE COALESCE(sales_date, delivery_date, order_date) <= ?
+                """, (today_str,))
+                max_dt_row = cur.fetchone()
+                latest_date = max_dt_row[0] if (max_dt_row and max_dt_row[0]) else today_str
+                
+                import calendar
+                try:
+                    p_parts = month.split('/')
+                    sel_y = 2000 + int(p_parts[0])
+                    sel_m = int(p_parts[1])
+                except Exception:
+                    sel_y, sel_m = 2026, 9
+                
+                fiscal_year = sel_y - 1 if sel_m == 1 else sel_y
+                cur_start = f"{fiscal_year:04d}-02-01"
+                
+                latest_y = int(latest_date[:4])
+                latest_m = int(latest_date[5:7])
+
+                if (sel_y > latest_y) or (sel_y == latest_y and sel_m >= latest_m):
+                    cur_end = latest_date
+                    mm_dd = latest_date[5:]
+                    sales_period_label = f"2/1〜{mm_dd.replace('-', '/')}"
+                else:
+                    last_day = calendar.monthrange(sel_y, sel_m)[1]
+                    cur_end = f"{sel_y:04d}-{sel_m:02d}-{last_day:02d}"
+                    mm_dd = f"{sel_m:02d}-{last_day:02d}"
+                    sales_period_label = f"2/1〜{sel_m}/{last_day}"
+
+                prev_start = f"{(fiscal_year - 1):04d}-02-01"
+                prev_end = f"{(fiscal_year - 1):04d}-{mm_dd}"
+                prev2_start = f"{(fiscal_year - 2):04d}-02-01"
+                prev2_end = f"{(fiscal_year - 2):04d}-{mm_dd}"
+
+                prev_full_start = f"{(fiscal_year - 1):04d}-02-01"
+                prev_full_end = f"{fiscal_year:04d}-01-31"
+                prev2_full_start = f"{(fiscal_year - 2):04d}-02-01"
+                prev2_full_end = f"{(fiscal_year - 1):04d}-01-31"
+
+                # 1. 担当者売上サマリー（当月・年度累計）
+                month_last_day = calendar.monthrange(sel_y, sel_m)[1]
+                m_cur_start = f"{sel_y:04d}-{sel_m:02d}-01"
+                m_cur_end = f"{sel_y:04d}-{sel_m:02d}-{month_last_day:02d}"
+                m_prev_start = f"{(sel_y - 1):04d}-{sel_m:02d}-01"
+                prev_month_last_day = calendar.monthrange(sel_y - 1, sel_m)[1]
+                m_prev_end = f"{(sel_y - 1):04d}-{sel_m:02d}-{prev_month_last_day:02d}"
+
+                staff_name = extract_staff_name_py(filename)
+                clean_rep = re.sub(r'[（(].+?[）)]', '', staff_name).strip()
+                clean_rep = re.sub(r'(?:課長|次長|部長|常務|社長|主任|係長|専務|取締役|マネージャー|リーダー|担当|氏)', '', clean_rep).strip()
+
+                has_rep_orders = False
+                if clean_rep and clean_rep != "不明":
+                    cur.execute("SELECT 1 FROM as400_sales_orders WHERE sales_rep LIKE ? LIMIT 1", (f"%{clean_rep}%",))
+                    has_rep_orders = cur.fetchone() is not None
+
+                if has_rep_orders:
+                    rep_where = "sales_rep LIKE ?"
+                    rep_params = [f"%{clean_rep}%"]
+                else:
+                    all_cust_codes = set()
+                    if customer_col in df.columns:
+                        for c in df[customer_col].dropna().unique():
+                            s = str(c).strip().replace('.0', '').lstrip('0')
+                            if s and s.lower() not in ['nan', 'none', '-']:
+                                all_cust_codes.add(s)
+                    if all_cust_codes:
+                        ph = ','.join(['?'] * len(all_cust_codes))
+                        rep_where = f"customer_code IN ({ph})"
+                        rep_params = list(all_cust_codes)
+                    else:
+                        rep_where = "1=0"
+                        rep_params = []
+
+                if rep_params:
+                    # 当月集計
+                    cur.execute(f"""
+                        SELECT 
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as cur_m,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev_m
+                        FROM (
+                            SELECT amount, COALESCE(sales_date, delivery_date, order_date) as d, customer_code, sales_rep
+                            FROM as400_sales_orders
+                            WHERE {rep_where}
+                        )
+                    """, (m_cur_start, m_cur_end, m_prev_start, m_prev_end, *rep_params))
+                    m_row = cur.fetchone() or (0, 0)
+                    cur_m = int(m_row[0] or 0)
+                    prev_m = int(m_row[1] or 0)
+                    m_ratio = round((cur_m / prev_m * 100), 1) if prev_m > 0 else None
+
+                    # 年度累計集計
+                    cur.execute(f"""
+                        SELECT 
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as cur_y,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev_y,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev2_y
+                        FROM (
+                            SELECT amount, COALESCE(sales_date, delivery_date, order_date) as d, customer_code, sales_rep
+                            FROM as400_sales_orders
+                            WHERE {rep_where}
+                        )
+                    """, (cur_start, cur_end, prev_start, prev_end, prev2_start, prev2_end, *rep_params))
+                    y_row = cur.fetchone() or (0, 0, 0)
+                    cur_y = int(y_row[0] or 0)
+                    prev_y = int(y_row[1] or 0)
+                    prev2_y = int(y_row[2] or 0)
+                    y_ratio = round((cur_y / prev_y * 100), 1) if prev_y > 0 else None
+
+                    sales_summary = {
+                        "monthSales": {
+                            "currentMonth": cur_m,
+                            "prevYearMonth": prev_m,
+                            "ratio": m_ratio,
+                            "diff": cur_m - prev_m
+                        },
+                        "fiscalYearSales": {
+                            "currentYear": cur_y,
+                            "prevYear": prev_y,
+                            "prev2Year": prev2_y,
+                            "ratio": y_ratio,
+                            "diff": cur_y - prev_y,
+                            "periodLabel": sales_period_label
+                        }
+                    }
+
+                # 2. 重点顧客の売上集計
+                if priorityCustomers:
+                    cur.execute("""
+                        SELECT 
+                            customer_code,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as cur_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev2_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev_full_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev2_full_amt
+                        FROM (
+                            SELECT amount, COALESCE(sales_date, delivery_date, order_date) as d, customer_code
+                            FROM as400_sales_orders
+                            WHERE d >= ?
+                        )
+                        GROUP BY customer_code
+                    """, (cur_start, cur_end, prev_start, prev_end, prev2_start, prev2_end, prev_full_start, prev_full_end, prev2_full_start, prev2_full_end, prev2_full_start))
+                    for r in cur.fetchall():
+                        raw_c = str(r[0]).strip().replace('.0', '').lstrip('0') or '0'
+                        sales_map[raw_c] = {
+                            "cur": int(r[1] or 0),
+                            "prev": int(r[2] or 0),
+                            "prev2": int(r[3] or 0),
+                            "prev_full": int(r[4] or 0),
+                            "prev2_full": int(r[5] or 0)
+                        }
+
+                    # 直送先CD別の一括売上集計（売上フラグ成立の確定売上のみ、売上日優先）
+                    cur.execute("""
+                        SELECT 
+                            direct_customer_code,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as cur_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev2_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev_full_amt,
+                            SUM(CASE WHEN d >= ? AND d <= ? THEN amount ELSE 0 END) as prev2_full_amt
+                        FROM (
+                            SELECT amount, COALESCE(sales_date, delivery_date, order_date) as d, direct_customer_code
+                            FROM as400_sales_orders
+                            WHERE d >= ? AND direct_customer_code IS NOT NULL AND direct_customer_code != ''
+                        )
+                        GROUP BY direct_customer_code
+                    """, (cur_start, cur_end, prev_start, prev_end, prev2_start, prev2_end, prev_full_start, prev_full_end, prev2_full_start, prev2_full_end, prev2_full_start))
+                    for r in cur.fetchall():
+                        raw_dd = str(r[0]).strip().replace('.0', '').lstrip('0') or '0'
+                        dd_sales_map[raw_dd] = {
+                            "cur": int(r[1] or 0),
+                            "prev": int(r[2] or 0),
+                            "prev2": int(r[3] or 0),
+                            "prev_full": int(r[4] or 0),
+                            "prev2_full": int(r[5] or 0)
+                        }
+        except Exception as sales_err:
+            logging.warning(f"Failed to query sales comparison: {sales_err}")
+
+        if priorityCustomers:
+            def calc_sales_comp(code_val, s_map):
+                c_norm = str(code_val).strip().replace('.0', '').lstrip('0') or '0'
+                s_item = s_map.get(c_norm, {"cur": 0, "prev": 0, "prev2": 0, "prev_full": 0, "prev2_full": 0})
+                cur_a = s_item["cur"]
+                prev_a = s_item["prev"]
+                prev2_a = s_item["prev2"]
+                prev_f = s_item.get("prev_full", 0)
+                prev2_f = s_item.get("prev2_full", 0)
+                ratio = round((cur_a / prev_a * 100), 1) if prev_a > 0 else None
+                ratio2 = round((cur_a / prev2_a * 100), 1) if prev2_a > 0 else None
+                diff = cur_a - prev_a
+                return {
+                    "currentYear": cur_a,
+                    "prevYear": prev_a,
+                    "prev2Year": prev2_a,
+                    "prevYearFull": prev_f,
+                    "prev2YearFull": prev2_f,
+                    "ratio": ratio,
+                    "ratio2": ratio2,
+                    "diff": diff,
+                    "periodLabel": sales_period_label
+                }
+
+            for pc in priorityCustomers:
+                pc["salesComparison"] = calc_sales_comp(pc.get("code", ""), sales_map)
+                for dd in pc.get("directDeliveries", []):
+                    dd["salesComparison"] = calc_sales_comp(dd.get("code", ""), dd_sales_map)
+
+            tot_cur = sum(pc["salesComparison"]["currentYear"] for pc in priorityCustomers)
+            tot_prev = sum(pc["salesComparison"]["prevYear"] for pc in priorityCustomers)
+            tot_prev2 = sum(pc["salesComparison"]["prev2Year"] for pc in priorityCustomers)
+            tot_ratio = round((tot_cur / tot_prev * 100), 1) if tot_prev > 0 else None
+            priority_sales_total = {
+                "currentYear": tot_cur,
+                "prevYear": tot_prev,
+                "prev2Year": tot_prev2,
+                "ratio": tot_ratio,
+                "diff": tot_cur - tot_prev,
+                "periodLabel": sales_period_label
+            }
+
         designProgress = []
         if design_status_col in mdf.columns:
             dsg_df = mdf[has_design].copy()
@@ -593,6 +837,9 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
             "activeDays": activeDays,
             "areaBreakdown": areaBreakdown,
             "priorityCustomers": priorityCustomers,
+            "prioritySalesTotal": priority_sales_total,
+            "salesSummary": sales_summary,
+            "salesPeriodLabel": sales_period_label,
             "designProgress": designProgress,
             "topCustomers": topCustomers,
             "topCallCustomers": topCallCustomers,

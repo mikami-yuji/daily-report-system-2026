@@ -33,6 +33,7 @@ a = Analysis(
         'version',
         'routes_sales_insights',
         'sales_importer',
+        'shinban_analyzer',
         'config'
     ],
     hookspath=[],

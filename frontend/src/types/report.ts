@@ -141,6 +141,17 @@ export type MonthlySummaryStats = {
         area: string;
         rank: string;
         isPriority: boolean;
+        salesComparison?: {
+            currentYear: number;
+            prevYear: number;
+            prev2Year: number;
+            prevYearFull?: number;
+            prev2YearFull?: number;
+            ratio: number | null;
+            ratio2?: number | null;
+            diff: number;
+            periodLabel: string;
+        };
         directDeliveries: Array<{
             code: string;
             name: string;
@@ -151,8 +162,44 @@ export type MonthlySummaryStats = {
             area: string;
             rank: string;
             isPriority: boolean;
+            salesComparison?: {
+                currentYear: number;
+                prevYear: number;
+                prev2Year: number;
+                prevYearFull?: number;
+                prev2YearFull?: number;
+                ratio: number | null;
+                ratio2?: number | null;
+                diff: number;
+                periodLabel: string;
+            };
         }>;
     }>;
+    prioritySalesTotal?: {
+        currentYear: number;
+        prevYear: number;
+        prev2Year: number;
+        ratio: number | null;
+        diff: number;
+        periodLabel: string;
+    } | null;
+    salesSummary?: {
+        monthSales: {
+            currentMonth: number;
+            prevYearMonth: number;
+            ratio: number | null;
+            diff: number;
+        };
+        fiscalYearSales: {
+            currentYear: number;
+            prevYear: number;
+            prev2Year: number;
+            ratio: number | null;
+            diff: number;
+            periodLabel: string;
+        };
+    } | null;
+    salesPeriodLabel?: string;
     designProgress: Array<{
         status: string;
         count: number;

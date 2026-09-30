@@ -5,11 +5,12 @@ import { useSales } from '@/hooks/useQueryHooks';
 import { SalesData } from '@/lib/api';
 import SalesTable from '@/components/sales/SalesTable';
 import ActionableSalesInsights from '@/components/sales/ActionableSalesInsights';
-import { Search, RotateCcw, Target, BarChart3 } from 'lucide-react';
+import ShinbanRepeatAnalysis from '@/components/sales/ShinbanRepeatAnalysis';
+import { Search, RotateCcw, Target, BarChart3, Sparkles } from 'lucide-react';
 
 export default function SalesAnalysisPage(): React.JSX.Element {
-    // 表示モード: 'actionable'（実戦営業アクション指標）または 'all'（全得意先売上明細）
-    const [viewMode, setViewMode] = useState<'actionable' | 'all'>('actionable');
+    // 表示モード: 'actionable'（実戦営業アクション指標） | 'all'（全得意先売上明細） | 'shinban'（新版・リピート受注分析）
+    const [viewMode, setViewMode] = useState<'actionable' | 'all' | 'shinban'>('actionable');
 
     // React Queryでデータ取得（自動キャッシュ）
     const { data: rawSalesData = [], isLoading } = useSales();
@@ -184,6 +185,17 @@ export default function SalesAnalysisPage(): React.JSX.Element {
             {/* Main Navigation Tabs */}
             <div className="flex border-b border-sf-border gap-2 bg-white px-4 pt-3 rounded-t-lg shadow-sm">
                 <button
+                    onClick={() => setViewMode('shinban')}
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                        viewMode === 'shinban'
+                            ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <Sparkles size={18} className={viewMode === 'shinban' ? 'text-indigo-600' : ''} />
+                    <span>新版・リピート受注分析 (ｍ/金額)</span>
+                </button>
+                <button
                     onClick={() => setViewMode('actionable')}
                     className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
                         viewMode === 'actionable'
@@ -206,6 +218,11 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                     <span>全得意先売上明細</span>
                 </button>
             </div>
+
+            {/* Tab 0: 新版・リピート受注分析 */}
+            {viewMode === 'shinban' && (
+                <ShinbanRepeatAnalysis />
+            )}
 
             {/* Tab 1: 実戦営業アクション指標 */}
             {viewMode === 'actionable' && (

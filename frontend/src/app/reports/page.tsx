@@ -27,6 +27,8 @@ import {
     Search,
     X,
     AlertCircle,
+    AlertTriangle,
+    Building2,
     Star,
     Zap,
     RotateCcw,
@@ -141,7 +143,9 @@ export default function ReportsPage(): React.JSX.Element {
     const [filterUnapproved, setFilterUnapproved] = useState<boolean>(false); // 未承認のみ（選択中役職）
     const [filterPriority, setFilterPriority] = useState<boolean>(false); // 重点顧客のみ
     const [filterDesign, setFilterDesign] = useState<boolean>(false); // デザイン案件のみ
-    const [filterAttention, setFilterAttention] = useState<boolean>(false); // クレーム・要注意
+    const [filterAttention, setFilterAttention] = useState<boolean>(false); // クレーム対応
+    const [filterMassRetailer, setFilterMassRetailer] = useState<boolean>(false); // 量販店調査
+    const [filterCompetitor, setFilterCompetitor] = useState<boolean>(false); // 競合他社情報
     const [filterComment, setFilterComment] = useState<boolean>(false); // コメントあり
     const [isSearchExpanded, setIsSearchExpanded] = useState<boolean>(true); // 検索バーの展開・折りたたみ（本文エリア最大化用）
 
@@ -151,6 +155,8 @@ export default function ReportsPage(): React.JSX.Element {
         filterPriority ||
         filterDesign ||
         filterAttention ||
+        filterMassRetailer ||
+        filterCompetitor ||
         filterComment
     );
 
@@ -160,6 +166,8 @@ export default function ReportsPage(): React.JSX.Element {
         setFilterPriority(false);
         setFilterDesign(false);
         setFilterAttention(false);
+        setFilterMassRetailer(false);
+        setFilterCompetitor(false);
         setFilterComment(false);
         setCurrentPage(1);
     };
@@ -167,7 +175,7 @@ export default function ReportsPage(): React.JSX.Element {
     // 検索・フィルター条件変更時にページを先頭に戻す
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchKeyword, searchAllPeriods, filterUnapproved, filterPriority, filterDesign, filterAttention, filterComment]);
+    }, [searchKeyword, searchAllPeriods, filterUnapproved, filterPriority, filterDesign, filterAttention, filterMassRetailer, filterCompetitor, filterComment]);
 
     // エラー時のtoast表示
     useEffect(() => {
@@ -320,6 +328,8 @@ export default function ReportsPage(): React.JSX.Element {
         let priority = 0;
         let design = 0;
         let attention = 0;
+        let massRetailer = 0;
+        let competitor = 0;
         let comment = 0;
 
         baseReports.forEach(r => {
@@ -331,10 +341,12 @@ export default function ReportsPage(): React.JSX.Element {
                 `${r.商談内容 || ''} ${r.行動内容 || ''} ${r.次回プラン || ''} ${r.提案物 || ''} ${r.上長コメント || ''}`
             );
             if (NORMALIZED_ATTENTION_KEYWORDS.some(kw => combined.includes(kw))) attention++;
+            if (String(r.行動内容 || '').includes('量販店調査') || String(r.行動内容 || '').includes('量販')) massRetailer++;
+            if (r.競合他社情報 && String(r.競合他社情報).trim() !== '' && String(r.競合他社情報) !== '-' && String(r.競合他社情報) !== '無' && String(r.競合他社情報) !== 'なし') competitor++;
             if (hasContent(r.上長コメント) || hasContent(r.コメント返信欄)) comment++;
         });
 
-        return { unapproved, priority, design, attention, comment };
+        return { unapproved, priority, design, attention, massRetailer, competitor, comment };
     }, [reports, selectedMonth, selectedApproverRole, searchKeyword, searchAllPeriods]);
 
     // フィルタ適用後のレポート一覧
@@ -365,7 +377,7 @@ export default function ReportsPage(): React.JSX.Element {
             result = result.filter(r => hasDesignInfo(r));
         }
 
-        // 5. クイックフィルター: クレーム・要注意
+        // 5. クイックフィルター: クレーム対応
         if (filterAttention) {
             result = result.filter(r => {
                 const combined = normalizeSearchText(
@@ -375,7 +387,21 @@ export default function ReportsPage(): React.JSX.Element {
             });
         }
 
-        // 6. クイックフィルター: コメントあり
+        // 6. クイックフィルター: 量販店調査
+        if (filterMassRetailer) {
+            result = result.filter(r => 
+                String(r.行動内容 || '').includes('量販店調査') || String(r.行動内容 || '').includes('量販')
+            );
+        }
+
+        // 7. クイックフィルター: 競合他社情報
+        if (filterCompetitor) {
+            result = result.filter(r => 
+                Boolean(r.競合他社情報 && String(r.競合他社情報).trim() !== '' && String(r.競合他社情報) !== '-' && String(r.競合他社情報) !== '無' && String(r.競合他社情報) !== 'なし')
+            );
+        }
+
+        // 8. クイックフィルター: コメントあり
         if (filterComment) {
             result = result.filter(r => hasContent(r.上長コメント) || hasContent(r.コメント返信欄));
         }
@@ -1003,7 +1029,47 @@ export default function ReportsPage(): React.JSX.Element {
                             </span>
                         </button>
 
-                        {/* ⚡ クレーム・要注意 */}
+                        {/* 🏪 量販店調査 */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterMassRetailer(!filterMassRetailer)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterMassRetailer
+                                    ? 'bg-teal-100 border-teal-400 text-teal-950 ring-1 ring-teal-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-teal-50/60 border-gray-200 text-gray-700 hover:border-teal-300'
+                            }`}
+                            title="行動内容に量販店調査が含まれる日報を抽出"
+                        >
+                            <Building2 size={11} className={filterMassRetailer ? 'text-teal-700' : 'text-teal-500'} />
+                            <span>量販店調査</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterMassRetailer ? 'bg-teal-200 text-teal-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.massRetailer}
+                            </span>
+                        </button>
+
+                        {/* 🏢 競合他社情報 */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterCompetitor(!filterCompetitor)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium transition cursor-pointer shadow-2xs ${
+                                filterCompetitor
+                                    ? 'bg-purple-100 border-purple-400 text-purple-950 ring-1 ring-purple-400 font-bold'
+                                    : 'bg-gray-50 hover:bg-purple-50/60 border-gray-200 text-gray-700 hover:border-purple-300'
+                            }`}
+                            title="競合他社情報が記録されている日報を抽出"
+                        >
+                            <AlertCircle size={11} className={filterCompetitor ? 'text-purple-700' : 'text-purple-500'} />
+                            <span>競合他社</span>
+                            <span className={`text-[10px] px-1 rounded-full font-bold ${
+                                filterCompetitor ? 'bg-purple-200 text-purple-950' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                                {quickFilterCounts.competitor}
+                            </span>
+                        </button>
+
+                        {/* ⚠️ クレーム対応 */}
                         <button
                             type="button"
                             onClick={() => setFilterAttention(!filterAttention)}
@@ -1014,8 +1080,8 @@ export default function ReportsPage(): React.JSX.Element {
                             }`}
                             title="クレーム、トラブル、不具合、至急、事故等の文言が含まれる要注意日報を抽出"
                         >
-                            <Zap size={11} className={filterAttention ? 'text-rose-700' : 'text-rose-500'} />
-                            <span>クレーム・要注意</span>
+                            <AlertTriangle size={11} className={filterAttention ? 'text-rose-700' : 'text-rose-500'} />
+                            <span>クレーム対応</span>
                             <span className={`text-[10px] px-1 rounded-full font-bold ${
                                 filterAttention ? 'bg-rose-200 text-rose-950' : 'bg-gray-200 text-gray-600'
                             }`}>
@@ -1074,9 +1140,19 @@ export default function ReportsPage(): React.JSX.Element {
                                 🎨デザイン
                             </span>
                         )}
+                        {filterMassRetailer && (
+                            <span className="bg-teal-100 text-teal-900 px-1.5 py-0.5 rounded border border-teal-300 text-[10px] font-bold">
+                                🏪量販調査
+                            </span>
+                        )}
+                        {filterCompetitor && (
+                            <span className="bg-purple-100 text-purple-900 px-1.5 py-0.5 rounded border border-purple-300 text-[10px] font-bold">
+                                🏢競合他社
+                            </span>
+                        )}
                         {filterAttention && (
                             <span className="bg-rose-100 text-rose-900 px-1.5 py-0.5 rounded border border-rose-300 text-[10px] font-bold">
-                                ⚡要注意
+                                ⚠️クレーム
                             </span>
                         )}
                         {filterComment && (

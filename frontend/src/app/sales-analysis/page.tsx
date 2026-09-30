@@ -6,11 +6,12 @@ import { SalesData } from '@/lib/api';
 import SalesTable from '@/components/sales/SalesTable';
 import ActionableSalesInsights from '@/components/sales/ActionableSalesInsights';
 import ShinbanRepeatAnalysis from '@/components/sales/ShinbanRepeatAnalysis';
-import { Search, RotateCcw, Target, BarChart3, Sparkles } from 'lucide-react';
+import PeriodCategoryComparison from '@/components/sales/PeriodCategoryComparison';
+import { Search, RotateCcw, Target, BarChart3, Sparkles, Layers } from 'lucide-react';
 
 export default function SalesAnalysisPage(): React.JSX.Element {
-    // 表示モード: 'actionable'（実戦営業アクション指標） | 'all'（全得意先売上明細） | 'shinban'（新版・リピート受注分析）
-    const [viewMode, setViewMode] = useState<'actionable' | 'all' | 'shinban'>('actionable');
+    // 表示モード: 'period_comparison'（3期比較） | 'actionable'（実戦営業アクション指標） | 'all'（全得意先売上明細） | 'shinban'（新版・リピート受注分析）
+    const [viewMode, setViewMode] = useState<'period_comparison' | 'actionable' | 'all' | 'shinban'>('period_comparison');
 
     // React Queryでデータ取得（自動キャッシュ）
     const { data: rawSalesData = [], isLoading } = useSales();
@@ -183,10 +184,21 @@ export default function SalesAnalysisPage(): React.JSX.Element {
             </div>
 
             {/* Main Navigation Tabs */}
-            <div className="flex border-b border-sf-border gap-2 bg-white px-4 pt-3 rounded-t-lg shadow-sm">
+            <div className="flex border-b border-sf-border gap-2 bg-white px-4 pt-3 rounded-t-lg shadow-sm overflow-x-auto">
+                <button
+                    onClick={() => setViewMode('period_comparison')}
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                        viewMode === 'period_comparison'
+                            ? 'border-cyan-600 text-cyan-800 bg-cyan-50/50 rounded-t'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <Layers size={18} className={viewMode === 'period_comparison' ? 'text-cyan-600' : ''} />
+                    <span>3期比較 (種別・材質・量目別数量)</span>
+                </button>
                 <button
                     onClick={() => setViewMode('shinban')}
-                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'shinban'
                             ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t'
                             : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -197,7 +209,7 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                 </button>
                 <button
                     onClick={() => setViewMode('actionable')}
-                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'actionable'
                             ? 'border-sf-primary text-sf-primary bg-blue-50/50 rounded-t'
                             : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -208,7 +220,7 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                 </button>
                 <button
                     onClick={() => setViewMode('all')}
-                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                    className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'all'
                             ? 'border-sf-primary text-sf-primary bg-blue-50/50 rounded-t'
                             : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -218,6 +230,11 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                     <span>全得意先売上明細</span>
                 </button>
             </div>
+
+            {/* Tab: 3期比較（種別・材質・量目別数量） */}
+            {viewMode === 'period_comparison' && (
+                <PeriodCategoryComparison />
+            )}
 
             {/* Tab 0: 新版・リピート受注分析 */}
             {viewMode === 'shinban' && (

@@ -612,3 +612,74 @@ export const getShinbanAnalysis = async (params?: {
     const response = await api.get(`${API_URL}/sales/shinban-analysis`, { params });
     return response.data;
 };
+
+// --- 3期比較（種別・材質・量目別／数量・金額比較） ---
+export interface PeriodMetricValues {
+    meters: number;
+    sheets: number;
+    amount: number;
+}
+
+export interface PeriodComparisonDateRange {
+    name: string;
+    start: string;
+    end: string;
+}
+
+export interface PeriodComparisonInfo {
+    compare_mode: 'same_period' | 'full_year';
+    latest_sales_date: string;
+    current_period: PeriodComparisonDateRange;
+    previous_period: PeriodComparisonDateRange;
+    two_years_ago_period: PeriodComparisonDateRange;
+}
+
+export interface PeriodComparisonItem {
+    id: string;
+    name: string;
+    level: 'category' | 'material' | 'capacity';
+    is_seal?: boolean;
+    current: PeriodMetricValues;
+    previous: PeriodMetricValues;
+    two_years_ago: PeriodMetricValues;
+    growth_rate_meters: number | null;
+    growth_rate_sheets: number | null;
+    growth_rate_amount: number | null;
+    two_years_growth_rate_meters: number | null;
+    two_years_growth_rate_sheets: number | null;
+    two_years_growth_rate_amount: number | null;
+    diff_meters: number;
+    diff_sheets: number;
+    diff_amount: number;
+    children?: PeriodComparisonItem[];
+}
+
+export interface PeriodComparisonResponse {
+    period_info: PeriodComparisonInfo;
+    summary: {
+        current: PeriodMetricValues;
+        previous: PeriodMetricValues;
+        two_years_ago: PeriodMetricValues;
+        growth_rate_meters: number | null;
+        growth_rate_sheets: number | null;
+        growth_rate_amount: number | null;
+        two_years_growth_rate_meters: number | null;
+        two_years_growth_rate_sheets: number | null;
+        two_years_growth_rate_amount: number | null;
+        diff_meters: number;
+        diff_sheets: number;
+        diff_amount: number;
+    };
+    categories: PeriodComparisonItem[];
+    sales_reps: string[];
+}
+
+export const getPeriodCategoryComparison = async (params?: {
+    compare_mode?: 'same_period' | 'full_year';
+    sales_rep?: string;
+    customer_code?: string;
+}): Promise<PeriodComparisonResponse> => {
+    const response = await api.get(`${API_URL}/sales/period-category-comparison`, { params });
+    return response.data;
+};
+

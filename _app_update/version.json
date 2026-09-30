@@ -1,12 +1,12 @@
 {
-  "version": "2.5.76",
+  "version": "2.5.77",
   "releaseDate": "2026-10-01",
-  "fileName": "DailyReportServer_v2.5.76.exe",
-  "fileSize": 49569645,
-  "sha256": "8f2518c8385c3babef37e778f94ca71a58e100fd1e2580b544bd22003af8c85b",
+  "fileName": "DailyReportServer_v2.5.77.exe",
+  "fileSize": 49588884,
+  "sha256": "55e440a847a8b3e55ecff5390b056157023ace28c2b7114f2343172b792a3957",
   "forceUpdate": false,
   "releaseNotes": [
-    "担当営業別の月別推移マトリクス表示機能（新版・リピート・合計の件数および金額）を追加",
-    "担当別月別実績CSV出力機能を追加"
+    "3期（今期・前期・前々期）数量比較分析機能（種別・材質・量目別／ｍ数・枚数・売上金額）を追加",
+    "シール製品の量目除外（材質別一括集計）および同期間／通期比較切り替え・CSV出力対応"
   ]
 }

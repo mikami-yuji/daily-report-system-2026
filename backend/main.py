@@ -65,6 +65,8 @@ async def sales_auto_sync_loop():
     await asyncio.sleep(3)
     while True:
         try:
+            if config.global_sales_df is None:
+                config.load_sales_data()
             await asyncio.to_thread(sales_importer.auto_check_and_import)
         except asyncio.CancelledError:
             break

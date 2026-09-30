@@ -69,12 +69,15 @@ backend/dist/
 DailyReportSystem_2026.zip
 DailyReportSystem_2026_Simple/DailyReportServer.exe
 
-# Cache
+# Cache and Data
 backend/.cache/
 *.db
 *.db-wal
 *.db-shm
 backend/data/*.db*
+_app_update/data/
+release_pkg/backend/data/
+backend/data/sales_data.csv
 
 # Temporary development files
 fix_*.py

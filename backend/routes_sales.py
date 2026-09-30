@@ -66,44 +66,104 @@ def sanitize_json_obj(obj):
         return obj.item()
     return obj
 
+import sqlite3
+
+def get_sales_from_as400_cache() -> List[Dict[str, Any]]:
+    """
+    sales_data.csv が未配置・未読込の場合の自動フォールバック。
+    AS/400の受注・売上明細キャッシュ（sales_cache.db）から得意先別売上・粗利を集計して返す。
+    """
+    try:
+        import sales_importer
+        sales_importer.init_sales_db()
+        with sales_importer.get_sales_db_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    customer_code,
+                    MAX(customer_name) as customer_name,
+                    MAX(customer_rank) as rank_class,
+                    MAX(sales_rep) as sales_rep,
+                    SUM(amount) as sales_amount,
+                    SUM(profit) as gross_profit
+                FROM as400_sales_orders
+                WHERE customer_code IS NOT NULL AND customer_code != ''
+                GROUP BY customer_code
+                ORDER BY sales_amount DESC
+            """)
+            rows = cursor.fetchall()
+            records = []
+            for idx, r in enumerate(rows, 1):
+                s_amt = r["sales_amount"] or 0
+                p_amt = r["gross_profit"] or 0
+                c_code = str(r["customer_code"]).split('.')[0].strip()
+                records.append({
+                    "rank": idx,
+                    "rank_class": r["rank_class"] or "",
+                    "customer_code": c_code,
+                    "customer_name": r["customer_name"] or "",
+                    "sales_amount": round(s_amt),
+                    "gross_profit": round(p_amt),
+                    "sales_yoy": 0,
+                    "sales_last_year": 0,
+                    "profit_last_year": 0,
+                    "sales_2y_ago": 0,
+                    "profit_2y_ago": 0,
+                    "area": None,
+                    "sales_rep": r["sales_rep"] or None,
+                })
+            return records
+    except Exception as e:
+        logging.error(f"Error aggregating fallback sales from AS400 cache: {e}")
+        return []
+
 @router.get("/api/sales/all")
 async def get_all_sales_data():
     """
     Retrieves ALL sales data as a list.
     """
     if config.global_sales_df is None:
-        return []
+        config.load_sales_data()
 
-    try:
-        # Convert NaN to None for JSON compliance
-        df_clean = config.global_sales_df.where(pd.notnull(config.global_sales_df), None)
-        
-        # Select relevant columns and rename for consistency
-        records = []
-        for _, row in df_clean.iterrows():
-            records.append({
-                "rank": row.get('順位'),
-                "rank_class": row.get('ランク'),
-                "customer_code": row.get('得意先コード'),
-                "customer_name": row.get('得意先名称'),
-                "sales_amount": row.get('売上金額'),
-                "gross_profit": row.get('粗利金額'),
-                "sales_yoy": row.get('前年対比率'),
-                "sales_last_year": row.get('前年売上'),
-                "profit_last_year": row.get('前年粗利'),
-                "sales_2y_ago": row.get('前々年売上'),
-                "profit_2y_ago": row.get('前々年粗利'),
-                # Attempt to get area from '地域名称' or '地域' or Column M (index 12)
-                "area": row.get('地域名称') or row.get('地域') or (row.iloc[12] if len(row) > 12 else None),
-                # 担当者 from Column I (index 8)
-                "sales_rep": row.get('担当者') or (row.iloc[8] if len(row) > 8 else None),
-            })
+    if config.global_sales_df is not None:
+        try:
+            # Convert NaN to None for JSON compliance
+            df_clean = config.global_sales_df.where(pd.notnull(config.global_sales_df), None)
             
-        return sanitize_json_obj(records)
+            # Select relevant columns and rename for consistency
+            records = []
+            for _, row in df_clean.iterrows():
+                records.append({
+                    "rank": row.get('順位'),
+                    "rank_class": row.get('ランク'),
+                    "customer_code": row.get('得意先コード'),
+                    "customer_name": row.get('得意先名称'),
+                    "sales_amount": row.get('売上金額'),
+                    "gross_profit": row.get('粗利金額'),
+                    "sales_yoy": row.get('前年対比率'),
+                    "sales_last_year": row.get('前年売上'),
+                    "profit_last_year": row.get('前年粗利'),
+                    "sales_2y_ago": row.get('前々年売上'),
+                    "profit_2y_ago": row.get('前々年粗利'),
+                    # Attempt to get area from '地域名称' or '地域' or Column M (index 12)
+                    "area": row.get('地域名称') or row.get('地域') or (row.iloc[12] if len(row) > 12 else None),
+                    # 担当者 from Column I (index 8)
+                    "sales_rep": row.get('担当者') or (row.iloc[8] if len(row) > 8 else None),
+                })
+                
+            return sanitize_json_obj(records)
 
-    except Exception as e:
-        logging.error(f"Error retrieving all sales data: {e}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error retrieving all sales data from DataFrame: {e}")
+
+    # フォールバック: AS/400の受注明細キャッシュから全得意先集計
+    fallback_records = get_sales_from_as400_cache()
+    if fallback_records:
+        logging.info(f"Fallback to AS400 sales cache returned {len(fallback_records)} records.")
+        return sanitize_json_obj(fallback_records)
+
+    return []
 
 
 

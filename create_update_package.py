@@ -120,6 +120,15 @@ def main():
             except Exception:
                 pass
 
+        # 2.5 sales_data.csv の自動配置
+        sales_csv_src = os.path.join(BASE_DIR, "backend", "data", "sales_data.csv")
+        if os.path.exists(sales_csv_src):
+            data_target_dir = os.path.join(t_dir, "data")
+            os.makedirs(data_target_dir, exist_ok=True)
+            dest_sales_csv = os.path.join(data_target_dir, "sales_data.csv")
+            print(f" -> 売上CSV同期配置: {dest_sales_csv}")
+            shutil.copy2(sales_csv_src, dest_sales_csv)
+
         # 3. 最後に version.json を配置（不完全ダウンロードの防止）
         dest_json = os.path.join(t_dir, "version.json")
         print(f" -> version.json 作成: {dest_json}")

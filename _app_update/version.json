@@ -1,12 +1,11 @@
 {
-  "version": "2.5.67",
-  "releaseDate": "2026-09-29",
-  "fileName": "DailyReportServer_v2.5.67.exe",
-  "fileSize": 49541808,
-  "sha256": "ff667af043325b9bf2e12431b66cef9a440f915bc8fd06552a416ff705579932",
+  "version": "2.5.68",
+  "releaseDate": "2026-09-30",
+  "fileName": "DailyReportServer_v2.5.68.exe",
+  "fileSize": 49547144,
+  "sha256": "99eee0cd6c6152b10e12c7456d74494d79d69f1b48365e666c082825d50e91e1",
   "forceUpdate": false,
   "releaseNotes": [
-    "SQLite同時書き込み耐性強化(WAL/busy_timeout統一/自動リトライ)",
-    "商品カタログ型定義・Excel出力処理のモジュール分離リファクタリング"
+    "全得意先売上明細の共有フォルダ自動同期およびAS400キャッシュフォールバック対応"
   ]
 }

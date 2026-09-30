@@ -237,6 +237,22 @@ def apply_update() -> Dict[str, Any]:
         except Exception as ub_err:
             logger.warning(f"Failed to unblock EXE: {ub_err}")
 
+        # 7.5 データファイル（sales_data.csv等）の自動同期
+        try:
+            update_data_dir = os.path.join(update_dir, "data")
+            local_data_dir = os.path.join(app_dir, "data")
+            os.makedirs(local_data_dir, exist_ok=True)
+            if os.path.exists(update_data_dir):
+                for item in os.listdir(update_data_dir):
+                    if item.endswith(".csv"):
+                        src_csv = os.path.join(update_data_dir, item)
+                        dst_csv = os.path.join(local_data_dir, item)
+                        if not os.path.exists(dst_csv) or os.path.getmtime(src_csv) > os.path.getmtime(dst_csv):
+                            shutil.copy2(src_csv, dst_csv)
+                            logger.info(f"Synchronized data file during update: {item}")
+        except Exception as data_sync_err:
+            logger.warning(f"Data file sync during update: {data_sync_err}")
+
         logger.info("Update applied successfully! File replaced.")
 
         return {

@@ -178,23 +178,75 @@ VIEWER_URL = _RAW_CONFIG.get('viewer_url', 'http://192.168.1.5:8888').rstrip('/'
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
+DEFAULT_NETWORK_SALES_CSV_PATHS = [
+    r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\2026年度\_app_update\data\sales_data.csv',
+    r'\\Asahipack02\社内書類ｎｅｗ\01：部署別　営業部\02：営業日報\sales_data.csv',
+]
+
 def resolve_sales_csv_path() -> str:
     """
-    設定された sales_csv_path またはローカルの data/sales_data.csv を解決。
-    ネットワーク共有パスの場合は超高速アクセス判定を行い、未接続時はローカルに安全フォールバック。
+    設定された sales_csv_path または社内共有フォルダ、またはローカルの data/sales_data.csv を解決。
+    ネットワーク共有パスに最新CSVがある場合はローカルに安全自動同期（オフライン対応）。
     """
+    local_path = os.path.join(DATA_DIR, 'sales_data.csv')
     custom_path = _RAW_CONFIG.get('sales_csv_path')
+
+    # 1. custom_path が明示指定されている場合
     if custom_path:
         try:
             if is_network_path_accessible(custom_path, timeout=1.5):
                 if os.path.exists(custom_path):
+                    # UNCパスならローカルキャッシュも更新
+                    if custom_path.startswith(r'\\') or custom_path.startswith('//'):
+                        try:
+                            if not os.path.exists(local_path) or os.path.getmtime(custom_path) > os.path.getmtime(local_path):
+                                import shutil
+                                shutil.copy2(custom_path, local_path)
+                                logging.info(f"Synchronized sales_data.csv to local cache: {local_path}")
+                        except Exception as e:
+                            logging.debug(f"Could not copy custom network sales CSV: {e}")
                     return custom_path
             else:
                 logging.debug(f"Configured sales_csv_path is not accessible: {custom_path}")
         except Exception as e:
             logging.debug(f"Error checking sales_csv_path ({custom_path}): {e}")
-    
-    return os.path.join(DATA_DIR, 'sales_data.csv')
+
+    # 2. 社内共有ネットワーク上の標準候補パスを確認
+    candidates = []
+    try:
+        configured_excel = _RAW_CONFIG.get('excel_dir') or DEFAULT_NETWORK_PATH
+        if configured_excel:
+            candidates.append(os.path.join(configured_excel, "_app_update", "data", "sales_data.csv"))
+            candidates.append(os.path.join(os.path.dirname(configured_excel), "sales_data.csv"))
+    except Exception:
+        pass
+
+    candidates.extend(DEFAULT_NETWORK_SALES_CSV_PATHS)
+
+    seen = set()
+    for candidate in candidates:
+        norm = os.path.normpath(candidate).lower()
+        if norm in seen:
+            continue
+        seen.add(norm)
+        try:
+            if is_network_path_accessible(candidate, timeout=1.0):
+                if os.path.exists(candidate):
+                    try:
+                        if not os.path.exists(local_path) or os.path.getmtime(candidate) > os.path.getmtime(local_path):
+                            import shutil
+                            shutil.copy2(candidate, local_path)
+                            logging.info(f"Synchronized sales_data.csv from network candidate ({candidate}) to local: {local_path}")
+                            return local_path
+                    except Exception as copy_err:
+                        logging.warning(f"Failed to cache network sales CSV locally: {copy_err}")
+                        return candidate
+                    return local_path
+        except Exception as e:
+            logging.debug(f"Error checking network candidate ({candidate}): {e}")
+
+    # 3. ローカルの sales_data.csv
+    return local_path
 
 SALES_CSV_PATH = resolve_sales_csv_path()
 SQLITE_CACHE_DB = _RAW_CONFIG.get('sqlite_cache_db', os.path.join(DATA_DIR, 'shadow_cache.db'))

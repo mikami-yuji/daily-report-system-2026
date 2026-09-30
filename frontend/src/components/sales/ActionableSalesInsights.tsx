@@ -69,6 +69,24 @@ interface MarginDeviationItem {
     action_suggestion: string;
 }
 
+interface CustomerMarginDeviationItem {
+    customer_code: string;
+    customer_name: string;
+    sales_rep: string;
+    total_sales: number;
+    total_profit: number;
+    margin_rate: number;
+    deviation_type: 'low' | 'high';
+    status_label: string;
+    last_order_date: string;
+    product_count: number;
+    order_count: number;
+    low_margin_prod_count: number;
+    high_margin_prod_count: number;
+    top_product_name: string;
+    action_suggestion: string;
+}
+
 interface ActionableInsightsResponse {
     success: boolean;
     sales_reps: string[];
@@ -79,13 +97,18 @@ interface ActionableInsightsResponse {
         margin_deviation_count: number;
         low_margin_count: number;
         high_margin_count: number;
+        customer_margin_deviation_count?: number;
+        customer_low_margin_count?: number;
+        customer_high_margin_count?: number;
     };
     churn_risks: ChurnRiskItem[];
     plate_expiries: PlateExpiryItem[];
     margin_deviations: MarginDeviationItem[];
+    customer_margin_deviations?: CustomerMarginDeviationItem[];
 }
 
 type TabType = 'churn' | 'plate' | 'margin';
+type MarginViewUnit = 'customer' | 'product';
 
 export default function ActionableSalesInsights(): React.JSX.Element {
     const { selectedFile } = useFile();
@@ -94,6 +117,7 @@ export default function ActionableSalesInsights(): React.JSX.Element {
     const [selectedRep, setSelectedRep] = useState<string>('all');
     const [hasAutoSelected, setHasAutoSelected] = useState(false);
     const [activeTab, setActiveTab] = useState<TabType>('churn');
+    const [marginViewUnit, setMarginViewUnit] = useState<MarginViewUnit>('customer');
     const [marginFilter, setMarginFilter] = useState<'all' | 'low' | 'high'>('all');
     const [searchKeyword, setSearchKeyword] = useState<string>('');
 
@@ -188,6 +212,22 @@ export default function ActionableSalesInsights(): React.JSX.Element {
         );
     }, [data?.margin_deviations, marginFilter, searchKeyword]);
 
+    const filteredCustomerMarginDeviations = useMemo(() => {
+        if (!data?.customer_margin_deviations) return [];
+        let list = data.customer_margin_deviations;
+        if (marginFilter !== 'all') {
+            list = list.filter(i => i.deviation_type === marginFilter);
+        }
+        const q = searchKeyword.toLowerCase().trim();
+        if (!q) return list;
+        return list.filter(i =>
+            i.customer_name.toLowerCase().includes(q) ||
+            i.customer_code.toLowerCase().includes(q) ||
+            i.sales_rep.toLowerCase().includes(q) ||
+            i.top_product_name.toLowerCase().includes(q)
+        );
+    }, [data?.customer_margin_deviations, marginFilter, searchKeyword]);
+
     // Excel Export
     const handleExportExcel = async () => {
         if (!data) return;
@@ -261,8 +301,41 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                 saveAs(new Blob([buffer]), `版落ち2年寸前アクションリスト_${todayStr}.xlsx`);
                 toast.success('版落ち寸前リストを出力しました');
             } else {
-                const ws = workbook.addWorksheet('適正利益乖離リスト');
-                ws.columns = [
+                // 適正利益乖離: 会社別シートと個別商品別シートの両方を出力
+                const wsCust = workbook.addWorksheet('適正利益乖離（会社別）');
+                wsCust.columns = [
+                    { header: '得意先CD', key: 'code', width: 12 },
+                    { header: '得意先名', key: 'name', width: 35 },
+                    { header: '担当営業', key: 'rep', width: 14 },
+                    { header: '判定', key: 'status', width: 22 },
+                    { header: '会社粗利率', key: 'rate', width: 12 },
+                    { header: '年間売上(円)', key: 'sales', width: 16 },
+                    { header: '粗利金額(円)', key: 'profit', width: 16 },
+                    { header: '取引品目数', key: 'product_count', width: 12 },
+                    { header: '薄利品目数(<12%)', key: 'low_count', width: 16 },
+                    { header: '高利品目数(>35%)', key: 'high_count', width: 16 },
+                    { header: '主な取扱商品', key: 'top_product', width: 35 },
+                    { header: '営業アクション推奨', key: 'action', width: 50 },
+                ];
+                filteredCustomerMarginDeviations.forEach(r => {
+                    wsCust.addRow({
+                        code: r.customer_code,
+                        name: r.customer_name,
+                        rep: r.sales_rep,
+                        status: r.status_label,
+                        rate: `${r.margin_rate}%`,
+                        sales: r.total_sales,
+                        profit: r.total_profit,
+                        product_count: r.product_count,
+                        low_count: r.low_margin_prod_count,
+                        high_count: r.high_margin_prod_count,
+                        top_product: r.top_product_name,
+                        action: r.action_suggestion
+                    });
+                });
+
+                const wsProd = workbook.addWorksheet('適正利益乖離（個別商品別）');
+                wsProd.columns = [
                     { header: '得意先CD', key: 'code', width: 12 },
                     { header: '得意先名', key: 'name', width: 35 },
                     { header: '商品名', key: 'product', width: 35 },
@@ -276,7 +349,7 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                     { header: '営業アクション推奨', key: 'action', width: 45 },
                 ];
                 filteredMarginDeviations.forEach(r => {
-                    ws.addRow({
+                    wsProd.addRow({
                         code: r.customer_code,
                         name: r.customer_name,
                         product: r.product_name,
@@ -290,9 +363,10 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                         action: r.action_suggestion
                     });
                 });
+
                 const buffer = await workbook.xlsx.writeBuffer();
                 saveAs(new Blob([buffer]), `適正利益乖離アクションリスト_${todayStr}.xlsx`);
-                toast.success('適正利益乖離リストを出力しました');
+                toast.success('適正利益乖離リスト（会社別・商品別）を出力しました');
             }
         } catch (err) {
             console.error('Excel export error:', err);
@@ -426,13 +500,24 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                         <div className="flex items-center gap-1.5">
                             <span className="font-bold text-sm text-gray-900">⚖️ 適正利益乖離</span>
                         </div>
-                        <span className={`text-xl font-bold font-mono ${activeTab === 'margin' ? 'text-amber-700' : 'text-gray-700'}`}>
-                            {data?.summary.margin_deviation_count ?? 0}
-                            <span className="text-xs font-normal ml-0.5 text-gray-500">品目</span>
-                        </span>
+                        <div className="text-right">
+                            <span className={`text-xl font-bold font-mono ${activeTab === 'margin' ? 'text-amber-700' : 'text-gray-700'}`}>
+                                {marginViewUnit === 'customer'
+                                    ? (data?.summary.customer_margin_deviation_count ?? 0)
+                                    : (data?.summary.margin_deviation_count ?? 0)}
+                                <span className="text-xs font-normal ml-0.5 text-gray-500">
+                                    {marginViewUnit === 'customer' ? '社' : '品目'}
+                                </span>
+                            </span>
+                            <div className="text-[10px] text-gray-400 font-medium">
+                                {marginViewUnit === 'customer'
+                                    ? `（商品別: ${data?.summary.margin_deviation_count ?? 0}品）`
+                                    : `（会社別: ${data?.summary.customer_margin_deviation_count ?? 0}社）`}
+                            </div>
+                        </div>
                     </div>
                     <p className="text-xs text-gray-500 mt-1.5">
-                        粗利率12%未満（薄利）または35%超（高粗利）の品目
+                        粗利率12%未満（薄利）または35%超（高粗利）の会社・品目
                     </p>
                 </button>
             </div>
@@ -445,44 +530,83 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                         type="text"
                         value={searchKeyword}
                         onChange={e => setSearchKeyword(e.target.value)}
-                        placeholder="得意先名、商品名、受注Noで絞り込み..."
+                        placeholder={
+                            activeTab === 'margin' && marginViewUnit === 'customer'
+                                ? "得意先名、コード、担当営業、代表商品で絞り込み..."
+                                : "得意先名、商品名、受注Noで絞り込み..."
+                        }
                         className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
                     />
                 </div>
 
                 {activeTab === 'margin' && (
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-gray-500 font-semibold">利益判定:</span>
-                        <button
-                            onClick={() => setMarginFilter('all')}
-                            className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
-                                marginFilter === 'all'
-                                    ? 'bg-slate-800 text-white'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                        >
-                            全件 ({data?.summary.margin_deviation_count ?? 0})
-                        </button>
-                        <button
-                            onClick={() => setMarginFilter('low')}
-                            className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
-                                marginFilter === 'low'
-                                    ? 'bg-rose-600 text-white'
-                                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-                            }`}
-                        >
-                            薄利 (&lt;12%) ({data?.summary.low_margin_count ?? 0})
-                        </button>
-                        <button
-                            onClick={() => setMarginFilter('high')}
-                            className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
-                                marginFilter === 'high'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
-                            }`}
-                        >
-                            高粗利 (&gt;35%) ({data?.summary.high_margin_count ?? 0})
-                        </button>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        {/* 表示単位切り替え（会社ごと / 個別商品） */}
+                        <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setMarginViewUnit('customer')}
+                                className={`px-2.5 py-1 font-bold rounded-md transition-all ${
+                                    marginViewUnit === 'customer'
+                                        ? 'bg-white text-amber-900 shadow-xs border border-gray-200'
+                                        : 'text-gray-500 hover:text-gray-800'
+                                }`}
+                            >
+                                会社ごと ({data?.summary.customer_margin_deviation_count ?? 0}社)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMarginViewUnit('product')}
+                                className={`px-2.5 py-1 font-bold rounded-md transition-all ${
+                                    marginViewUnit === 'product'
+                                        ? 'bg-white text-amber-900 shadow-xs border border-gray-200'
+                                        : 'text-gray-500 hover:text-gray-800'
+                                }`}
+                            >
+                                個別商品 ({data?.summary.margin_deviation_count ?? 0}品)
+                            </button>
+                        </div>
+
+                        {/* 利益判定フィルター */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-gray-500 font-semibold">利益判定:</span>
+                            <button
+                                onClick={() => setMarginFilter('all')}
+                                className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
+                                    marginFilter === 'all'
+                                        ? 'bg-slate-800 text-white'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                }`}
+                            >
+                                全件 ({marginViewUnit === 'customer'
+                                    ? (data?.summary.customer_margin_deviation_count ?? 0)
+                                    : (data?.summary.margin_deviation_count ?? 0)})
+                            </button>
+                            <button
+                                onClick={() => setMarginFilter('low')}
+                                className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
+                                    marginFilter === 'low'
+                                        ? 'bg-rose-600 text-white'
+                                        : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                                }`}
+                            >
+                                薄利 (&lt;12%) ({marginViewUnit === 'customer'
+                                    ? (data?.summary.customer_low_margin_count ?? 0)
+                                    : (data?.summary.low_margin_count ?? 0)})
+                            </button>
+                            <button
+                                onClick={() => setMarginFilter('high')}
+                                className={`px-2.5 py-1 text-xs rounded-full font-medium transition-colors ${
+                                    marginFilter === 'high'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
+                                }`}
+                            >
+                                高粗利 (&gt;35%) ({marginViewUnit === 'customer'
+                                    ? (data?.summary.customer_high_margin_count ?? 0)
+                                    : (data?.summary.high_margin_count ?? 0)})
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -662,8 +786,115 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                             </div>
                         )}
 
-                        {/* TAB 3: Margin Deviation Table */}
-                        {activeTab === 'margin' && (
+                        {/* TAB 3-A: Customer Margin Deviation Table (会社ごと) */}
+                        {activeTab === 'margin' && marginViewUnit === 'customer' && (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-amber-50/50 text-gray-700 border-b border-amber-100 uppercase font-semibold">
+                                        <tr>
+                                            <th className="py-3 px-3">判定</th>
+                                            <th className="py-3 px-3">得意先名称 / コード</th>
+                                            <th className="py-3 px-3">担当営業</th>
+                                            <th className="py-3 px-3 text-right">会社粗利率</th>
+                                            <th className="py-3 px-3 text-right">年間売上</th>
+                                            <th className="py-3 px-3 text-right">粗利額</th>
+                                            <th className="py-3 px-3 text-center">取引品目（内訳）</th>
+                                            <th className="py-3 px-4">主な取扱商品</th>
+                                            <th className="py-3 px-4">営業アクション推奨</th>
+                                            <th className="py-3 px-3 text-center">アクション</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredCustomerMarginDeviations.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={10} className="py-12 text-center text-gray-400">
+                                                    該当するデータはありません
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredCustomerMarginDeviations.map((item, idx) => (
+                                                <tr key={idx} className="hover:bg-amber-50/30 transition-colors">
+                                                    <td className="py-2.5 px-3 whitespace-nowrap">
+                                                        {item.deviation_type === 'low' ? (
+                                                            <span className="px-2 py-0.5 bg-rose-100 text-rose-800 font-bold rounded text-[10px] border border-rose-200">
+                                                                薄利警戒 (&lt;12%)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 font-bold rounded text-[10px] border border-indigo-200">
+                                                                高利警戒 (&gt;35%)
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2.5 px-3">
+                                                        <div className="font-bold text-gray-900">{item.customer_name}</div>
+                                                        <div className="text-[11px] text-gray-400 font-mono">CD: {item.customer_code}</div>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 whitespace-nowrap font-medium text-gray-700">
+                                                        {item.sales_rep}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-sm">
+                                                        <span className={item.deviation_type === 'low' ? 'text-rose-600' : 'text-indigo-600'}>
+                                                            {item.margin_rate}%
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-gray-800">
+                                                        ¥{item.total_sales.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right font-mono text-gray-700">
+                                                        ¥{item.total_profit.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                        <span className="font-mono font-semibold text-gray-800">{item.product_count}品</span>
+                                                        {item.low_margin_prod_count > 0 && (
+                                                            <span className="ml-1.5 px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded text-[10px] font-mono">
+                                                                薄利 {item.low_margin_prod_count}
+                                                            </span>
+                                                        )}
+                                                        {item.high_margin_prod_count > 0 && (
+                                                            <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded text-[10px] font-mono">
+                                                                高利 {item.high_margin_prod_count}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2.5 px-4 text-xs text-gray-800 max-w-[200px] truncate" title={item.top_product_name}>
+                                                        {item.top_product_name || '-'}
+                                                    </td>
+                                                    <td className="py-2.5 px-4 text-xs text-gray-700 leading-snug">
+                                                        <div className="text-gray-800">{item.action_suggestion}</div>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                        <div className="flex items-center justify-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setMarginViewUnit('product');
+                                                                    setSearchKeyword(item.customer_name);
+                                                                }}
+                                                                className="px-2 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold rounded text-xs inline-flex items-center gap-0.5 transition-colors border border-amber-200"
+                                                                title="この得意先の個別商品一覧に切り替え"
+                                                            >
+                                                                <span>品目一覧</span>
+                                                            </button>
+                                                            <Link
+                                                                href={`/catalog?customer_code=${item.customer_code}`}
+                                                                className="px-2 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 font-bold rounded text-xs inline-flex items-center gap-0.5 transition-colors border border-blue-200"
+                                                                title="手配カタログを開く"
+                                                            >
+                                                                <span>カタログ</span>
+                                                                <ArrowUpRight size={12} />
+                                                            </Link>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* TAB 3-B: Product Margin Deviation Table (個別商品) */}
+                        {activeTab === 'margin' && marginViewUnit === 'product' && (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left text-xs">
                                     <thead className="bg-amber-50/50 text-gray-700 border-b border-amber-100 uppercase font-semibold">

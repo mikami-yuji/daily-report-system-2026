@@ -250,6 +250,110 @@ def get_actionable_insights(
         low_count = sum(1 for m in margin_rows if m["deviation_type"] == "low")
         high_count = sum(1 for m in margin_rows if m["deviation_type"] == "high")
 
+        # -------------------------------------------------------------------------
+        # 指標3-B: 適正利益乖離（会社ごと / 得意先単位）
+        # 得意先全体の総合粗利率が極端に低い (<12%) または 高い (>35%)
+        # -------------------------------------------------------------------------
+        cust_margin_sql = f"""
+            WITH prod_agg AS (
+                SELECT 
+                    customer_code,
+                    product_code,
+                    product_name,
+                    SUM(amount) as p_amount,
+                    SUM(profit) as p_profit,
+                    ROUND(SUM(profit) * 100.0 / NULLIF(SUM(amount), 0), 1) as p_margin_rate,
+                    ROW_NUMBER() OVER (PARTITION BY customer_code ORDER BY SUM(amount) DESC) as rn
+                FROM as400_all_orders
+                WHERE COALESCE(order_date, sales_date) >= date('now', '-1 year')
+                  AND amount > 0 AND cost_price > 0
+                  {rep_clause}
+                GROUP BY customer_code, product_code, product_name
+            ),
+            cust_main_prod AS (
+                SELECT customer_code, product_name as top_product_name
+                FROM prod_agg
+                WHERE rn = 1
+            ),
+            cust_prod_stats AS (
+                SELECT 
+                    customer_code,
+                    SUM(CASE WHEN p_margin_rate < 12.0 THEN 1 ELSE 0 END) as low_margin_prod_count,
+                    SUM(CASE WHEN p_margin_rate > 35.0 THEN 1 ELSE 0 END) as high_margin_prod_count
+                FROM prod_agg
+                GROUP BY customer_code
+            )
+            SELECT 
+                c.customer_code,
+                c.customer_name,
+                c.sales_rep,
+                SUM(c.amount) as total_amount,
+                SUM(c.profit) as total_profit,
+                ROUND(SUM(c.profit) * 100.0 / NULLIF(SUM(c.amount), 0), 1) as margin_rate,
+                COUNT(DISTINCT c.product_code) as product_count,
+                COUNT(*) as order_count,
+                MAX(COALESCE(c.order_date, c.sales_date)) as last_date,
+                COALESCE(mp.top_product_name, '') as top_product_name,
+                COALESCE(ps.low_margin_prod_count, 0) as low_margin_prod_count,
+                COALESCE(ps.high_margin_prod_count, 0) as high_margin_prod_count
+            FROM as400_all_orders c
+            LEFT JOIN cust_main_prod mp ON c.customer_code = mp.customer_code
+            LEFT JOIN cust_prod_stats ps ON c.customer_code = ps.customer_code
+            WHERE COALESCE(c.order_date, c.sales_date) >= date('now', '-1 year')
+              AND c.amount > 0
+              AND c.cost_price > 0
+              {rep_clause.replace('sales_rep', 'c.sales_rep')}
+            GROUP BY c.customer_code
+            HAVING total_amount >= 30000 {margin_filter_clause}
+            ORDER BY total_amount DESC
+            LIMIT ?
+        """
+        cursor.execute(cust_margin_sql, rep_params + rep_params + [limit])
+        cust_margin_rows = []
+        for r in cursor.fetchall():
+            amt = float(r["total_amount"] or 0)
+            prof = float(r["total_profit"] or 0)
+            rate = float(r["margin_rate"] or 0)
+            is_low = rate < 12.0
+            prod_cnt = int(r["product_count"] or 0)
+            low_prod_cnt = int(r["low_margin_prod_count"] or 0)
+            high_prod_cnt = int(r["high_margin_prod_count"] or 0)
+            top_prod = r["top_product_name"] or ""
+
+            if is_low:
+                status_label = "薄利警戒 (<12%)"
+                suggestion = (
+                    f"会社全体粗利率{rate}%（売上: ¥{int(amt):,} / 粗利: ¥{int(prof):,}）。"
+                    f"薄利品目{low_prod_cnt}品/全{prod_cnt}品。全社的な単価改定・仕入運賃見直しを推奨。"
+                )
+            else:
+                status_label = "高利警戒 (>35%)"
+                suggestion = (
+                    f"会社全体粗利率{rate}%（売上: ¥{int(amt):,} / 粗利: ¥{int(prof):,}）。"
+                    f"高利品目{high_prod_cnt}品/全{prod_cnt}品。他社コンペ・流出防止へのフォローと適正価格見直しを推奨。"
+                )
+
+            cust_margin_rows.append({
+                "customer_code": clean_customer_code(r["customer_code"]),
+                "customer_name": r["customer_name"],
+                "sales_rep": r["sales_rep"] or "未設定",
+                "total_sales": int(amt),
+                "total_profit": int(prof),
+                "margin_rate": rate,
+                "deviation_type": "low" if is_low else "high",
+                "status_label": status_label,
+                "last_order_date": r["last_date"],
+                "product_count": prod_cnt,
+                "order_count": int(r["order_count"] or 0),
+                "low_margin_prod_count": low_prod_cnt,
+                "high_margin_prod_count": high_prod_cnt,
+                "top_product_name": top_prod,
+                "action_suggestion": suggestion
+            })
+
+        cust_low_count = sum(1 for m in cust_margin_rows if m["deviation_type"] == "low")
+        cust_high_count = sum(1 for m in cust_margin_rows if m["deviation_type"] == "high")
+
         return {
             "success": True,
             "sales_reps": all_reps,
@@ -259,9 +363,13 @@ def get_actionable_insights(
                 "plate_expiry_count": len(plate_rows),
                 "margin_deviation_count": len(margin_rows),
                 "low_margin_count": low_count,
-                "high_margin_count": high_count
+                "high_margin_count": high_count,
+                "customer_margin_deviation_count": len(cust_margin_rows),
+                "customer_low_margin_count": cust_low_count,
+                "customer_high_margin_count": cust_high_count
             },
             "churn_risks": churn_rows,
             "plate_expiries": plate_rows,
-            "margin_deviations": margin_rows
+            "margin_deviations": margin_rows,
+            "customer_margin_deviations": cust_margin_rows
         }

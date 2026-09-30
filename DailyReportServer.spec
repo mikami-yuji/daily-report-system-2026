@@ -31,6 +31,7 @@ a = Analysis(
         'routes_catalog',
         'updater',
         'version',
+        'routes_sales_insights',
         'sales_importer',
         'config'
     ],

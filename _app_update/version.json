@@ -1,11 +1,11 @@
 {
-  "version": "2.5.68",
+  "version": "2.5.69",
   "releaseDate": "2026-09-30",
-  "fileName": "DailyReportServer_v2.5.68.exe",
-  "fileSize": 49547144,
-  "sha256": "99eee0cd6c6152b10e12c7456d74494d79d69f1b48365e666c082825d50e91e1",
+  "fileName": "DailyReportServer_v2.5.69.exe",
+  "fileSize": 49548782,
+  "sha256": "dcac436ef9069606118193d67feda927cf39aef9b83c5baa737d625eafa09029",
   "forceUpdate": false,
   "releaseNotes": [
-    "全得意先売上明細の共有フォルダ自動同期およびAS400キャッシュフォールバック対応"
+    "適正利益乖離分析に会社ごと（得意先別）の集計・表示切り替え・Excel出力を追加"
   ]
 }

@@ -361,11 +361,6 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                                         シール（量目なし）
                                     </span>
                                 )}
-                                {item.is_roll && (
-                                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-100 text-cyan-800 font-medium border border-cyan-300">
-                                        ロール（量目なし）
-                                    </span>
-                                )}
                             </span>
                         </div>
                     </td>

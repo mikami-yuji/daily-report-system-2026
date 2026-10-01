@@ -109,10 +109,11 @@ def standardize_material(short_name: str, full_name: str, category: str = '') ->
         return f[:15]
     return 'その他材質'
 
-def standardize_capacity(cap_display: str, weight_val: Any, prod_name: str = '', title: str = '', category: str = '') -> str:
+def standardize_capacity(cap_display: str, weight_val: Any, prod_name: str = '', title: str = '', category: str = '', size_pitch: str = '') -> str:
     """量目・規格ピッチ（小分類）の正規化"""
     cap = str(cap_display or '').strip().lower()
-    name = f"{prod_name} {title}".lower()
+    pitch = str(size_pitch or '').strip().lower()
+    name = f"{prod_name} {title} {pitch}".lower()
     
     try:
         w = float(weight_val) if weight_val is not None and not pd.isna(weight_val) else 0.0
@@ -244,7 +245,7 @@ def _load_and_normalize_data(db_path: str) -> Tuple[pd.DataFrame, Dict[str, Any]
     # 3. 分類の正規化
     df['category'] = df.apply(lambda r: standardize_category(r['classification'], r['product_name'], r['title']), axis=1)
     df['material'] = df.apply(lambda r: standardize_material(r['material_short'], r['material_name'], r['category']), axis=1)
-    df['capacity'] = df.apply(lambda r: standardize_capacity(r.get('capacity_display', ''), r['weight'], r['product_name'], r['title'], r['category']), axis=1)
+    df['capacity'] = df.apply(lambda r: standardize_capacity(r.get('capacity_display', ''), r['weight'], r['product_name'], r['title'], r['category'], r.get('size_pitch', '')), axis=1)
 
     # 4. 数量（ｍ数・枚数）の切り分け
     is_meter = (df['unit'] == 'ｍ') | (df['shape_type'].str.contains('ロール', na=False))
@@ -446,8 +447,8 @@ def get_period_comparison_data(
     for cat_name in unique_cats:
         cat_metrics = _to_metrics_dict(cat_dict[cat_name])
         is_seal = (cat_name == 'シール')
-        is_roll = ('３Ｆロール' in cat_name or 'ロール' in cat_name)
-        is_no_capacity = (is_seal or is_roll)
+        is_roll = False
+        is_no_capacity = is_seal
 
         mats_for_cat = sorted(cat_mats.get(cat_name, []))
         materials_list = []

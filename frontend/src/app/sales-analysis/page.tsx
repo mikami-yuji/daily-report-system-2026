@@ -13,6 +13,19 @@ export default function SalesAnalysisPage(): React.JSX.Element {
     // 表示モード: 'period_comparison'（3期比較） | 'actionable'（実戦営業アクション指標） | 'all'（全得意先売上明細） | 'shinban'（新版・リピート受注分析）
     const [viewMode, setViewMode] = useState<'period_comparison' | 'actionable' | 'all' | 'shinban'>('period_comparison');
 
+    // タブの遅延ロード＆キャッシュ（一度開いたタブはDOM上に保持し、次回以降0秒即時切り替え）
+    const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['period_comparison']));
+
+    const handleTabChange = (mode: 'period_comparison' | 'actionable' | 'all' | 'shinban') => {
+        setViewMode(mode);
+        setLoadedTabs(prev => {
+            if (prev.has(mode)) return prev;
+            const next = new Set(prev);
+            next.add(mode);
+            return next;
+        });
+    };
+
     // React Queryでデータ取得（自動キャッシュ）
     const { data: rawSalesData = [], isLoading } = useSales();
 
@@ -186,7 +199,7 @@ export default function SalesAnalysisPage(): React.JSX.Element {
             {/* Main Navigation Tabs */}
             <div className="flex border-b border-sf-border gap-2 bg-white px-4 pt-3 rounded-t-lg shadow-sm overflow-x-auto">
                 <button
-                    onClick={() => setViewMode('period_comparison')}
+                    onClick={() => handleTabChange('period_comparison')}
                     className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'period_comparison'
                             ? 'border-cyan-600 text-cyan-800 bg-cyan-50/50 rounded-t'
@@ -197,7 +210,7 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                     <span>3期比較 (種別・材質・量目別数量)</span>
                 </button>
                 <button
-                    onClick={() => setViewMode('shinban')}
+                    onClick={() => handleTabChange('shinban')}
                     className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'shinban'
                             ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t'
@@ -208,7 +221,7 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                     <span>新版・リピート受注分析 (ｍ/金額)</span>
                 </button>
                 <button
-                    onClick={() => setViewMode('actionable')}
+                    onClick={() => handleTabChange('actionable')}
                     className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'actionable'
                             ? 'border-sf-primary text-sf-primary bg-blue-50/50 rounded-t'
@@ -219,7 +232,7 @@ export default function SalesAnalysisPage(): React.JSX.Element {
                     <span>営業アクション指標</span>
                 </button>
                 <button
-                    onClick={() => setViewMode('all')}
+                    onClick={() => handleTabChange('all')}
                     className={`pb-3 px-5 font-bold text-sm border-b-2 transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${
                         viewMode === 'all'
                             ? 'border-sf-primary text-sf-primary bg-blue-50/50 rounded-t'
@@ -232,23 +245,29 @@ export default function SalesAnalysisPage(): React.JSX.Element {
             </div>
 
             {/* Tab: 3期比較（種別・材質・量目別数量） */}
-            {viewMode === 'period_comparison' && (
-                <PeriodCategoryComparison />
+            {loadedTabs.has('period_comparison') && (
+                <div className={viewMode === 'period_comparison' ? 'block' : 'hidden'}>
+                    <PeriodCategoryComparison />
+                </div>
             )}
 
             {/* Tab 0: 新版・リピート受注分析 */}
-            {viewMode === 'shinban' && (
-                <ShinbanRepeatAnalysis />
+            {loadedTabs.has('shinban') && (
+                <div className={viewMode === 'shinban' ? 'block' : 'hidden'}>
+                    <ShinbanRepeatAnalysis />
+                </div>
             )}
 
             {/* Tab 1: 実戦営業アクション指標 */}
-            {viewMode === 'actionable' && (
-                <ActionableSalesInsights />
+            {loadedTabs.has('actionable') && (
+                <div className={viewMode === 'actionable' ? 'block' : 'hidden'}>
+                    <ActionableSalesInsights />
+                </div>
             )}
 
             {/* Tab 2: 全得意先売上明細テーブル */}
-            {viewMode === 'all' && (
-                <div className="space-y-6">
+            {loadedTabs.has('all') && (
+                <div className={viewMode === 'all' ? 'block space-y-6' : 'hidden'}>
                     {/* Summary Cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {/* 今年売上 */}

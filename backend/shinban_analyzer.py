@@ -7,7 +7,7 @@
 
 import sqlite3
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import config
 
 def get_db_path() -> str:
@@ -53,6 +53,13 @@ def standardize_material(short_name: str, full_name: str) -> str:
     if '和紙' in s or '和紙' in f: return '和紙'
     return 'その他'
 
+import os
+import threading
+
+_SHINBAN_CACHE: Dict[Tuple[str, str, str, Optional[str]], Dict[str, Any]] = {}
+_SHINBAN_CACHE_MTIME: float = 0.0
+_SHINBAN_CACHE_LOCK = threading.Lock()
+
 def analyze_shinban_and_repeats(
     start_date: str = '2026-02-01',
     end_date: str = '2027-01-31',
@@ -60,9 +67,24 @@ def analyze_shinban_and_repeats(
     sales_rep_filter: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    新版商品およびリピート受注を多角的に分析し、JSON直列化可能な辞書で返却
+    新版商品およびリピート受注を多角的に分析し、JSON直列化可能な辞書で返却（インメモリキャッシュ対応）
     """
+    global _SHINBAN_CACHE, _SHINBAN_CACHE_MTIME
+
     db_path = get_db_path()
+    if not os.path.exists(db_path):
+        return {}
+
+    db_mtime = os.path.getmtime(db_path)
+    cache_key = (start_date, end_date, category_filter, sales_rep_filter)
+
+    with _SHINBAN_CACHE_LOCK:
+        if db_mtime > _SHINBAN_CACHE_MTIME:
+            _SHINBAN_CACHE.clear()
+            _SHINBAN_CACHE_MTIME = db_mtime
+        elif cache_key in _SHINBAN_CACHE:
+            return _SHINBAN_CACHE[cache_key]
+
     conn = sqlite3.connect(db_path)
     
     # 区分条件
@@ -462,7 +484,7 @@ def analyze_shinban_and_repeats(
             "repeats": reps
         })
 
-    return {
+    result = {
         "summary": summary,
         "sales_rep_ranking": sales_rep_ranking,
         "sales_rep_matrix": sales_rep_matrix,
@@ -470,3 +492,8 @@ def analyze_shinban_and_repeats(
         "material_summary": mat_summary,
         "detail_orders": detail_orders
     }
+
+    with _SHINBAN_CACHE_LOCK:
+        _SHINBAN_CACHE[cache_key] = result
+
+    return result

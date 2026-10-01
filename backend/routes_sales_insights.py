@@ -7,7 +7,9 @@
 
 import sqlite3
 import logging
-from typing import Optional, Dict, Any, List
+import os
+import threading
+from typing import Optional, Dict, Any, List, Tuple
 from fastapi import APIRouter, Query
 
 import sales_importer
@@ -15,6 +17,9 @@ import sales_importer
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sales-insights", tags=["sales-insights"])
 
+_INSIGHTS_CACHE: Dict[Tuple[Optional[str], Optional[str], int], Dict[str, Any]] = {}
+_INSIGHTS_CACHE_MTIME: float = 0.0
+_INSIGHTS_CACHE_LOCK = threading.Lock()
 
 def clean_customer_code(raw: Any) -> str:
     if not raw:
@@ -30,9 +35,22 @@ def get_actionable_insights(
     margin_type: Optional[str] = "all",
     limit: int = 100
 ) -> Dict[str, Any]:
-    sales_importer.init_sales_db()
+    global _INSIGHTS_CACHE, _INSIGHTS_CACHE_MTIME
 
     rep_filter = sales_rep.strip() if (isinstance(sales_rep, str) and sales_rep.strip() and sales_rep not in ('all', '全員', '全体', '')) else None
+    cache_key = (rep_filter, margin_type, limit)
+
+    db_path = sales_importer.get_sales_db_path()
+    if os.path.exists(db_path):
+        db_mtime = os.path.getmtime(db_path)
+        with _INSIGHTS_CACHE_LOCK:
+            if db_mtime > _INSIGHTS_CACHE_MTIME:
+                _INSIGHTS_CACHE.clear()
+                _INSIGHTS_CACHE_MTIME = db_mtime
+            elif cache_key in _INSIGHTS_CACHE:
+                return _INSIGHTS_CACHE[cache_key]
+
+    sales_importer.init_sales_db()
 
     with sales_importer.get_sales_db_conn() as conn:
         conn.row_factory = sqlite3.Row
@@ -354,7 +372,7 @@ def get_actionable_insights(
         cust_low_count = sum(1 for m in cust_margin_rows if m["deviation_type"] == "low")
         cust_high_count = sum(1 for m in cust_margin_rows if m["deviation_type"] == "high")
 
-        return {
+        result = {
             "success": True,
             "sales_reps": all_reps,
             "selected_rep": rep_filter or "all",
@@ -373,3 +391,8 @@ def get_actionable_insights(
             "margin_deviations": margin_rows,
             "customer_margin_deviations": cust_margin_rows
         }
+
+        with _INSIGHTS_CACHE_LOCK:
+            _INSIGHTS_CACHE[cache_key] = result
+
+        return result

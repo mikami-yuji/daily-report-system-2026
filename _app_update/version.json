@@ -1,11 +1,11 @@
 {
-  "version": "2.5.79",
+  "version": "2.5.80",
   "releaseDate": "2026-10-01",
-  "fileName": "DailyReportServer_v2.5.79.exe",
-  "fileSize": 49846064,
-  "sha256": "bfe79eda0c814e03d0eaa5aabe2c25c13bf84c58e1c7438742a93ef56baed08c",
+  "fileName": "DailyReportServer_v2.5.80.exe",
+  "fileSize": 49846091,
+  "sha256": "2ab5a6ed723fd9b7efc5b3247c0576097713e6e7191850c652d80a1fd44a8875",
   "forceUpdate": false,
   "releaseNotes": [
-    "売上分析3期数量比較画面の未定義参照クラッシュ修正と安定化"
+    "売上分析3期数量比較APIルーティング順序の修正とデータ取得安定化"
   ]
 }

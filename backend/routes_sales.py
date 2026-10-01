@@ -249,6 +249,45 @@ async def get_shinban_analysis(
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
+# 3期比較（種別・材質・量目別／数量・金額比較）API
+import period_comparison_analyzer
+
+_period_comparison_cache: Dict[str, Any] = {}
+_period_comparison_cache_time: float = 0.0
+
+@router.get("/api/sales/period-category-comparison")
+async def get_period_category_comparison(
+    compare_mode: str = "same_period",  # 'same_period' | 'full_year'
+    sales_rep: Optional[str] = None,
+    customer_code: Optional[str] = None
+):
+    """
+    今期・前期・前々期の3期比較（種別 ＞ 材質 ＞ 量目別／ｍ数・枚数・金額）
+    """
+    global _period_comparison_cache, _period_comparison_cache_time
+    import time
+    
+    cache_key = f"{compare_mode}_{sales_rep or 'all'}_{customer_code or 'all'}"
+    now = time.time()
+    
+    # 60秒キャッシュ
+    if cache_key in _period_comparison_cache and (now - _period_comparison_cache_time < 60.0):
+        return _period_comparison_cache[cache_key]
+
+    try:
+        data = period_comparison_analyzer.get_period_comparison_data(
+            compare_mode=compare_mode,
+            sales_rep=sales_rep,
+            customer_code=customer_code
+        )
+        _period_comparison_cache[cache_key] = data
+        _period_comparison_cache_time = now
+        return data
+    except Exception as e:
+        logging.error(f"Error calculating period comparison data: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"集計処理エラー: {str(e)}")
+
+
 @router.get("/api/sales/{customer_code}")
 async def get_sales_data(customer_code: str):
     """
@@ -321,42 +360,4 @@ async def get_sales_data(customer_code: str):
         logging.error(f"Error retrieving sales data: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving data: {str(e)}")
 
-
-# 3期比較（種別・材質・量目別／数量・金額比較）API
-import period_comparison_analyzer
-
-_period_comparison_cache: Dict[str, Any] = {}
-_period_comparison_cache_time: float = 0.0
-
-@router.get("/api/sales/period-category-comparison")
-async def get_period_category_comparison(
-    compare_mode: str = "same_period",  # 'same_period' | 'full_year'
-    sales_rep: Optional[str] = None,
-    customer_code: Optional[str] = None
-):
-    """
-    今期・前期・前々期の3期比較（種別 ＞ 材質 ＞ 量目別／ｍ数・枚数・金額）
-    """
-    global _period_comparison_cache, _period_comparison_cache_time
-    import time
-    
-    cache_key = f"{compare_mode}_{sales_rep or 'all'}_{customer_code or 'all'}"
-    now = time.time()
-    
-    # 60秒キャッシュ
-    if cache_key in _period_comparison_cache and (now - _period_comparison_cache_time < 60.0):
-        return _period_comparison_cache[cache_key]
-
-    try:
-        data = period_comparison_analyzer.get_period_comparison_data(
-            compare_mode=compare_mode,
-            sales_rep=sales_rep,
-            customer_code=customer_code
-        )
-        _period_comparison_cache[cache_key] = data
-        _period_comparison_cache_time = now
-        return data
-    except Exception as e:
-        logging.error(f"Error calculating period comparison data: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"集計処理エラー: {str(e)}")
 

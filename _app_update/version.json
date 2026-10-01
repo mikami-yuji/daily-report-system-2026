@@ -1,11 +1,11 @@
 {
-  "version": "2.5.80",
+  "version": "2.5.81",
   "releaseDate": "2026-10-01",
-  "fileName": "DailyReportServer_v2.5.80.exe",
-  "fileSize": 49846091,
-  "sha256": "2ab5a6ed723fd9b7efc5b3247c0576097713e6e7191850c652d80a1fd44a8875",
+  "fileName": "DailyReportServer_v2.5.81.exe",
+  "fileSize": 49846921,
+  "sha256": "1363a6ccd08f10cc1135cc17dbfecbc9580e53f8d4dc15ae4706f4f780708ae3",
   "forceUpdate": false,
   "releaseNotes": [
-    "売上分析3期数量比較APIルーティング順序の修正とデータ取得安定化"
+    "売上分析3期数量比較の超高速化（groupbyベクトル集約＆インメモリキャッシュで最大100倍高速化）"
   ]
 }

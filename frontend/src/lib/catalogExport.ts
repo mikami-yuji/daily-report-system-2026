@@ -27,6 +27,7 @@ export const getDisplayClassification = (p: ProductItem): string => {
     if (cNorm.includes('シルク')) return 'シルク';
     if (/3F|３Ｆ|ロールフレキソ|SP|ＳＰ/i.test(cNorm)) return 'SP';
     if (cNorm.includes('オクダ・ヌマタオフセット版') || cNorm.includes('オフセット')) return 'オフセット';
+    if (cNorm.includes('プレコレ') || cNorm.includes('インクジェット')) return 'プレコレ・インクジェット';
     if (cNorm.includes('シール(フルオーダー)') || cNorm.includes('別注シール')) return '別注シール';
     if (cNorm.includes('シール(セミオーダー)') || cNorm === 'シール') return 'シール';
     if (cNorm.includes('ポリ別注')) return 'ポリ別注';
@@ -35,7 +36,7 @@ export const getDisplayClassification = (p: ProductItem): string => {
     return cRaw;
 };
 
-// 種別の優先順位（1: 別注, 2: ポリ別注, 3: SP, 4: シルク, 5: オフセット, 6: 既製品, 7: 別注シール, 8: シール）
+// 種別の優先順位（1: 別注, 2: ポリ別注, 3: SP, 4: シルク, 5: オフセット, 5.5: プレコレ, 6: 既製品, 7: 別注シール, 8: シール）
 const getClassificationOrder = (cls: string): number => {
     const orderMap: Record<string, number> = {
         '別注': 1,
@@ -44,6 +45,9 @@ const getClassificationOrder = (cls: string): number => {
         'SP': 3,
         'シルク': 4,
         'オフセット': 5,
+        'オクダ・ヌマタオフセット版': 5,
+        'プレコレ・インクジェット': 5.5,
+        'プレコレ': 5.5,
         '既製品': 6,
         '別注シール': 7,
         'シール': 8

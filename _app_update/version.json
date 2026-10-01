@@ -1,13 +1,11 @@
 {
-  "version": "2.5.85",
+  "version": "2.5.86",
   "releaseDate": "2026-10-01",
-  "fileName": "DailyReportServer_v2.5.85.exe",
-  "fileSize": 49853189,
-  "sha256": "9a16ddf460cac6c06d2ef8103a80fec56e5a0e8a723a14707cc9b84d6d9a222f",
+  "fileName": "DailyReportServer_v2.5.86.exe",
+  "fileSize": 49853396,
+  "sha256": "d99a5fbbf3e36041c7935ad283b1ba43ab098c1bd6924b32315d596240a36f2f",
   "forceUpdate": false,
   "releaseNotes": [
-    "月次サマリー: 当月データ未登録時の最新実績月への自動フォールバック機能を追加",
-    "月次サマリー: 実績が存在する月度を直接選べるドロップダウンおよび最新実績月ジャンプボタンを追加",
-    "月次サマリー: 該当月データ未登録時の案内カードおよび重点顧客ゼロ件時の表示改善"
+    "売上分析（3期比較）: 種別の標準並び順をカタログExcel出力に準拠し、プレコレ・インクジェットをオフセット直下に配置"
   ]
 }

@@ -12,7 +12,6 @@ import {
     ChevronDown,
     ChevronRight,
     Download,
-    RotateCcw,
     Search,
     TrendingUp,
     TrendingDown,
@@ -21,15 +20,16 @@ import {
     CheckCircle2,
     BarChart3,
     Sparkles,
-    SlidersHorizontal,
     Maximize2,
-    Minimize2
+    Minimize2,
+    Eye,
+    Percent
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function PeriodCategoryComparison(): React.JSX.Element {
-    // 比較モード: 'same_period' (同期間比較) | 'full_year' (通期比較)
-    const [compareMode, setCompareMode] = useState<'same_period' | 'full_year'>('same_period');
+    // 過去期の表示モード: 'both' (同期日＆期総量の両方) | 'same_only' (同期日のみ) | 'full_only' (期総量のみ)
+    const [pastPeriodView, setPastPeriodView] = useState<'both' | 'same_only' | 'full_only'>('both');
 
     // 担当営業フィルター
     const [selectedRep, setSelectedRep] = useState<string>('all');
@@ -51,7 +51,6 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
         setLoading(true);
         try {
             const res = await getPeriodCategoryComparison({
-                compare_mode: compareMode,
                 sales_rep: selectedRep !== 'all' ? selectedRep : undefined
             });
             setData(res);
@@ -69,7 +68,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
 
     useEffect(() => {
         fetchData();
-    }, [compareMode, selectedRep]);
+    }, [selectedRep]);
 
     // 展開・折りたたみのトグル
     const toggleExpand = (id: string) => {
@@ -128,6 +127,17 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
         );
     };
 
+    const formatProgressRate = (rate: number | null | undefined): React.JSX.Element => {
+        if (rate === null || rate === undefined || isNaN(rate)) {
+            return <span className="text-gray-400 font-mono">-</span>;
+        }
+        return (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium font-mono text-indigo-700 bg-indigo-50 border border-indigo-200" title="前期の通期総量に対する現時点の進捗率">
+                進捗 {rate.toFixed(1)}%
+            </span>
+        );
+    };
+
     const formatDiff = (diff: number, unit: string): React.JSX.Element => {
         if (!diff || diff === 0) return <span className="text-gray-400 font-mono">-</span>;
         const isPlus = diff > 0;
@@ -163,7 +173,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
         return filterTree(data.categories);
     }, [data, searchTerm]);
 
-    // CSVエクスポート（フラット行リストへ展開）
+    // CSVエクスポート
     const handleExportCsv = () => {
         if (!data || !data.categories) return;
 
@@ -175,21 +185,27 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                 '今期_ｍ数',
                 '今期_枚数',
                 '今期_売上金額',
-                '前期_ｍ数',
-                '前期_枚数',
-                '前期_売上金額',
-                '前々期_ｍ数',
-                '前々期_枚数',
-                '前々期_売上金額',
-                '対前期比_ｍ数%',
-                '対前期比_枚数%',
-                '対前期比_金額%',
-                '対前々期比_ｍ数%',
-                '対前々期比_枚数%',
-                '対前々期比_金額%',
-                '前期差分_ｍ数',
-                '前期差分_枚数',
-                '前期差分_金額'
+                '前期同期_ｍ数',
+                '前期同期_枚数',
+                '前期同期_売上金額',
+                '前期総量_ｍ数',
+                '前期総量_枚数',
+                '前期総量_売上金額',
+                '前々期同期_ｍ数',
+                '前々期同期_枚数',
+                '前々期同期_売上金額',
+                '前々期総量_ｍ数',
+                '前々期総量_枚数',
+                '前々期総量_売上金額',
+                '対前期同期比_ｍ数%',
+                '対前期同期比_枚数%',
+                '対前期同期比_金額%',
+                '対前期総量進捗率_ｍ数%',
+                '対前期総量進捗率_枚数%',
+                '対前期総量進捗率_金額%',
+                '前期同期差分_ｍ数',
+                '前期同期差分_枚数',
+                '前期同期差分_金額'
             ]
         ];
 
@@ -209,27 +225,32 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                 capName = item.name;
             }
 
-            // 葉ノードまたはシール材質の場合に詳細行を出力
             if (!item.children || item.children.length === 0) {
                 rows.push([
                     escapeCsv(catName),
                     escapeCsv(matName),
-                    escapeCsv(capName || (item.is_seal ? 'シール(量目なし)' : '-')),
+                    escapeCsv(capName || (item.is_seal ? 'シール(量目なし)' : item.is_roll ? 'ロール(量目なし)' : '-')),
                     item.current.meters.toString(),
                     item.current.sheets.toString(),
                     item.current.amount.toString(),
-                    item.previous.meters.toString(),
-                    item.previous.sheets.toString(),
-                    item.previous.amount.toString(),
-                    item.two_years_ago.meters.toString(),
-                    item.two_years_ago.sheets.toString(),
-                    item.two_years_ago.amount.toString(),
+                    item.previous_same.meters.toString(),
+                    item.previous_same.sheets.toString(),
+                    item.previous_same.amount.toString(),
+                    item.previous_full.meters.toString(),
+                    item.previous_full.sheets.toString(),
+                    item.previous_full.amount.toString(),
+                    item.two_years_ago_same.meters.toString(),
+                    item.two_years_ago_same.sheets.toString(),
+                    item.two_years_ago_same.amount.toString(),
+                    item.two_years_ago_full.meters.toString(),
+                    item.two_years_ago_full.sheets.toString(),
+                    item.two_years_ago_full.amount.toString(),
                     item.growth_rate_meters !== null ? `${item.growth_rate_meters}%` : '-',
                     item.growth_rate_sheets !== null ? `${item.growth_rate_sheets}%` : '-',
                     item.growth_rate_amount !== null ? `${item.growth_rate_amount}%` : '-',
-                    item.two_years_growth_rate_meters !== null ? `${item.two_years_growth_rate_meters}%` : '-',
-                    item.two_years_growth_rate_sheets !== null ? `${item.two_years_growth_rate_sheets}%` : '-',
-                    item.two_years_growth_rate_amount !== null ? `${item.two_years_growth_rate_amount}%` : '-',
+                    item.progress_rate_meters !== null ? `${item.progress_rate_meters}%` : '-',
+                    item.progress_rate_sheets !== null ? `${item.progress_rate_sheets}%` : '-',
+                    item.progress_rate_amount !== null ? `${item.progress_rate_amount}%` : '-',
                     item.diff_meters.toString(),
                     item.diff_sheets.toString(),
                     item.diff_amount.toString()
@@ -248,8 +269,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        const modeLabel = compareMode === 'same_period' ? '同期間' : '通期';
-        link.download = `売上3期比較_${modeLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = `売上3期数量比較_同期日と期総量_${new Date().toISOString().slice(0, 10)}.csv`;
         link.click();
         URL.revokeObjectURL(url);
         toast.success('3期比較CSVをダウンロードしました');
@@ -274,7 +294,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
         return (
             <React.Fragment key={item.id}>
                 <tr className={`transition-colors text-xs ${rowBg}`}>
-                    {/* 分類名（アコーディオンアイコン付き） */}
+                    {/* 分類名 */}
                     <td className={`py-2 pr-3 ${indentPadding} whitespace-nowrap`}>
                         <div className="flex items-center gap-1.5">
                             {hasChildren ? (
@@ -297,20 +317,25 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                                         シール（量目なし）
                                     </span>
                                 )}
+                                {item.is_roll && (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-100 text-cyan-800 font-medium border border-cyan-300">
+                                        ロール（量目なし）
+                                    </span>
+                                )}
                             </span>
                         </div>
                     </td>
 
-                    {/* 今期 (2026) */}
+                    {/* 今期 (2026年度) */}
                     <td className="py-2 px-2 text-right font-mono">
                         {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
-                            <div className="font-semibold text-slate-900">
+                            <div className="font-bold text-slate-900">
                                 {formatNumber(item.current.meters)} <span className="text-[10px] text-gray-500 font-normal">ｍ</span>
                             </div>
                         )}
                         {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
-                            <div className="text-[11px] text-slate-700">
-                                {formatNumber(item.current.sheets)} <span className="text-[10px] text-gray-500">枚</span>
+                            <div className="text-[11px] text-slate-800 font-semibold">
+                                {formatNumber(item.current.sheets)} <span className="text-[10px] text-gray-500 font-normal">枚</span>
                             </div>
                         )}
                         {metricDisplay === 'with_amount' && (
@@ -320,47 +345,120 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                         )}
                     </td>
 
-                    {/* 前期 (2025) */}
-                    <td className="py-2 px-2 text-right font-mono bg-slate-50/30">
-                        {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
-                            <div className="text-slate-700">
-                                {formatNumber(item.previous.meters)} <span className="text-[10px] text-gray-500 font-normal">ｍ</span>
+                    {/* 前期 (2025年度): 同期日 & 期総量 */}
+                    <td className="py-2 px-2 text-right font-mono bg-slate-50/40">
+                        {/* 同期日 */}
+                        {(pastPeriodView === 'both' || pastPeriodView === 'same_only') && (
+                            <div className="space-y-0.5">
+                                {pastPeriodView === 'both' && (
+                                    <div className="text-[10px] text-cyan-700 font-medium border-b border-cyan-100 pb-0.5 mb-0.5">
+                                        同期日 ({data?.period_info.previous.same_label?.replace('前期同期 ', '')})
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
+                                    <div className="text-slate-800">
+                                        {formatNumber(item.previous_same.meters)} <span className="text-[10px] text-gray-500 font-normal">ｍ</span>
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
+                                    <div className="text-[11px] text-slate-700">
+                                        {formatNumber(item.previous_same.sheets)} <span className="text-[10px] text-gray-500 font-normal">枚</span>
+                                    </div>
+                                )}
+                                {metricDisplay === 'with_amount' && (
+                                    <div className="text-[10px] text-slate-600">
+                                        ¥{formatNumber(item.previous_same.amount)}
+                                    </div>
+                                )}
                             </div>
                         )}
-                        {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
-                            <div className="text-[11px] text-slate-600">
-                                {formatNumber(item.previous.sheets)} <span className="text-[10px] text-gray-500">枚</span>
-                            </div>
-                        )}
-                        {metricDisplay === 'with_amount' && (
-                            <div className="text-[10px] text-slate-500">
-                                ¥{formatNumber(item.previous.amount)}
+
+                        {/* 期総量（通期） */}
+                        {(pastPeriodView === 'both' || pastPeriodView === 'full_only') && (
+                            <div className={`space-y-0.5 ${pastPeriodView === 'both' ? 'mt-2 pt-1 border-t border-slate-200/80 bg-slate-100/40 p-1 rounded' : ''}`}>
+                                {pastPeriodView === 'both' && (
+                                    <div className="text-[10px] text-slate-500 font-semibold flex items-center justify-end gap-1">
+                                        <span>期総量 (年間)</span>
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
+                                    <div className="text-slate-600 font-medium">
+                                        {formatNumber(item.previous_full.meters)} <span className="text-[10px] text-gray-400 font-normal">ｍ</span>
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
+                                    <div className="text-[11px] text-slate-600">
+                                        {formatNumber(item.previous_full.sheets)} <span className="text-[10px] text-gray-400 font-normal">枚</span>
+                                    </div>
+                                )}
+                                {metricDisplay === 'with_amount' && (
+                                    <div className="text-[10px] text-slate-500">
+                                        ¥{formatNumber(item.previous_full.amount)}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </td>
 
-                    {/* 前々期 (2024) */}
-                    <td className="py-2 px-2 text-right font-mono bg-slate-50/50">
-                        {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
-                            <div className="text-slate-600">
-                                {formatNumber(item.two_years_ago.meters)} <span className="text-[10px] text-gray-500 font-normal">ｍ</span>
+                    {/* 前々期 (2024年度): 同期日 & 期総量 */}
+                    <td className="py-2 px-2 text-right font-mono bg-slate-50/70">
+                        {/* 同期日 */}
+                        {(pastPeriodView === 'both' || pastPeriodView === 'same_only') && (
+                            <div className="space-y-0.5">
+                                {pastPeriodView === 'both' && (
+                                    <div className="text-[10px] text-cyan-700 font-medium border-b border-cyan-100 pb-0.5 mb-0.5">
+                                        同期日 ({data?.period_info.two_years_ago.same_label?.replace('前々期同期 ', '')})
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
+                                    <div className="text-slate-700">
+                                        {formatNumber(item.two_years_ago_same.meters)} <span className="text-[10px] text-gray-500 font-normal">ｍ</span>
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
+                                    <div className="text-[11px] text-slate-600">
+                                        {formatNumber(item.two_years_ago_same.sheets)} <span className="text-[10px] text-gray-500 font-normal">枚</span>
+                                    </div>
+                                )}
+                                {metricDisplay === 'with_amount' && (
+                                    <div className="text-[10px] text-slate-500">
+                                        ¥{formatNumber(item.two_years_ago_same.amount)}
+                                    </div>
+                                )}
                             </div>
                         )}
-                        {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
-                            <div className="text-[11px] text-slate-500">
-                                {formatNumber(item.two_years_ago.sheets)} <span className="text-[10px] text-gray-500">枚</span>
-                            </div>
-                        )}
-                        {metricDisplay === 'with_amount' && (
-                            <div className="text-[10px] text-slate-400">
-                                ¥{formatNumber(item.two_years_ago.amount)}
+
+                        {/* 期総量（通期） */}
+                        {(pastPeriodView === 'both' || pastPeriodView === 'full_only') && (
+                            <div className={`space-y-0.5 ${pastPeriodView === 'both' ? 'mt-2 pt-1 border-t border-slate-200/80 bg-slate-100/40 p-1 rounded' : ''}`}>
+                                {pastPeriodView === 'both' && (
+                                    <div className="text-[10px] text-slate-500 font-semibold flex items-center justify-end gap-1">
+                                        <span>期総量 (年間)</span>
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
+                                    <div className="text-slate-500 font-medium">
+                                        {formatNumber(item.two_years_ago_full.meters)} <span className="text-[10px] text-gray-400 font-normal">ｍ</span>
+                                    </div>
+                                )}
+                                {(metricDisplay === 'both' || metricDisplay === 'sheets' || metricDisplay === 'with_amount') && (
+                                    <div className="text-[11px] text-slate-500">
+                                        {formatNumber(item.two_years_ago_full.sheets)} <span className="text-[10px] text-gray-400 font-normal">枚</span>
+                                    </div>
+                                )}
+                                {metricDisplay === 'with_amount' && (
+                                    <div className="text-[10px] text-slate-400">
+                                        ¥{formatNumber(item.two_years_ago_full.amount)}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </td>
 
-                    {/* 対前期比 (%) */}
+                    {/* 対前期同期比 (%) & 前期総量進捗率 */}
                     <td className="py-2 px-2 text-center">
-                        <div className="flex flex-col items-center gap-0.5">
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="text-[9px] text-gray-500 font-semibold">対同期比:</div>
                             {(metricDisplay === 'both' || metricDisplay === 'meters') && item.current.meters > 0 && (
                                 <div className="flex items-center gap-1">
                                     <span className="text-[9px] text-gray-400">ｍ:</span>
@@ -379,12 +477,29 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                                     {formatRate(item.growth_rate_amount)}
                                 </div>
                             )}
+
+                            {/* 前期総量に対する進捗率 */}
+                            {pastPeriodView !== 'same_only' && (
+                                <div className="pt-1 mt-0.5 border-t border-slate-100 flex flex-col items-center gap-0.5 w-full">
+                                    {(metricDisplay === 'both' || metricDisplay === 'meters') && item.current.meters > 0 && (
+                                        <div className="text-[10px] text-indigo-600 font-mono">
+                                            ｍ {formatProgressRate(item.progress_rate_meters)}
+                                        </div>
+                                    )}
+                                    {(metricDisplay === 'both' || metricDisplay === 'sheets') && (item.current.sheets > 0 || item.current.meters === 0) && (
+                                        <div className="text-[10px] text-indigo-600 font-mono">
+                                            枚 {formatProgressRate(item.progress_rate_sheets)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </td>
 
-                    {/* 対前々期比 (%) */}
-                    <td className="py-2 px-2 text-center bg-slate-50/30">
-                        <div className="flex flex-col items-center gap-0.5">
+                    {/* 対前々期同期比 (%) */}
+                    <td className="py-2 px-2 text-center bg-slate-50/40">
+                        <div className="flex flex-col items-center gap-1">
+                            <div className="text-[9px] text-gray-500 font-semibold">対同期比:</div>
                             {(metricDisplay === 'both' || metricDisplay === 'meters') && item.current.meters > 0 && (
                                 <div className="flex items-center gap-1">
                                     <span className="text-[9px] text-gray-400">ｍ:</span>
@@ -406,9 +521,9 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                         </div>
                     </td>
 
-                    {/* 前期比増減（差分） */}
+                    {/* 前期同期差分 */}
                     <td className="py-2 px-2 text-right">
-                        <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex flex-col items-end gap-1">
                             {(metricDisplay === 'both' || metricDisplay === 'meters') && item.diff_meters !== 0 && (
                                 <div>{formatDiff(item.diff_meters, 'ｍ')}</div>
                             )}
@@ -439,7 +554,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                         <div className="flex items-center gap-2">
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-xs font-bold border border-amber-400/30 flex items-center gap-1">
                                 <Sparkles size={12} />
-                                3期比較分析（今期・前期・前々期）
+                                3期数量比較分析（今期・前期・前々期）
                             </span>
                             <span className="text-xs text-slate-300 font-mono">
                                 会計年度: 2月1日〜翌年1月31日
@@ -450,38 +565,49 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                             種別・材質別・量目別 数量（ｍ数・枚数）比較
                         </h2>
                         <p className="text-xs text-slate-300 leading-relaxed">
-                            基幹確定売上データをもとに、製品種別・材質・量目ごとのｍ数および枚数の期別推移を直感比較。
-                            <span className="text-amber-300 font-medium ml-1">※シールは量目区分なしで一括集計</span>
+                            確定売上データをもとに、前期・前々期の「<strong className="text-cyan-300">同期日実績</strong>」と「<strong className="text-cyan-300">その期の総量（通期実績）</strong>」を並記比較。
+                            <span className="text-amber-300 font-medium ml-1">※シール・ロールは量目区分なし（一括集計）／ソフクラは独立中分類</span>
                         </p>
                     </div>
 
-                    {/* 期間モード切り替えトグル */}
-                    <div className="flex flex-wrap items-center gap-2 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
+                    {/* 過去期表示切り替えトグル */}
+                    <div className="flex flex-wrap items-center gap-1.5 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700 text-xs">
+                        <span className="text-slate-400 font-medium px-2 flex items-center gap-1">
+                            <Eye size={13} />
+                            過去期の表示:
+                        </span>
                         <button
                             type="button"
-                            onClick={() => setCompareMode('same_period')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                compareMode === 'same_period'
+                            onClick={() => setPastPeriodView('both')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                                pastPeriodView === 'both'
                                     ? 'bg-cyan-500 text-white shadow-md'
                                     : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                             }`}
-                            title="2月1日から最新売上日までの同期間で比較（前年比が正確に分かります）"
                         >
-                            <Calendar size={13} />
-                            同期間比較 (2月〜本日)
+                            同期日 ＋ 期総量（両方）
                         </button>
                         <button
                             type="button"
-                            onClick={() => setCompareMode('full_year')}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                compareMode === 'full_year'
+                            onClick={() => setPastPeriodView('same_only')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                                pastPeriodView === 'same_only'
                                     ? 'bg-cyan-500 text-white shadow-md'
                                     : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                             }`}
-                            title="前期・前々期は12ヶ月通期実績と比較（進捗率確認に最適）"
                         >
-                            <Calendar size={13} />
-                            通期比較 (12ヶ月着地)
+                            同期日のみ
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPastPeriodView('full_only')}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                                pastPeriodView === 'full_only'
+                                    ? 'bg-cyan-500 text-white shadow-md'
+                                    : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                            }`}
+                        >
+                            期総量のみ
                         </button>
                     </div>
                 </div>
@@ -490,15 +616,15 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                 {data?.period_info && (
                     <div className="mt-4 pt-3 border-t border-slate-700/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
                         <div className="flex flex-wrap items-center gap-3">
-                            <span className="font-semibold text-cyan-300">集計期間:</span>
+                            <span className="font-semibold text-cyan-300">集計期間定義:</span>
                             <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                                今期: {data.period_info.current_period.start} 〜 {data.period_info.current_period.end}
+                                {data.period_info.current.name}: {data.period_info.current.start} 〜 {data.period_info.current.end}
                             </span>
                             <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                                前期: {data.period_info.previous_period.start} 〜 {data.period_info.previous_period.end}
+                                {data.period_info.previous.name}: 同期 {data.period_info.previous.same_start} 〜 {data.period_info.previous.same_end} | 通期 {data.period_info.previous.full_start} 〜 {data.period_info.previous.full_end}
                             </span>
                             <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                                前々期: {data.period_info.two_years_ago_period.start} 〜 {data.period_info.two_years_ago_period.end}
+                                {data.period_info.two_years_ago.name}: 同期 {data.period_info.two_years_ago.same_start} 〜 {data.period_info.two_years_ago.same_end} | 通期 {data.period_info.two_years_ago.full_start} 〜 {data.period_info.two_years_ago.full_end}
                             </span>
                         </div>
                         <div className="text-[11px] text-slate-400">
@@ -531,11 +657,17 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                             </div>
                             <div className="text-right">
                                 <div className="text-[11px] text-gray-500">
-                                    前期同期: {formatNumber(data.summary.previous.meters)} ｍ
+                                    前期同期: {formatNumber(data.summary.previous_same.meters)} ｍ
                                 </div>
-                                <div className="mt-0.5 flex items-center justify-end gap-1">
-                                    <span className="text-[10px] text-gray-400">対前期:</span>
+                                <div className="text-[10px] text-slate-400">
+                                    前期総量: {formatNumber(data.summary.previous_full.meters)} ｍ
+                                </div>
+                                <div className="mt-1 flex items-center justify-end gap-1.5">
+                                    <span className="text-[10px] text-gray-400">対同期:</span>
                                     {formatRate(data.summary.growth_rate_meters)}
+                                    <span className="text-[10px] text-indigo-600 font-mono font-medium ml-1">
+                                        (進捗: {data.summary.progress_rate_meters}%)
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -561,11 +693,17 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                             </div>
                             <div className="text-right">
                                 <div className="text-[11px] text-gray-500">
-                                    前期同期: {formatNumber(data.summary.previous.sheets)} 枚
+                                    前期同期: {formatNumber(data.summary.previous_same.sheets)} 枚
                                 </div>
-                                <div className="mt-0.5 flex items-center justify-end gap-1">
-                                    <span className="text-[10px] text-gray-400">対前期:</span>
+                                <div className="text-[10px] text-slate-400">
+                                    前期総量: {formatNumber(data.summary.previous_full.sheets)} 枚
+                                </div>
+                                <div className="mt-1 flex items-center justify-end gap-1.5">
+                                    <span className="text-[10px] text-gray-400">対同期:</span>
                                     {formatRate(data.summary.growth_rate_sheets)}
+                                    <span className="text-[10px] text-indigo-600 font-mono font-medium ml-1">
+                                        (進捗: {data.summary.progress_rate_sheets}%)
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -590,11 +728,17 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                             </div>
                             <div className="text-right">
                                 <div className="text-[11px] text-gray-500">
-                                    前期同期: ¥{formatNumber(data.summary.previous.amount)}
+                                    前期同期: ¥{formatNumber(data.summary.previous_same.amount)}
                                 </div>
-                                <div className="mt-0.5 flex items-center justify-end gap-1">
-                                    <span className="text-[10px] text-gray-400">対前期:</span>
+                                <div className="text-[10px] text-slate-400">
+                                    前期総量: ¥{formatNumber(data.summary.previous_full.amount)}
+                                </div>
+                                <div className="mt-1 flex items-center justify-end gap-1.5">
+                                    <span className="text-[10px] text-gray-400">対同期:</span>
                                     {formatRate(data.summary.growth_rate_amount)}
+                                    <span className="text-[10px] text-indigo-600 font-mono font-medium ml-1">
+                                        (進捗: {data.summary.progress_rate_amount}%)
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -719,22 +863,34 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                                     分類（種別 ＞ 材質 ＞ 量目）
                                 </th>
                                 <th className="py-3 px-2 text-right w-36">
-                                    今期 (2026年度)
+                                    <div>今期 (2026年度)</div>
+                                    <div className="text-[10px] text-cyan-300 font-normal">
+                                        {data?.period_info.current.label || '2/1 〜 本日'}
+                                    </div>
                                 </th>
-                                <th className="py-3 px-2 text-right w-36 bg-slate-750">
-                                    前期 (2025年度)
+                                <th className="py-3 px-2 text-right w-44 bg-slate-750">
+                                    <div>前期 (2025年度)</div>
+                                    <div className="text-[10px] text-cyan-200 font-normal">
+                                        {pastPeriodView === 'both' ? '同期日 ＆ 期総量' : pastPeriodView === 'same_only' ? '同期日のみ' : '期総量のみ'}
+                                    </div>
                                 </th>
-                                <th className="py-3 px-2 text-right w-36 bg-slate-700">
-                                    前々期 (2024年度)
+                                <th className="py-3 px-2 text-right w-44 bg-slate-700">
+                                    <div>前々期 (2024年度)</div>
+                                    <div className="text-[10px] text-cyan-200 font-normal">
+                                        {pastPeriodView === 'both' ? '同期日 ＆ 期総量' : pastPeriodView === 'same_only' ? '同期日のみ' : '期総量のみ'}
+                                    </div>
                                 </th>
-                                <th className="py-3 px-2 text-center w-28">
-                                    対前期比 (%)
+                                <th className="py-3 px-2 text-center w-32">
+                                    <div>対前期同期比 (%)</div>
+                                    <div className="text-[10px] text-slate-300 font-normal">（および進捗率）</div>
                                 </th>
                                 <th className="py-3 px-2 text-center w-28 bg-slate-750">
-                                    対前々期比 (%)
+                                    <div>対前々期比 (%)</div>
+                                    <div className="text-[10px] text-slate-300 font-normal">（同期比）</div>
                                 </th>
                                 <th className="py-3 px-2 text-right w-32">
-                                    前期比増減
+                                    <div>前期比増減</div>
+                                    <div className="text-[10px] text-slate-300 font-normal">（同期差分）</div>
                                 </th>
                             </tr>
                         </thead>
@@ -763,10 +919,11 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
 
                 {/* テーブルフッター補足 */}
                 <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between text-[11px] text-gray-500">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-3">
                         <span className="font-semibold text-slate-700">注記:</span>
                         <span>・ロール製品はｍ数、単袋およびシール等は枚数で算出しています。</span>
-                        <span className="text-amber-700 font-medium">・シールはご指定に基づき量目区分なし（一括集計）としています。</span>
+                        <span className="text-cyan-700 font-medium">・ロール製品およびシール製品は量目区分なし（材質階層で一括集計）としています。</span>
+                        <span className="text-amber-800 font-medium">・ソフクラは独立中分類とし、クラフトはバックポリ（BP）あり／なしを区別しています。</span>
                     </div>
                     <div>
                         行をクリックすると中分類（材質）・小分類（量目）にドリルダウンできます。

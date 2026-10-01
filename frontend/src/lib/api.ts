@@ -620,18 +620,24 @@ export interface PeriodMetricValues {
     amount: number;
 }
 
-export interface PeriodComparisonDateRange {
+export interface PeriodComparisonPeriodDetail {
     name: string;
-    start: string;
-    end: string;
+    label?: string;
+    same_label?: string;
+    full_label?: string;
+    start?: string;
+    end?: string;
+    same_start?: string;
+    same_end?: string;
+    full_start?: string;
+    full_end?: string;
 }
 
 export interface PeriodComparisonInfo {
-    compare_mode: 'same_period' | 'full_year';
     latest_sales_date: string;
-    current_period: PeriodComparisonDateRange;
-    previous_period: PeriodComparisonDateRange;
-    two_years_ago_period: PeriodComparisonDateRange;
+    current: PeriodComparisonPeriodDetail;
+    previous: PeriodComparisonPeriodDetail;
+    two_years_ago: PeriodComparisonPeriodDetail;
 }
 
 export interface PeriodComparisonItem {
@@ -639,15 +645,21 @@ export interface PeriodComparisonItem {
     name: string;
     level: 'category' | 'material' | 'capacity';
     is_seal?: boolean;
+    is_roll?: boolean;
     current: PeriodMetricValues;
-    previous: PeriodMetricValues;
-    two_years_ago: PeriodMetricValues;
+    previous_same: PeriodMetricValues;
+    previous_full: PeriodMetricValues;
+    two_years_ago_same: PeriodMetricValues;
+    two_years_ago_full: PeriodMetricValues;
     growth_rate_meters: number | null;
     growth_rate_sheets: number | null;
     growth_rate_amount: number | null;
     two_years_growth_rate_meters: number | null;
     two_years_growth_rate_sheets: number | null;
     two_years_growth_rate_amount: number | null;
+    progress_rate_meters: number | null;
+    progress_rate_sheets: number | null;
+    progress_rate_amount: number | null;
     diff_meters: number;
     diff_sheets: number;
     diff_amount: number;
@@ -658,14 +670,19 @@ export interface PeriodComparisonResponse {
     period_info: PeriodComparisonInfo;
     summary: {
         current: PeriodMetricValues;
-        previous: PeriodMetricValues;
-        two_years_ago: PeriodMetricValues;
+        previous_same: PeriodMetricValues;
+        previous_full: PeriodMetricValues;
+        two_years_ago_same: PeriodMetricValues;
+        two_years_ago_full: PeriodMetricValues;
         growth_rate_meters: number | null;
         growth_rate_sheets: number | null;
         growth_rate_amount: number | null;
         two_years_growth_rate_meters: number | null;
         two_years_growth_rate_sheets: number | null;
         two_years_growth_rate_amount: number | null;
+        progress_rate_meters: number | null;
+        progress_rate_sheets: number | null;
+        progress_rate_amount: number | null;
         diff_meters: number;
         diff_sheets: number;
         diff_amount: number;
@@ -675,11 +692,12 @@ export interface PeriodComparisonResponse {
 }
 
 export const getPeriodCategoryComparison = async (params?: {
-    compare_mode?: 'same_period' | 'full_year';
+    compare_mode?: string;
     sales_rep?: string;
     customer_code?: string;
 }): Promise<PeriodComparisonResponse> => {
     const response = await api.get(`${API_URL}/sales/period-category-comparison`, { params });
     return response.data;
 };
+
 

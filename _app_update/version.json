@@ -1,12 +1,12 @@
 {
-  "version": "2.5.77",
+  "version": "2.5.78",
   "releaseDate": "2026-10-01",
-  "fileName": "DailyReportServer_v2.5.77.exe",
-  "fileSize": 49588884,
-  "sha256": "55e440a847a8b3e55ecff5390b056157023ace28c2b7114f2343172b792a3957",
+  "fileName": "DailyReportServer_v2.5.78.exe",
+  "fileSize": 49845909,
+  "sha256": "7e152ebea73dec4b3dbcf9ddf3fd104cce665efda871090ce645e19c18203269",
   "forceUpdate": false,
   "releaseNotes": [
-    "3期（今期・前期・前々期）数量比較分析機能（種別・材質・量目別／ｍ数・枚数・売上金額）を追加",
-    "シール製品の量目除外（材質別一括集計）および同期間／通期比較切り替え・CSV出力対応"
+    "3期数量比較分析の強化（前期・前々期の同期日実績とその期の総量を併記）",
+    "クラフトとソフクラの分離（バックポリ有無保持）およびロール製品の量目除外（一括集計）対応"
   ]
 }

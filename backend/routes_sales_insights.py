@@ -40,7 +40,14 @@ def get_actionable_insights(
     rep_filter = sales_rep.strip() if (isinstance(sales_rep, str) and sales_rep.strip() and sales_rep not in ('all', '全員', '全体', '')) else None
     cache_key = (rep_filter, margin_type, limit)
 
-    db_path = sales_importer.get_sales_db_path()
+    try:
+        import config
+        db_path = getattr(config, 'SALES_CACHE_DB', 'backend/data/sales_cache.db')
+        if hasattr(sales_importer, 'get_sales_db_path'):
+            db_path = sales_importer.get_sales_db_path()
+    except Exception:
+        db_path = 'backend/data/sales_cache.db'
+
     if os.path.exists(db_path):
         db_mtime = os.path.getmtime(db_path)
         with _INSIGHTS_CACHE_LOCK:

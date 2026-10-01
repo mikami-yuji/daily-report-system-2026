@@ -57,9 +57,14 @@ def find_latest_sales_csv(search_dir: Optional[str] = None) -> Optional[str]:
 import db_utils
 
 
+def get_sales_db_path(db_path: Optional[str] = None) -> str:
+    """売上専用SQLite DBのファイルパスを取得"""
+    return db_path or getattr(config, 'SALES_CACHE_DB', 'backend/data/sales_cache.db')
+
+
 def get_sales_db_conn(db_path: Optional[str] = None):
     """売上専用SQLite DBへの接続を取得（WALモード・タイムアウト設定付き）"""
-    target_db = db_path or config.SALES_CACHE_DB
+    target_db = get_sales_db_path(db_path)
     os.makedirs(os.path.dirname(os.path.abspath(target_db)), exist_ok=True)
     
     conn = sqlite3.connect(target_db, timeout=30.0, check_same_thread=False)

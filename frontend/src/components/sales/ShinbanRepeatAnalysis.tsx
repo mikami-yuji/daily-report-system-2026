@@ -19,7 +19,11 @@ import {
     ArrowUpDown,
     CheckCircle2,
     Search,
-    BarChart3
+    BarChart3,
+    ChevronUp,
+    Trophy,
+    Zap,
+    ArrowDownUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -87,13 +91,25 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
     };
 
     // ソート管理（営業担当別テーブル）
-    const [sortField, setSortField] = useState<'total' | 'shinban' | 'repeat' | 'rate'>('total');
+    const [sortField, setSortField] = useState<'total' | 'shinban' | 'repeat' | 'rate' | 'name'>('total');
     const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+    // アコーディオン内・新版明細のソート管理
+    const [orderSortField, setOrderSortField] = useState<'date' | 'customer' | 'shinban' | 'repeat' | 'count'>('shinban');
+    const [orderSortAsc, setOrderSortAsc] = useState<boolean>(false);
+
+    // 月別 × 材質別マトリクスの表示順
+    const [materialMonthOrder, setMaterialMonthOrder] = useState<'asc' | 'desc'>('asc');
 
     const sortedReps = useMemo(() => {
         if (!data?.sales_rep_ranking) return [];
         const list = [...data.sales_rep_ranking];
         return list.sort((a, b) => {
+            if (sortField === 'name') {
+                return sortAsc
+                    ? a.sales_rep.localeCompare(b.sales_rep, 'ja')
+                    : b.sales_rep.localeCompare(a.sales_rep, 'ja');
+            }
             let valA = 0;
             let valB = 0;
             if (metric === 'meters') {
@@ -111,7 +127,7 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
         });
     }, [data, metric, sortField, sortAsc]);
 
-    // 担当営業別の新版明細
+    // 担当営業別の新版明細（ソート適用）
     const ordersByRep = useMemo(() => {
         if (!data?.detail_orders) return {};
         const map: Record<string, ShinbanDetailOrder[]> = {};
@@ -120,8 +136,54 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
             if (!map[rep]) map[rep] = [];
             map[rep].push(order);
         });
+
+        // 各営業マンごとの明細をソート
+        Object.keys(map).forEach(rep => {
+            map[rep].sort((a, b) => {
+                if (orderSortField === 'date') {
+                    const cmp = (a.order_date || '').localeCompare(b.order_date || '');
+                    return orderSortAsc ? cmp : -cmp;
+                }
+                if (orderSortField === 'customer') {
+                    const cmp = (a.customer_name || '').localeCompare(b.customer_name || '', 'ja');
+                    return orderSortAsc ? cmp : -cmp;
+                }
+                if (orderSortField === 'count') {
+                    const diff = (a.repeat_count || 0) - (b.repeat_count || 0);
+                    return orderSortAsc ? diff : -diff;
+                }
+                const valA = metric === 'meters'
+                    ? (orderSortField === 'shinban' ? a.meters : a.repeat_meters)
+                    : (orderSortField === 'shinban' ? a.amount : a.repeat_amount);
+                const valB = metric === 'meters'
+                    ? (orderSortField === 'shinban' ? b.meters : b.repeat_meters)
+                    : (orderSortField === 'shinban' ? b.amount : b.repeat_amount);
+                return orderSortAsc ? (valA || 0) - (valB || 0) : (valB || 0) - (valA || 0);
+            });
+        });
+
         return map;
-    }, [data]);
+    }, [data, orderSortField, orderSortAsc, metric]);
+
+    // 実績シェア順（取扱量が多い順）に並び替えた材質リスト
+    const sortedMaterials = useMemo(() => {
+        if (!data?.material_summary) return [];
+        return [...data.material_summary].sort((a, b) => {
+            const valA = metric === 'meters' ? a.meters : a.amount;
+            const valB = metric === 'meters' ? b.meters : b.amount;
+            return valB - valA;
+        });
+    }, [data?.material_summary, metric]);
+
+    // 月別推移（昇順 / 降順）
+    const sortedMonthlyMaterials = useMemo(() => {
+        if (!data?.monthly_materials) return [];
+        const rows = [...data.monthly_materials];
+        if (materialMonthOrder === 'desc') {
+            return [...rows].reverse();
+        }
+        return rows;
+    }, [data?.monthly_materials, materialMonthOrder]);
 
     // 検索フィルター適用後の明細
     const filteredDetailOrders = useMemo(() => {
@@ -663,45 +725,150 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
                         ) : (
                             /* ビュー2: 通期ランキング ＆ 個別明細アコーディオン展開 */
                             <div className="overflow-x-auto">
+                                {/* クイック並び替えバー */}
+                                <div className="px-4 py-2.5 bg-slate-50 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold text-gray-600 flex items-center gap-1 mr-1">
+                                            <ArrowDownUp size={13} className="text-gray-500" />
+                                            並び替え:
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSortField('total'); setSortAsc(false); }}
+                                            className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                                sortField === 'total' && !sortAsc
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            <Trophy size={12} className={sortField === 'total' && !sortAsc ? 'text-amber-300' : 'text-amber-500'} />
+                                            <span>総合計順</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSortField('shinban'); setSortAsc(false); }}
+                                            className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                                sortField === 'shinban' && !sortAsc
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            <Zap size={12} className={sortField === 'shinban' && !sortAsc ? 'text-amber-300' : 'text-blue-500'} />
+                                            <span>新版獲得力順</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSortField('repeat'); setSortAsc(false); }}
+                                            className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                                sortField === 'repeat' && !sortAsc
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            <RotateCcw size={12} className={sortField === 'repeat' && !sortAsc ? 'text-white' : 'text-indigo-500'} />
+                                            <span>リピート実績順</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSortField('rate'); setSortAsc(false); }}
+                                            className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                                sortField === 'rate' && !sortAsc
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            <TrendingUp size={12} className={sortField === 'rate' && !sortAsc ? 'text-white' : 'text-emerald-500'} />
+                                            <span>リピート率順</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSortField('name'); setSortAsc(true); }}
+                                            className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                                sortField === 'name' && sortAsc
+                                                    ? 'bg-blue-600 text-white shadow-xs'
+                                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                            }`}
+                                        >
+                                            <span>🔤 担当名順</span>
+                                        </button>
+                                    </div>
+                                    <span className="text-[11px] text-gray-400">
+                                        ※見出しクリックで昇順/降順切替
+                                    </span>
+                                </div>
+
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-gray-100/80 text-gray-600 font-bold border-b border-gray-200">
                                         <th className="py-2.5 px-3 w-12 text-center">順位</th>
-                                        <th className="py-2.5 px-3">担当営業</th>
                                         <th
-                                            className="py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors"
-                                            onClick={() => { setSortField('shinban'); setSortAsc(!sortAsc); }}
+                                            className={`py-2.5 px-3 cursor-pointer hover:bg-gray-200 transition-colors ${
+                                                sortField === 'name' ? 'bg-blue-50 text-blue-800' : ''
+                                            }`}
+                                            onClick={() => {
+                                                if (sortField === 'name') setSortAsc(!sortAsc);
+                                                else { setSortField('name'); setSortAsc(true); }
+                                            }}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                <span>担当営業</span>
+                                                <ArrowUpDown size={12} className={sortField === 'name' ? 'text-blue-600' : 'text-gray-400'} />
+                                            </div>
+                                        </th>
+                                        <th
+                                            className={`py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors ${
+                                                sortField === 'shinban' ? 'bg-blue-50 text-blue-800' : ''
+                                            }`}
+                                            onClick={() => {
+                                                if (sortField === 'shinban') setSortAsc(!sortAsc);
+                                                else { setSortField('shinban'); setSortAsc(false); }
+                                            }}
                                         >
                                             <div className="flex items-center justify-end gap-1">
                                                 <span>新版実績</span>
-                                                <ArrowUpDown size={12} />
+                                                <ArrowUpDown size={12} className={sortField === 'shinban' ? 'text-blue-600' : 'text-gray-400'} />
                                             </div>
                                         </th>
                                         <th
-                                            className="py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors"
-                                            onClick={() => { setSortField('repeat'); setSortAsc(!sortAsc); }}
+                                            className={`py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors ${
+                                                sortField === 'repeat' ? 'bg-blue-50 text-blue-800' : ''
+                                            }`}
+                                            onClick={() => {
+                                                if (sortField === 'repeat') setSortAsc(!sortAsc);
+                                                else { setSortField('repeat'); setSortAsc(false); }
+                                            }}
                                         >
                                             <div className="flex items-center justify-end gap-1">
                                                 <span>リピート実績</span>
-                                                <ArrowUpDown size={12} />
+                                                <ArrowUpDown size={12} className={sortField === 'repeat' ? 'text-blue-600' : 'text-gray-400'} />
                                             </div>
                                         </th>
                                         <th
-                                            className="py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors"
-                                            onClick={() => { setSortField('total'); setSortAsc(!sortAsc); }}
+                                            className={`py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors ${
+                                                sortField === 'total' ? 'bg-blue-50 text-blue-800' : ''
+                                            }`}
+                                            onClick={() => {
+                                                if (sortField === 'total') setSortAsc(!sortAsc);
+                                                else { setSortField('total'); setSortAsc(false); }
+                                            }}
                                         >
                                             <div className="flex items-center justify-end gap-1">
                                                 <span>総合計</span>
-                                                <ArrowUpDown size={12} />
+                                                <ArrowUpDown size={12} className={sortField === 'total' ? 'text-blue-600' : 'text-gray-400'} />
                                             </div>
                                         </th>
                                         <th
-                                            className="py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors"
-                                            onClick={() => { setSortField('rate'); setSortAsc(!sortAsc); }}
+                                            className={`py-2.5 px-3 text-right cursor-pointer hover:bg-gray-200 transition-colors ${
+                                                sortField === 'rate' ? 'bg-blue-50 text-blue-800' : ''
+                                            }`}
+                                            onClick={() => {
+                                                if (sortField === 'rate') setSortAsc(!sortAsc);
+                                                else { setSortField('rate'); setSortAsc(false); }
+                                            }}
                                         >
                                             <div className="flex items-center justify-end gap-1">
                                                 <span>リピート率</span>
-                                                <ArrowUpDown size={12} />
+                                                <ArrowUpDown size={12} className={sortField === 'rate' ? 'text-blue-600' : 'text-gray-400'} />
                                             </div>
                                         </th>
                                         <th className="py-2.5 px-3 w-20 text-center">明細</th>
@@ -882,13 +1049,68 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
                                                                     <table className="w-full text-left text-[11px]">
                                                                         <thead className="bg-gray-100 text-gray-600 font-bold sticky top-0 border-b border-gray-200">
                                                                             <tr>
-                                                                                <th className="py-2 px-2.5">受注日</th>
-                                                                                <th className="py-2 px-2.5">得意先名</th>
+                                                                                <th
+                                                                                    className={`py-2 px-2.5 cursor-pointer hover:bg-gray-200 transition-colors ${orderSortField === 'date' ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                                    onClick={() => {
+                                                                                        if (orderSortField === 'date') setOrderSortAsc(!orderSortAsc);
+                                                                                        else { setOrderSortField('date'); setOrderSortAsc(false); }
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <span>受注日</span>
+                                                                                        <ArrowUpDown size={11} className={orderSortField === 'date' ? 'text-blue-600' : 'text-gray-400'} />
+                                                                                    </div>
+                                                                                </th>
+                                                                                <th
+                                                                                    className={`py-2 px-2.5 cursor-pointer hover:bg-gray-200 transition-colors ${orderSortField === 'customer' ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                                    onClick={() => {
+                                                                                        if (orderSortField === 'customer') setOrderSortAsc(!orderSortAsc);
+                                                                                        else { setOrderSortField('customer'); setOrderSortAsc(true); }
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        <span>得意先名</span>
+                                                                                        <ArrowUpDown size={11} className={orderSortField === 'customer' ? 'text-blue-600' : 'text-gray-400'} />
+                                                                                    </div>
+                                                                                </th>
                                                                                 <th className="py-2 px-2.5">品名 / タイトル</th>
                                                                                 <th className="py-2 px-2.5">区分/材質</th>
-                                                                                <th className="py-2 px-2.5 text-right">新版実績</th>
-                                                                                <th className="py-2 px-2.5 text-right">リピート実績</th>
-                                                                                <th className="py-2 px-2.5 text-center">回数</th>
+                                                                                <th
+                                                                                    className={`py-2 px-2.5 text-right cursor-pointer hover:bg-gray-200 transition-colors ${orderSortField === 'shinban' ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                                    onClick={() => {
+                                                                                        if (orderSortField === 'shinban') setOrderSortAsc(!orderSortAsc);
+                                                                                        else { setOrderSortField('shinban'); setOrderSortAsc(false); }
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-center justify-end gap-1">
+                                                                                        <span>新版実績</span>
+                                                                                        <ArrowUpDown size={11} className={orderSortField === 'shinban' ? 'text-blue-600' : 'text-gray-400'} />
+                                                                                    </div>
+                                                                                </th>
+                                                                                <th
+                                                                                    className={`py-2 px-2.5 text-right cursor-pointer hover:bg-gray-200 transition-colors ${orderSortField === 'repeat' ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                                    onClick={() => {
+                                                                                        if (orderSortField === 'repeat') setOrderSortAsc(!orderSortAsc);
+                                                                                        else { setOrderSortField('repeat'); setOrderSortAsc(false); }
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-center justify-end gap-1">
+                                                                                        <span>リピート実績</span>
+                                                                                        <ArrowUpDown size={11} className={orderSortField === 'repeat' ? 'text-blue-600' : 'text-gray-400'} />
+                                                                                    </div>
+                                                                                </th>
+                                                                                <th
+                                                                                    className={`py-2 px-2.5 text-center cursor-pointer hover:bg-gray-200 transition-colors ${orderSortField === 'count' ? 'bg-blue-50 text-blue-800' : ''}`}
+                                                                                    onClick={() => {
+                                                                                        if (orderSortField === 'count') setOrderSortAsc(!orderSortAsc);
+                                                                                        else { setOrderSortField('count'); setOrderSortAsc(false); }
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-center justify-center gap-1">
+                                                                                        <span>回数</span>
+                                                                                        <ArrowUpDown size={11} className={orderSortField === 'count' ? 'text-blue-600' : 'text-gray-400'} />
+                                                                                    </div>
+                                                                                </th>
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody className="divide-y divide-gray-100">
@@ -987,16 +1209,29 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
 
                     {/* 4. 月別 × 主要材質別 推移マトリクス表 */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                        <div className="p-4 bg-gray-50/70 border-b border-gray-200 flex items-center justify-between">
+                        <div className="p-4 bg-gray-50/70 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                                 <Calendar size={18} className="text-gray-700" />
                                 <h3 className="font-bold text-sm text-gray-900">
                                     月別 × 主要材質別 新版実績推移
                                 </h3>
+                                <span className="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5 rounded font-bold">
+                                    取扱シェア順（主力材質が左）
+                                </span>
                             </div>
-                            <span className="text-xs text-gray-500">
-                                単位: {metric === 'meters' ? 'ｍ（メートル）' : '千円'}
-                            </span>
+                            <div className="flex items-center gap-3 text-xs">
+                                <button
+                                    type="button"
+                                    onClick={() => setMaterialMonthOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                    className="px-2.5 py-1 rounded bg-white border border-gray-300 hover:bg-gray-100 font-bold text-gray-700 flex items-center gap-1 shadow-2xs transition-colors"
+                                >
+                                    <ArrowUpDown size={12} className="text-blue-600" />
+                                    <span>月順: {materialMonthOrder === 'asc' ? '古い順 ⬆️' : '新しい順 ⬇️'}</span>
+                                </button>
+                                <span className="text-gray-500">
+                                    単位: {metric === 'meters' ? 'ｍ（メートル）' : '千円'}
+                                </span>
+                            </div>
                         </div>
 
                         <div className="overflow-x-auto">
@@ -1004,7 +1239,7 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
                                 <thead>
                                     <tr className="bg-gray-100/80 text-gray-600 font-bold border-b border-gray-200">
                                         <th className="py-2.5 px-3">受注月度</th>
-                                        {data.material_summary.map(m => (
+                                        {sortedMaterials.map(m => (
                                             <th key={m.material_group} className="py-2.5 px-2.5 text-right whitespace-nowrap">
                                                 {m.material_group}
                                             </th>
@@ -1015,13 +1250,13 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {data.monthly_materials.map((mRow) => {
+                                    {sortedMonthlyMaterials.map((mRow) => {
                                         return (
                                             <tr key={mRow.month} className="hover:bg-gray-50/80">
                                                 <td className="py-2.5 px-3 font-bold text-gray-800 font-mono">
                                                     {mRow.month}
                                                 </td>
-                                                {data.material_summary.map(m => {
+                                                {sortedMaterials.map(m => {
                                                     const val = metric === 'meters'
                                                         ? (mRow.meters[m.material_group] || 0)
                                                         : Math.round((mRow.amount[m.material_group] || 0) / 1000);
@@ -1045,7 +1280,7 @@ export default function ShinbanRepeatAnalysis(): React.JSX.Element {
                                 <tfoot>
                                     <tr className="bg-gray-100 font-bold text-gray-900 border-t-2 border-gray-300">
                                         <td className="py-3 px-3">累計合計</td>
-                                        {data.material_summary.map(m => (
+                                        {sortedMaterials.map(m => (
                                             <td key={m.material_group} className="py-3 px-2.5 text-right font-mono">
                                                 {metric === 'meters'
                                                     ? Math.round(m.meters).toLocaleString()

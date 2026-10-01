@@ -8,7 +8,14 @@ import {
     Search,
     ArrowUpRight,
     Loader2,
-    RefreshCw
+    RefreshCw,
+    ArrowDownUp,
+    Trophy,
+    Clock,
+    TrendingDown,
+    TrendingUp,
+    AlertTriangle,
+    ArrowUpDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
@@ -121,6 +128,11 @@ export default function ActionableSalesInsights(): React.JSX.Element {
     const [marginFilter, setMarginFilter] = useState<'all' | 'low' | 'high'>('all');
     const [searchKeyword, setSearchKeyword] = useState<string>('');
 
+    // 並び替えステート
+    const [churnSort, setChurnSort] = useState<'impact' | 'delay' | 'days' | 'name'>('impact');
+    const [plateSort, setPlateSort] = useState<'urgency' | 'orders' | 'name'>('urgency');
+    const [marginSort, setMarginSort] = useState<'impact' | 'rate_asc' | 'rate_desc' | 'name'>('impact');
+
     // 日報ファイル名から担当営業名を抽出（例: 本社007_【見上】_2026年度用日報.xlsm → 見上）
     const repNameFromFile = useMemo(() => {
         if (!selectedFile) return '';
@@ -170,63 +182,96 @@ export default function ActionableSalesInsights(): React.JSX.Element {
         fetchInsights(selectedRep);
     }, [selectedRep]);
 
-    // フィルタリング処理（キーワード）
+    // フィルタリング ＆ 並び替え処理
     const filteredChurnRisks = useMemo(() => {
         if (!data?.churn_risks) return [];
+        let list = [...data.churn_risks];
         const q = searchKeyword.toLowerCase().trim();
-        if (!q) return data.churn_risks;
-        return data.churn_risks.filter(i =>
-            i.customer_name.toLowerCase().includes(q) ||
-            i.customer_code.toLowerCase().includes(q) ||
-            i.sales_rep.toLowerCase().includes(q) ||
-            i.sample_product.toLowerCase().includes(q)
-        );
-    }, [data?.churn_risks, searchKeyword]);
+        if (q) {
+            list = list.filter(i =>
+                i.customer_name.toLowerCase().includes(q) ||
+                i.customer_code.toLowerCase().includes(q) ||
+                i.sales_rep.toLowerCase().includes(q) ||
+                i.sample_product.toLowerCase().includes(q)
+            );
+        }
+        return list.sort((a, b) => {
+            if (churnSort === 'impact') return (b.total_sales || 0) - (a.total_sales || 0);
+            if (churnSort === 'delay') return (b.delay_ratio || 0) - (a.delay_ratio || 0);
+            if (churnSort === 'days') return (b.days_since_last || 0) - (a.days_since_last || 0);
+            if (churnSort === 'name') return a.customer_name.localeCompare(b.customer_name, 'ja');
+            return 0;
+        });
+    }, [data?.churn_risks, searchKeyword, churnSort]);
 
     const filteredPlateExpiries = useMemo(() => {
         if (!data?.plate_expiries) return [];
+        let list = [...data.plate_expiries];
         const q = searchKeyword.toLowerCase().trim();
-        if (!q) return data.plate_expiries;
-        return data.plate_expiries.filter(i =>
-            i.customer_name.toLowerCase().includes(q) ||
-            i.customer_code.toLowerCase().includes(q) ||
-            i.product_name.toLowerCase().includes(q) ||
-            String(i.order_no).includes(q) ||
-            i.sales_rep.toLowerCase().includes(q)
-        );
-    }, [data?.plate_expiries, searchKeyword]);
+        if (q) {
+            list = list.filter(i =>
+                i.customer_name.toLowerCase().includes(q) ||
+                i.customer_code.toLowerCase().includes(q) ||
+                i.product_name.toLowerCase().includes(q) ||
+                String(i.order_no).includes(q) ||
+                i.sales_rep.toLowerCase().includes(q)
+            );
+        }
+        return list.sort((a, b) => {
+            if (plateSort === 'urgency') return (b.elapsed_months || 0) - (a.elapsed_months || 0);
+            if (plateSort === 'orders') return (b.last_quantity || 0) - (a.last_quantity || 0);
+            if (plateSort === 'name') return a.customer_name.localeCompare(b.customer_name, 'ja');
+            return 0;
+        });
+    }, [data?.plate_expiries, searchKeyword, plateSort]);
 
     const filteredMarginDeviations = useMemo(() => {
         if (!data?.margin_deviations) return [];
-        let list = data.margin_deviations;
+        let list = [...data.margin_deviations];
         if (marginFilter !== 'all') {
             list = list.filter(i => i.deviation_type === marginFilter);
         }
         const q = searchKeyword.toLowerCase().trim();
-        if (!q) return list;
-        return list.filter(i =>
-            i.customer_name.toLowerCase().includes(q) ||
-            i.customer_code.toLowerCase().includes(q) ||
-            i.product_name.toLowerCase().includes(q) ||
-            i.sales_rep.toLowerCase().includes(q)
-        );
-    }, [data?.margin_deviations, marginFilter, searchKeyword]);
+        if (q) {
+            list = list.filter(i =>
+                i.customer_name.toLowerCase().includes(q) ||
+                i.customer_code.toLowerCase().includes(q) ||
+                i.product_name.toLowerCase().includes(q) ||
+                i.sales_rep.toLowerCase().includes(q)
+            );
+        }
+        return list.sort((a, b) => {
+            if (marginSort === 'impact') return (b.total_sales || 0) - (a.total_sales || 0);
+            if (marginSort === 'rate_asc') return (a.margin_rate || 0) - (b.margin_rate || 0);
+            if (marginSort === 'rate_desc') return (b.margin_rate || 0) - (a.margin_rate || 0);
+            if (marginSort === 'name') return a.customer_name.localeCompare(b.customer_name, 'ja');
+            return 0;
+        });
+    }, [data?.margin_deviations, marginFilter, searchKeyword, marginSort]);
 
     const filteredCustomerMarginDeviations = useMemo(() => {
         if (!data?.customer_margin_deviations) return [];
-        let list = data.customer_margin_deviations;
+        let list = [...data.customer_margin_deviations];
         if (marginFilter !== 'all') {
             list = list.filter(i => i.deviation_type === marginFilter);
         }
         const q = searchKeyword.toLowerCase().trim();
-        if (!q) return list;
-        return list.filter(i =>
-            i.customer_name.toLowerCase().includes(q) ||
-            i.customer_code.toLowerCase().includes(q) ||
-            i.sales_rep.toLowerCase().includes(q) ||
-            i.top_product_name.toLowerCase().includes(q)
-        );
-    }, [data?.customer_margin_deviations, marginFilter, searchKeyword]);
+        if (q) {
+            list = list.filter(i =>
+                i.customer_name.toLowerCase().includes(q) ||
+                i.customer_code.toLowerCase().includes(q) ||
+                i.sales_rep.toLowerCase().includes(q) ||
+                i.top_product_name.toLowerCase().includes(q)
+            );
+        }
+        return list.sort((a, b) => {
+            if (marginSort === 'impact') return (b.total_sales || 0) - (a.total_sales || 0);
+            if (marginSort === 'rate_asc') return (a.margin_rate || 0) - (b.margin_rate || 0);
+            if (marginSort === 'rate_desc') return (b.margin_rate || 0) - (a.margin_rate || 0);
+            if (marginSort === 'name') return a.customer_name.localeCompare(b.customer_name, 'ja');
+            return 0;
+        });
+    }, [data?.customer_margin_deviations, marginFilter, searchKeyword, marginSort]);
 
     // Excel Export
     const handleExportExcel = async () => {
@@ -609,6 +654,170 @@ export default function ActionableSalesInsights(): React.JSX.Element {
                         </div>
                     </div>
                 )}
+            </div>
+
+            {/* 並び替えクイックバー */}
+            <div className="bg-slate-50 border border-sf-border rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-gray-700 flex items-center gap-1 mr-1">
+                        <ArrowDownUp size={13} className="text-gray-500" />
+                        並び替え:
+                    </span>
+
+                    {/* タブ1: 発注ストップ */}
+                    {activeTab === 'churn' && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setChurnSort('impact')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    churnSort === 'impact'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="年間売上高が大きい重要顧客を優先表示（金額影響最大）"
+                            >
+                                <Trophy size={12} className={churnSort === 'impact' ? 'text-amber-300' : 'text-amber-500'} />
+                                <span>🏆 年間売上規模順（最重要）</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setChurnSort('delay')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    churnSort === 'delay'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="通常発注サイクルからの遅延倍率が大きい順"
+                            >
+                                <AlertTriangle size={12} className={churnSort === 'delay' ? 'text-amber-300' : 'text-rose-500'} />
+                                <span>⚠️ 超過倍率順</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setChurnSort('days')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    churnSort === 'days'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                <Clock size={12} className={churnSort === 'days' ? 'text-white' : 'text-gray-500'} />
+                                <span>⏳ 未発注日数順</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setChurnSort('name')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    churnSort === 'name'
+                                        ? 'bg-slate-700 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                <span>🔤 顧客名順</span>
+                            </button>
+                        </>
+                    )}
+
+                    {/* タブ2: 版落ち寸前 */}
+                    {activeTab === 'plate' && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setPlateSort('urgency')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    plateSort === 'urgency'
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="23ヶ月経過（期限間近）を最優先表示"
+                            >
+                                <Clock size={12} className={plateSort === 'urgency' ? 'text-amber-300' : 'text-blue-500'} />
+                                <span>⏰ 期限緊急順 (23ヶ月優先)</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPlateSort('orders')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    plateSort === 'orders'
+                                        ? 'bg-blue-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="過去の注文回数が多い重要品目を優先"
+                            >
+                                <Trophy size={12} className={plateSort === 'orders' ? 'text-amber-300' : 'text-amber-500'} />
+                                <span>📦 前回ロット順</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPlateSort('name')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    plateSort === 'name'
+                                        ? 'bg-slate-700 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                <span>🔤 顧客名順</span>
+                            </button>
+                        </>
+                    )}
+
+                    {/* タブ3: 適正利益乖離 */}
+                    {activeTab === 'margin' && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setMarginSort('impact')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    marginSort === 'impact'
+                                        ? 'bg-amber-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="売上規模が大きい会社・品目を最優先表示"
+                            >
+                                <Trophy size={12} className={marginSort === 'impact' ? 'text-amber-300' : 'text-amber-500'} />
+                                <span>🏆 売上規模順 (影響大)</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMarginSort('rate_asc')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    marginSort === 'rate_asc'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="粗利率が低い順（赤字・薄利改善の優先順）"
+                            >
+                                <TrendingDown size={12} className={marginSort === 'rate_asc' ? 'text-white' : 'text-rose-500'} />
+                                <span>📉 薄利改善順 (低粗利優先)</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMarginSort('rate_desc')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    marginSort === 'rate_desc'
+                                        ? 'bg-indigo-600 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                                title="粗利率が高い順（コンペ・他社流出防止）"
+                            >
+                                <TrendingUp size={12} className={marginSort === 'rate_desc' ? 'text-white' : 'text-indigo-500'} />
+                                <span>📈 高粗利順</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setMarginSort('name')}
+                                className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                                    marginSort === 'name'
+                                        ? 'bg-slate-700 text-white shadow-xs'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                                }`}
+                            >
+                                <span>🔤 名称順</span>
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* Main Action Table */}

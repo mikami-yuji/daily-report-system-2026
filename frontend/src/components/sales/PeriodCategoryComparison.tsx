@@ -23,13 +23,20 @@ import {
     Maximize2,
     Minimize2,
     Eye,
-    Percent
+    Percent,
+    ArrowDownUp,
+    Trophy,
+    Zap,
+    RotateCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function PeriodCategoryComparison(): React.JSX.Element {
     // 過去期の表示モード: 'both' (同期日＆期総量の両方) | 'same_only' (同期日のみ) | 'full_only' (期総量のみ)
     const [pastPeriodView, setPastPeriodView] = useState<'both' | 'same_only' | 'full_only'>('both');
+
+    // 並び替えモード: 'default' (標準順) | 'qty_desc' (今期主力順) | 'diff_desc' (前年同期比伸び順) | 'diff_asc' (前年同期比落ち込み順) | 'name_asc' (五十音順)
+    const [sortMode, setSortMode] = useState<'default' | 'qty_desc' | 'diff_desc' | 'diff_asc' | 'name_asc'>('default');
 
     // 担当営業フィルター
     const [selectedRep, setSelectedRep] = useState<string>('all');
@@ -148,13 +155,50 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
         );
     };
 
-    // フィルタリング（検索語によるツリーの絞り込み）
-    const filteredCategories = useMemo(() => {
+    // ソート ＆ フィルタリング（検索語によるツリーの絞り込み ＆ 選択ソート順序）
+    const sortedAndFilteredCategories = useMemo(() => {
         if (!data?.categories) return [];
-        if (!searchTerm.trim()) return data.categories;
+
+        // 階層ツリーの再帰ソート
+        const sortTree = (items: PeriodComparisonItem[]): PeriodComparisonItem[] => {
+            const list = items.map(item => ({
+                ...item,
+                children: item.children ? sortTree(item.children) : undefined
+            }));
+
+            if (sortMode === 'default') return list;
+
+            return list.sort((a, b) => {
+                if (sortMode === 'name_asc') {
+                    return a.name.localeCompare(b.name, 'ja');
+                }
+                if (sortMode === 'qty_desc') {
+                    // 主力ボリューム順（m数＋枚数を考慮）
+                    const valA = (a.current.meters || 0) + (a.current.sheets || 0);
+                    const valB = (b.current.meters || 0) + (b.current.sheets || 0);
+                    return valB - valA;
+                }
+                if (sortMode === 'diff_desc') {
+                    // 前年同期比 伸び順（差分が大きい順）
+                    const diffA = (a.current.meters - a.previous_same.meters) + (a.current.sheets - a.previous_same.sheets);
+                    const diffB = (b.current.meters - b.previous_same.meters) + (b.current.sheets - b.previous_same.sheets);
+                    return diffB - diffA;
+                }
+                if (sortMode === 'diff_asc') {
+                    // 前年同期比 落ち込み順（マイナスが大きい順）
+                    const diffA = (a.current.meters - a.previous_same.meters) + (a.current.sheets - a.previous_same.sheets);
+                    const diffB = (b.current.meters - b.previous_same.meters) + (b.current.sheets - b.previous_same.sheets);
+                    return diffA - diffB;
+                }
+                return 0;
+            });
+        };
+
+        const sorted = sortTree(data.categories);
+
+        if (!searchTerm.trim()) return sorted;
 
         const term = searchTerm.trim().toLowerCase();
-
         const filterTree = (items: PeriodComparisonItem[]): PeriodComparisonItem[] => {
             const result: PeriodComparisonItem[] = [];
             for (const item of items) {
@@ -170,8 +214,8 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
             return result;
         };
 
-        return filterTree(data.categories);
-    }, [data, searchTerm]);
+        return filterTree(sorted);
+    }, [data, searchTerm, sortMode]);
 
     // CSVエクスポート
     const handleExportCsv = () => {
@@ -859,6 +903,80 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                 </div>
             </div>
 
+            {/* 並び替えクイックバー */}
+            <div className="bg-slate-50 border border-sf-border rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-bold text-gray-700 flex items-center gap-1 mr-1">
+                        <ArrowDownUp size={13} className="text-gray-500" />
+                        並び替え:
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setSortMode('qty_desc')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                            sortMode === 'qty_desc'
+                                ? 'bg-cyan-600 text-white shadow-xs'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                        title="今期の取扱数量（ｍ数・枚数）が多い主力を最上部に配置"
+                    >
+                        <Trophy size={12} className={sortMode === 'qty_desc' ? 'text-amber-300' : 'text-amber-500'} />
+                        <span>🏆 主力ボリューム順</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSortMode('diff_desc')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                            sortMode === 'diff_desc'
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                        title="前年同期比で増加している成長材質・サイズを上部に配置"
+                    >
+                        <TrendingUp size={12} className={sortMode === 'diff_desc' ? 'text-white' : 'text-emerald-600'} />
+                        <span>📈 前年比アップ（成長順）</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSortMode('diff_asc')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                            sortMode === 'diff_asc'
+                                ? 'bg-rose-600 text-white shadow-xs'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                        title="前年同期比で減少している注意材質・サイズを上部に配置"
+                    >
+                        <TrendingDown size={12} className={sortMode === 'diff_asc' ? 'text-white' : 'text-rose-600'} />
+                        <span>⚠️ 前年比ダウン（警戒順）</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSortMode('name_asc')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                            sortMode === 'name_asc'
+                                ? 'bg-slate-700 text-white shadow-xs'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                    >
+                        <span>🔤 五十音順</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSortMode('default')}
+                        className={`px-2.5 py-1 rounded-md font-bold transition-all flex items-center gap-1 ${
+                            sortMode === 'default'
+                                ? 'bg-slate-700 text-white shadow-xs'
+                                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-100'
+                        }`}
+                    >
+                        <span>標準順</span>
+                    </button>
+                </div>
+                <span className="text-[11px] text-gray-500">
+                    ※種別・材質・量目の全階層が選択順に並び替わります
+                </span>
+            </div>
+
             {/* 4. メイン比較テーブル */}
             <div className="bg-white rounded-xl shadow-xs border border-sf-border overflow-hidden">
                 <div className="overflow-x-auto">
@@ -910,14 +1028,14 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                                         </div>
                                     </td>
                                 </tr>
-                            ) : filteredCategories.length === 0 ? (
+                            ) : sortedAndFilteredCategories.length === 0 ? (
                                 <tr>
                                     <td colSpan={7} className="py-10 text-center text-gray-400 text-xs">
                                         該当する売上データが見つかりませんでした。
                                     </td>
                                 </tr>
                             ) : (
-                                filteredCategories.map(cat => renderRow(cat, 0))
+                                sortedAndFilteredCategories.map(cat => renderRow(cat, 0))
                             )}
                         </tbody>
                     </table>

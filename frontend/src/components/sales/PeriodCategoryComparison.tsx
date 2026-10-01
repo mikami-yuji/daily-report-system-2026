@@ -352,7 +352,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                             <div className="space-y-0.5">
                                 {pastPeriodView === 'both' && (
                                     <div className="text-[10px] text-cyan-700 font-medium border-b border-cyan-100 pb-0.5 mb-0.5">
-                                        同期日 ({data?.period_info.previous.same_label?.replace('前期同期 ', '')})
+                                        同期日 ({data?.period_info?.previous?.same_label?.replace('前期同期 ', '') || '同期'})
                                     </div>
                                 )}
                                 {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
@@ -407,7 +407,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                             <div className="space-y-0.5">
                                 {pastPeriodView === 'both' && (
                                     <div className="text-[10px] text-cyan-700 font-medium border-b border-cyan-100 pb-0.5 mb-0.5">
-                                        同期日 ({data?.period_info.two_years_ago.same_label?.replace('前々期同期 ', '')})
+                                        同期日 ({data?.period_info?.two_years_ago?.same_label?.replace('前々期同期 ', '') || '同期'})
                                     </div>
                                 )}
                                 {(metricDisplay === 'both' || metricDisplay === 'meters' || metricDisplay === 'with_amount') && (
@@ -617,18 +617,24 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                     <div className="mt-4 pt-3 border-t border-slate-700/60 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
                         <div className="flex flex-wrap items-center gap-3">
                             <span className="font-semibold text-cyan-300">集計期間定義:</span>
-                            <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                                {data.period_info.current.name}: {data.period_info.current.start} 〜 {data.period_info.current.end}
-                            </span>
-                            <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                                {data.period_info.previous.name}: 同期 {data.period_info.previous.same_start} 〜 {data.period_info.previous.same_end} | 通期 {data.period_info.previous.full_start} 〜 {data.period_info.previous.full_end}
-                            </span>
-                            <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
-                                {data.period_info.two_years_ago.name}: 同期 {data.period_info.two_years_ago.same_start} 〜 {data.period_info.two_years_ago.same_end} | 通期 {data.period_info.two_years_ago.full_start} 〜 {data.period_info.two_years_ago.full_end}
-                            </span>
+                            {data.period_info.current && (
+                                <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
+                                    {data.period_info.current.name}: {data.period_info.current.start} 〜 {data.period_info.current.end}
+                                </span>
+                            )}
+                            {data.period_info.previous && (
+                                <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
+                                    {data.period_info.previous.name}: 同期 {data.period_info.previous.same_start} 〜 {data.period_info.previous.same_end} | 通期 {data.period_info.previous.full_start} 〜 {data.period_info.previous.full_end}
+                                </span>
+                            )}
+                            {data.period_info.two_years_ago && (
+                                <span className="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-mono border border-slate-700">
+                                    {data.period_info.two_years_ago.name}: 同期 {data.period_info.two_years_ago.same_start} 〜 {data.period_info.two_years_ago.same_end} | 通期 {data.period_info.two_years_ago.full_start} 〜 {data.period_info.two_years_ago.full_end}
+                                </span>
+                            )}
                         </div>
                         <div className="text-[11px] text-slate-400">
-                            最新売上日: <strong className="text-white font-mono">{data.period_info.latest_sales_date}</strong>
+                            最新売上日: <strong className="text-white font-mono">{data.period_info.latest_sales_date || '-'}</strong>
                         </div>
                     </div>
                 )}
@@ -865,7 +871,7 @@ export default function PeriodCategoryComparison(): React.JSX.Element {
                                 <th className="py-3 px-2 text-right w-36">
                                     <div>今期 (2026年度)</div>
                                     <div className="text-[10px] text-cyan-300 font-normal">
-                                        {data?.period_info.current.label || '2/1 〜 本日'}
+                                        {data?.period_info?.current?.label || '2/1 〜 本日'}
                                     </div>
                                 </th>
                                 <th className="py-3 px-2 text-right w-44 bg-slate-750">

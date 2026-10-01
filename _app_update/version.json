@@ -1,12 +1,11 @@
 {
-  "version": "2.5.78",
+  "version": "2.5.79",
   "releaseDate": "2026-10-01",
-  "fileName": "DailyReportServer_v2.5.78.exe",
-  "fileSize": 49845909,
-  "sha256": "7e152ebea73dec4b3dbcf9ddf3fd104cce665efda871090ce645e19c18203269",
+  "fileName": "DailyReportServer_v2.5.79.exe",
+  "fileSize": 49846064,
+  "sha256": "bfe79eda0c814e03d0eaa5aabe2c25c13bf84c58e1c7438742a93ef56baed08c",
   "forceUpdate": false,
   "releaseNotes": [
-    "3期数量比較分析の強化（前期・前々期の同期日実績とその期の総量を併記）",
-    "クラフトとソフクラの分離（バックポリ有無保持）およびロール製品の量目除外（一括集計）対応"
+    "売上分析3期数量比較画面の未定義参照クラッシュ修正と安定化"
   ]
 }

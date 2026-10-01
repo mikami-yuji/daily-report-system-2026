@@ -230,6 +230,8 @@ export type MonthlySummaryStats = {
             area: string | null;
         }>;
     }>;
+    availableMonths?: string[];
+    latestMonth?: string;
 };
 
 export type SalesData = {

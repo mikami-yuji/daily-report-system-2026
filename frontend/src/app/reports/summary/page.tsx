@@ -150,8 +150,12 @@ export default function MonthlySummaryPage(): React.ReactElement {
         }
     }, [summary, selectedFile]);
 
+    // 初回に最新データが存在する月への自動遷移フラグ
+    const hasAutoNavigatedRef = useRef(false);
+
     // 月送り
     const handlePreviousMonth = (): void => {
+        hasAutoNavigatedRef.current = true;
         setCurrentDate(prev => {
             const d = new Date(prev);
             d.setMonth(d.getMonth() - 1);
@@ -159,13 +163,37 @@ export default function MonthlySummaryPage(): React.ReactElement {
         });
     };
     const handleNextMonth = (): void => {
+        hasAutoNavigatedRef.current = true;
         setCurrentDate(prev => {
             const d = new Date(prev);
             d.setMonth(d.getMonth() + 1);
             return d;
         });
     };
-    const handleThisMonth = (): void => setCurrentDate(new Date());
+    const handleThisMonth = (): void => {
+        hasAutoNavigatedRef.current = true;
+        setCurrentDate(new Date());
+    };
+    const handleSelectMonth = (yyMm: string): void => {
+        if (!yyMm) return;
+        hasAutoNavigatedRef.current = true;
+        const [yy, mm] = yyMm.split('/');
+        const fullYear = 2000 + parseInt(yy, 10);
+        const monthNum = parseInt(mm, 10) - 1;
+        setCurrentDate(new Date(fullYear, monthNum, 1));
+    };
+
+    // 初期表示時：当月が0件で、かつ直近データがある月に自動フォールバック
+    useEffect(() => {
+        if (!summary || hasAutoNavigatedRef.current) return;
+        if (summary.totalReports === 0 && summary.latestMonth && summary.latestMonth !== monthPrefix) {
+            hasAutoNavigatedRef.current = true;
+            const [yy, mm] = summary.latestMonth.split('/');
+            const fullYear = 2000 + parseInt(yy, 10);
+            const monthNum = parseInt(mm, 10) - 1;
+            setCurrentDate(new Date(fullYear, monthNum, 1));
+        }
+    }, [summary, monthPrefix]);
 
     // 印刷
     const handlePrint = useReactToPrint({
@@ -210,20 +238,76 @@ export default function MonthlySummaryPage(): React.ReactElement {
 
             {/* 月選択コントロール（印刷時非表示） */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6 print:hidden">
-                <div className="flex items-center justify-between">
-                    <button onClick={handlePreviousMonth} className="flex items-center gap-1 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                        <ChevronLeft size={20} /> 前月
-                    </button>
-                    <div className="flex items-center gap-4">
-                        <button onClick={handleThisMonth} className="px-4 py-2 text-sm font-medium text-sf-light-blue hover:bg-blue-50 rounded-lg transition-colors">
-                            今月
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                        <button onClick={handlePreviousMonth} className="flex items-center gap-1 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium">
+                            <ChevronLeft size={18} /> 前月
                         </button>
-                        <h2 className="text-2xl font-bold text-gray-900">{monthLabel}</h2>
+                        <button onClick={handleNextMonth} className="flex items-center gap-1 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors text-sm font-medium">
+                            次月 <ChevronRight size={18} />
+                        </button>
                     </div>
-                    <button onClick={handleNextMonth} className="flex items-center gap-1 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
-                        次月 <ChevronRight size={20} />
-                    </button>
+
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{monthLabel}</h2>
+                        
+                        {/* 実績月セレクトドロップダウン */}
+                        {summary.availableMonths && summary.availableMonths.length > 0 && (
+                            <select
+                                value={summary.availableMonths.includes(monthPrefix) ? monthPrefix : ''}
+                                onChange={(e) => handleSelectMonth(e.target.value)}
+                                className="text-xs bg-gray-50 border border-gray-300 text-gray-700 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-sf-light-blue"
+                            >
+                                <option value="" disabled>月度を選択...</option>
+                                {summary.availableMonths.map(m => (
+                                    <option key={m} value={m}>
+                                        20{m.replace('/', '年')}月
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {summary.latestMonth && summary.latestMonth !== monthPrefix && (
+                            <button
+                                onClick={() => handleSelectMonth(summary.latestMonth!)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-sf-light-blue hover:bg-blue-100 rounded-lg transition-colors text-xs font-bold"
+                            >
+                                <Sparkles size={14} className="text-amber-500" />
+                                最新実績（20{summary.latestMonth.replace('/', '年')}月）
+                            </button>
+                        )}
+                        <button onClick={handleThisMonth} className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200">
+                            今月（当月）
+                        </button>
+                    </div>
                 </div>
+
+                {/* 該当月データ未登録時のガイダンス通知 */}
+                {summary.totalReports === 0 && (
+                    <div className="mt-4 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                            <AlertTriangle size={18} className="text-amber-600 shrink-0" />
+                            <div>
+                                <p className="font-bold text-xs sm:text-sm">
+                                    【{monthLabel}】の日報データはまだ登録されていません
+                                </p>
+                                <p className="text-[11px] text-amber-700 mt-0.5">
+                                    過去の活動実績を確認するには、上の月送りボタンまたは最新実績月をお選びください。
+                                </p>
+                            </div>
+                        </div>
+                        {summary.latestMonth && (
+                            <button
+                                onClick={() => handleSelectMonth(summary.latestMonth!)}
+                                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs rounded-lg transition-colors shadow-sm shrink-0 whitespace-nowrap"
+                            >
+                                最新実績（20{summary.latestMonth.replace('/', '年')}月）を表示
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* ===== 印刷対象エリア ===== */}
@@ -294,34 +378,49 @@ export default function MonthlySummaryPage(): React.ReactElement {
                                 </div>
 
                                 {/* フォローシグナル */}
-                                <div className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${
-                                    uncontactedCount > 0 ? 'bg-rose-50/70 border-rose-200 text-rose-900' : 'bg-blue-50/70 border-blue-200 text-blue-900'
-                                }`}>
-                                    {uncontactedCount > 0 ? (
-                                        <AlertTriangle size={16} className="text-rose-600 mt-0.5 shrink-0" />
-                                    ) : (
-                                        <CheckCircle2 size={16} className="text-blue-600 mt-0.5 shrink-0" />
-                                    )}
-                                    <div className="min-w-0">
-                                        <div className="font-bold flex items-center gap-1.5">
-                                            <span>重点顧客フォロー</span>
-                                            {uncontactedCount > 0 ? (
-                                                <span className="text-[10px] bg-rose-200 text-rose-800 px-1.5 py-0.2 rounded font-bold">
-                                                    未接触 {uncontactedCount}社
-                                                </span>
+                                {(() => {
+                                    const totalPriorityCount = summary.priorityCustomers.length;
+                                    const isNoPriority = totalPriorityCount === 0;
+
+                                    return (
+                                        <div className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${
+                                            isNoPriority ? 'bg-gray-50 border-gray-200 text-gray-700' : (uncontactedCount > 0 ? 'bg-rose-50/70 border-rose-200 text-rose-900' : 'bg-blue-50/70 border-blue-200 text-blue-900')
+                                        }`}>
+                                            {isNoPriority ? (
+                                                <Clock size={16} className="text-gray-400 mt-0.5 shrink-0" />
+                                            ) : uncontactedCount > 0 ? (
+                                                <AlertTriangle size={16} className="text-rose-600 mt-0.5 shrink-0" />
                                             ) : (
-                                                <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.2 rounded font-bold">
-                                                    全社接触済
-                                                </span>
+                                                <CheckCircle2 size={16} className="text-blue-600 mt-0.5 shrink-0" />
                                             )}
+                                            <div className="min-w-0">
+                                                <div className="font-bold flex items-center gap-1.5">
+                                                    <span>重点顧客フォロー</span>
+                                                    {isNoPriority ? (
+                                                        <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.2 rounded font-medium">
+                                                            今月活動なし
+                                                        </span>
+                                                    ) : uncontactedCount > 0 ? (
+                                                        <span className="text-[10px] bg-rose-200 text-rose-800 px-1.5 py-0.2 rounded font-bold">
+                                                            未接触 {uncontactedCount}社
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.2 rounded font-bold">
+                                                            全社接触済
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] mt-0.5 opacity-90 leading-tight">
+                                                    {isNoPriority
+                                                        ? '当月は重点顧客への活動記録がありません'
+                                                        : uncontactedCount > 0
+                                                            ? `登録${totalPriorityCount}社中【${uncontactedCount}社】が今月未接触`
+                                                            : `登録${totalPriorityCount}社すべてに今月訪問または電話を実施`}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <p className="text-[11px] mt-0.5 opacity-90 leading-tight">
-                                            {uncontactedCount > 0
-                                                ? `登録${summary.priorityCustomers.length}社中【${uncontactedCount}社】が今月未接触`
-                                                : `登録${summary.priorityCustomers.length}社すべてに今月訪問または電話を実施`}
-                                        </p>
-                                    </div>
-                                </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     );

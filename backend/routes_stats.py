@@ -324,7 +324,8 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
         "uniqueCustomers": 0, "activeDays": 0,
         "areaBreakdown": [], "priorityCustomers": [], "designProgress": [],
         "topCustomers": [], "topCallCustomers": [], "dailyActivity": [],
-        "prioritySalesTotal": None, "salesSummary": None, "salesPeriodLabel": ""
+        "prioritySalesTotal": None, "salesSummary": None, "salesPeriodLabel": "",
+        "availableMonths": [], "latestMonth": None
     }
     if not month:
         return empty_response
@@ -371,6 +372,18 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
             return empty_response
 
         vdf['m'] = vdf['dt'].dt.strftime('%y/%m')
+        available_months = sorted(vdf['m'].unique().tolist(), reverse=True)
+        latest_month = available_months[0] if available_months else None
+
+        empty_response["availableMonths"] = available_months
+        empty_response["latestMonth"] = latest_month
+
+        if not month or month == 'latest':
+            month = latest_month
+
+        if not month:
+            return empty_response
+
         mdf = vdf[vdf['m'] == month].copy()
         if mdf.empty:
             return empty_response
@@ -843,7 +856,9 @@ def get_monthly_summary_stats(filename: str = config.DEFAULT_EXCEL_FILE, month: 
             "designProgress": designProgress,
             "topCustomers": topCustomers,
             "topCallCustomers": topCallCustomers,
-            "dailyActivity": dailyActivity
+            "dailyActivity": dailyActivity,
+            "availableMonths": available_months,
+            "latestMonth": latest_month
         }
     except Exception as e:
         logging.error(f"Monthly summary error: {e}")
